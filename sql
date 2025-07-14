@@ -1,0 +1,513 @@
+CREATE TYPE user_role_enum AS ENUM (
+  'Admin',
+  'Project Manager',
+  'Site Engineer',
+  'Approval Engineer',
+  'Lab Engineer',
+  'Customer'
+);
+
+CREATE TYPE assignment_type_enum AS ENUM (
+  'AdminToManager',
+  'ManagerToTeam'
+);
+
+CREATE TYPE contact_role AS ENUM (
+  'Admin',
+  'Project Manager',
+  'Site Engineer',
+  'Supervisor',
+  'QA/QC'
+);
+
+CREATE TABLE customers (
+  customer_id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  date_created TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE organisations (
+  organisation_id UUID PRIMARY KEY,
+  customer_id UUID,
+  name TEXT NOT NULL,
+  date_created TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (customer_id) REFERENCES customers (customer_id) ON DELETE SET NULL
+);
+
+CREATE TABLE users (
+  user_id UUID PRIMARY KEY,
+  organisation_id UUID,
+  customer_id UUID,
+  name TEXT,
+  role user_role_enum NOT NULL,
+  email TEXT,
+  date_created TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (organisation_id) REFERENCES organisations (organisation_id) ON DELETE SET NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers (customer_id) ON DELETE SET NULL
+);
+
+CREATE TABLE contacts (
+  contact_id UUID PRIMARY KEY,
+  organisation_id UUID NOT NULL,
+  name TEXT,
+  role contact_role NOT NULL,
+  date_created TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (organisation_id) REFERENCES organisations (organisation_id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE projects (
+  project_id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  location TEXT,
+  created_by UUID,
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (created_by) REFERENCES users (user_id) ON DELETE SET NULL
+);
+
+CREATE TABLE user_project_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  assignment_type assignment_type_enum NOT NULL,
+  project_id UUID NOT NULL,
+  assigner UUID[] NOT NULL,
+  assignee UUID[] NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE
+);
+
+CREATE TYPE structure_type_enum AS ENUM (
+  'Tunnel',
+  'Bridge',
+  'LevelCrossing',
+  'Viaduct',
+  'Embankment',
+  'Alignment',
+  'Yeard',
+  'StationBuilding',
+  'Building',
+  'SlopeStability'
+);
+
+
+CREATE TABLE structure (
+  structure_id UUID PRIMARY KEY,
+  project_id UUID NOT NULL,
+  type structure_type_enum NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE
+);
+
+CREATE TABLE structure_areas (
+  area_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  structure_id UUID NOT NULL,
+  component TEXT NOT NULL,    -- e.g. "Portal 1"
+  shortcode TEXT,             -- e.g. "P1"
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (structure_id) REFERENCES structure (structure_id) ON DELETE CASCADE
+);
+
+-- For sub-structure types
+CREATE TYPE substructure_type_enum AS ENUM (
+  'P1',
+  'P2',
+  'M',
+  'E',
+  'Abutment1',
+  'Abutment2',
+  'LC',
+  'Right side',
+  'Left side'
+);
+
+-- For log type
+CREATE TYPE structure_log_type_enum AS ENUM (
+  'Geotechnical',
+  'Geological'
+);
+
+CREATE TABLE sub_structures (
+  substructure_id UUID PRIMARY KEY,
+  structure_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  type substructure_type_enum NOT NULL,
+  remark TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (structure_id) REFERENCES structure (structure_id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE borehole (
+  borehole_id UUID PRIMARY KEY,
+  project_id UUID NOT NULL,
+  structure_id UUID,
+  substructure_id UUID,
+  tunnel_no TEXT,
+  location TEXT,
+  chainage TEXT,
+  borehole_number TEXT,
+  msl TEXT,
+  coordinate GEOGRAPHY(POINT),
+  boring_method TEXT,
+  hole_diameter NUMERIC,
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE,
+  FOREIGN KEY (structure_id) REFERENCES structure (structure_id) ON DELETE SET NULL,
+  FOREIGN KEY (substructure_id) REFERENCES sub_structures (substructure_id) ON DELETE SET NULL
+);
+
+CREATE TYPE borelog_type_enum AS ENUM (
+  'Geotechnical',
+  'Geological'
+);
+
+
+CREATE TABLE boreloge (
+  borelog_id UUID PRIMARY KEY,
+  substructure_id UUID NOT NULL,
+  project_id UUID NOT NULL,
+  type borelog_type_enum NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (substructure_id) REFERENCES sub_structures (substructure_id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE
+);
+
+CREATE TABLE borelog_details (
+  borelog_id UUID PRIMARY KEY,
+  number TEXT,
+  msl TEXT,
+  boring_method TEXT,
+  hole_diameter DOUBLE PRECISION,
+  commencement_date TIMESTAMP,
+  completion_date TIMESTAMP,
+  standing_water_level DOUBLE PRECISION,
+  termination_depth DOUBLE PRECISION,
+  coordinate GEOGRAPHY(POINT),
+
+  permeability_test_count TEXT,
+  spt_vs_test_count TEXT,
+  undisturbed_sample_count TEXT,
+  disturbed_sample_count TEXT,
+  water_sample_count TEXT,
+
+  stratum_description TEXT,
+  stratum_depth_from NUMERIC,
+  stratum_depth_to NUMERIC,
+  stratum_thickness_m DOUBLE PRECISION,
+
+  sample_event_type TEXT,
+  sample_event_depth_m DOUBLE PRECISION,
+
+  run_length_m DOUBLE PRECISION,
+  spt_blows_per_15cm DOUBLE PRECISION,
+  n_value_is_2131 TEXT,
+
+  total_core_length_cm DOUBLE PRECISION,
+  tcr_percent DOUBLE PRECISION,
+  rqd_length_cm DOUBLE PRECISION,
+  rqd_percent DOUBLE PRECISION,
+
+  return_water_colour TEXT,
+  water_loss TEXT,
+  borehole_diameter DOUBLE PRECISION,
+  remarks TEXT,
+
+  images TEXT, -- Could be a container ID or JSON list of URLs
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (borelog_id) REFERENCES boreloge (borelog_id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE geological_log (
+    borelog_id UUID PRIMARY KEY,
+    
+    -- 🟡 Project Info
+    project_name TEXT,
+    client_name TEXT,
+    design_consultant TEXT,
+    job_code TEXT,
+    project_location TEXT,
+
+    -- 🟠 Structure Data
+    chainage_km NUMERIC,
+    area TEXT,
+    borehole_location TEXT,
+    borehole_number TEXT,
+
+    -- 🔵 Borehole Data
+    msl TEXT,
+    method_of_boring TEXT,
+    diameter_of_hole NUMERIC,
+    commencement_date TIMESTAMP,
+    completion_date TIMESTAMP,
+    standing_water_level NUMERIC,
+    termination_depth NUMERIC,
+    coordinate GEOGRAPHY(POINT),
+    type_of_core_barrel TEXT,
+    bearing_of_hole TEXT,
+    collar_elevation NUMERIC,
+    logged_by TEXT,
+    checked_by TEXT,
+    number_of_permeability_tests TEXT,
+    number_of_spt_tests TEXT,
+    number_of_undisturbed_samples TEXT,
+    number_of_disturbed_samples TEXT,
+    number_of_water_samples TEXT,
+    depth_of_stratum_from NUMERIC,
+    depth_of_stratum_to NUMERIC,
+    thickness_of_stratum NUMERIC,
+    sample_event_type TEXT,
+    sample_event_depth NUMERIC,
+    run_length NUMERIC,
+    spt_blows_per_15cm NUMERIC,
+    n_value_is2131 TEXT,
+    total_core_length_cm NUMERIC,
+    tcr_percent NUMERIC,
+    rqd_length_cm NUMERIC,
+    rqd_percent NUMERIC,
+    colour_of_return_water TEXT,
+    water_loss TEXT,
+    size_of_hole NUMERIC,
+    size_of_casing NUMERIC,
+    type_of_bit TEXT,
+    depth_of_water_level NUMERIC,
+    drift_water_loss TEXT,
+    penetration_rate_mm_per_min NUMERIC,
+    test_section_m TEXT,
+    lugeon_value TEXT,
+    special_observations TEXT,
+    sample_image_url TEXT,
+    permeability_test TEXT,
+
+    -- 🟢 Geological Descriptions
+    lithology TEXT,
+    rock_methodology TEXT,
+    structural_condition TEXT,
+    weathering_classification TEXT,
+    fracture_frequency_per_m NUMERIC,
+    size_of_core_pieces_distribution JSONB,
+    
+    -- General
+    remarks TEXT,
+    images TEXT,
+
+    -- Timestamp
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+-- Project Info
+COMMENT ON COLUMN geological_log.project_name IS 'Project Data';
+COMMENT ON COLUMN geological_log.client_name IS 'Project Data';
+COMMENT ON COLUMN geological_log.design_consultant IS 'Project Data';
+COMMENT ON COLUMN geological_log.job_code IS 'Project Data';
+COMMENT ON COLUMN geological_log.project_location IS 'Project Data';
+
+-- Structure Data
+COMMENT ON COLUMN geological_log.chainage_km IS 'Structure Data';
+COMMENT ON COLUMN geological_log.area IS 'Structure Data';
+COMMENT ON COLUMN geological_log.borehole_location IS 'Structure Data';
+COMMENT ON COLUMN geological_log.borehole_number IS 'Structure Data';
+
+-- Borehole Data
+COMMENT ON COLUMN geological_log.msl IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.method_of_boring IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.diameter_of_hole IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.commencement_date IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.completion_date IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.standing_water_level IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.termination_depth IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.coordinate IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.type_of_core_barrel IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.bearing_of_hole IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.collar_elevation IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.logged_by IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.checked_by IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.number_of_permeability_tests IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.number_of_spt_tests IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.number_of_undisturbed_samples IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.number_of_disturbed_samples IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.number_of_water_samples IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.depth_of_stratum_from IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.depth_of_stratum_to IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.thickness_of_stratum IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.sample_event_type IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.sample_event_depth IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.run_length IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.spt_blows_per_15cm IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.n_value_is2131 IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.total_core_length_cm IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.tcr_percent IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.rqd_length_cm IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.rqd_percent IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.colour_of_return_water IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.water_loss IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.size_of_hole IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.size_of_casing IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.type_of_bit IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.depth_of_water_level IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.drift_water_loss IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.penetration_rate_mm_per_min IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.test_section_m IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.lugeon_value IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.special_observations IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.sample_image_url IS 'Borehole Data';
+COMMENT ON COLUMN geological_log.permeability_test IS 'Borehole Data';
+
+-- Geological Description
+COMMENT ON COLUMN geological_log.lithology IS 'Geological log';
+COMMENT ON COLUMN geological_log.rock_methodology IS 'Geological log';
+COMMENT ON COLUMN geological_log.structural_condition IS 'Geological log';
+COMMENT ON COLUMN geological_log.weathering_classification IS 'Geological log';
+COMMENT ON COLUMN geological_log.fracture_frequency_per_m IS 'Geological log';
+COMMENT ON COLUMN geological_log.size_of_core_pieces_distribution IS 'Geological log';
+
+
+
+-- Fast access to logs by structure/project
+CREATE INDEX idx_borelog_project_id ON boreloge(project_id);
+CREATE INDEX idx_borehole_structure_id ON borehole(structure_id);
+
+-- Fast filters on user roles or assignments
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_contact_role ON contacts(role);
+CREATE INDEX idx_assignments_project_id ON user_project_assignments(project_id);
+
+-- Fast access to boreholes by chainage or number
+CREATE INDEX idx_borehole_number ON borehole(borehole_number);
+CREATE INDEX idx_borehole_chainage ON borehole(chainage);
+
+-- For geolocation queries
+CREATE INDEX idx_coordinate_gist ON borehole USING GIST(coordinate);
+
+
+
+ALTER TABLE contacts ADD COLUMN created_by_user_id UUID;
+ALTER TABLE projects ADD COLUMN created_by_user_id UUID;
+ALTER TABLE geological_log ADD COLUMN created_by_user_id UUID;
+
+-- Add FK reference
+ALTER TABLE contacts ADD CONSTRAINT fk_contacts_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+ALTER TABLE projects ADD CONSTRAINT fk_projects_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+ALTER TABLE geological_log ADD CONSTRAINT fk_geo_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+
+ALTER TABLE geological_log ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+
+CREATE TRIGGER trg_update_geo_log
+BEFORE UPDATE ON geological_log
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+
+CREATE TABLE borelog_images (
+  image_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  borelog_id UUID NOT NULL REFERENCES boreloge(borelog_id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Optional: Remove images field from geological_log
+ALTER TABLE geological_log DROP COLUMN IF EXISTS images;
+
+
+ALTER TABLE borehole
+ADD CONSTRAINT unique_borehole_number_per_project
+UNIQUE (borehole_number, project_id);
+
+
+
+
+-- Contacts (already added in last step if not done before)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='contacts' AND column_name='created_by_user_id') THEN
+    ALTER TABLE contacts ADD COLUMN created_by_user_id UUID;
+    ALTER TABLE contacts ADD CONSTRAINT fk_contacts_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+  END IF;
+END$$;
+
+-- Borehole
+ALTER TABLE borehole ADD COLUMN created_by_user_id UUID;
+ALTER TABLE borehole ADD CONSTRAINT fk_borehole_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- Boreloge
+ALTER TABLE boreloge ADD COLUMN created_by_user_id UUID;
+ALTER TABLE boreloge ADD CONSTRAINT fk_boreloge_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- Structure
+ALTER TABLE structure ADD COLUMN created_by_user_id UUID;
+ALTER TABLE structure ADD CONSTRAINT fk_structure_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- Substructures
+ALTER TABLE sub_structures ADD COLUMN created_by_user_id UUID;
+ALTER TABLE sub_structures ADD CONSTRAINT fk_substructure_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+-- Assignments
+ALTER TABLE user_project_assignments ADD COLUMN created_by_user_id UUID;
+ALTER TABLE user_project_assignments ADD CONSTRAINT fk_assignments_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+
+
+ALTER TABLE projects ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE contacts ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE borehole ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE boreloge ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE structure ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE sub_structures ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE user_project_assignments ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Repeat for each table
+CREATE TRIGGER trg_update_projects
+BEFORE UPDATE ON projects
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_contacts
+BEFORE UPDATE ON contacts
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_borehole
+BEFORE UPDATE ON borehole
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_boreloge
+BEFORE UPDATE ON boreloge
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_structure
+BEFORE UPDATE ON structure
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_sub_structures
+BEFORE UPDATE ON sub_structures
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_update_user_assignments
+BEFORE UPDATE ON user_project_assignments
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
