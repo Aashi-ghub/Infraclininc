@@ -49,7 +49,10 @@ export const BorelogDetailsSchema = z.object({
   termination_depth: z.number(),
   coordinate: z.object({
     type: z.literal('Point'),
-    coordinates: z.tuple([z.number(), z.number()]) // [longitude, latitude]
+    coordinates: z.tuple([
+      z.number().min(-180).max(180), // longitude
+      z.number().min(-90).max(90)    // latitude
+    ])
   }).optional(),
   stratum_description: z.string().optional(),
   stratum_depth_from: z.number(),
@@ -57,7 +60,25 @@ export const BorelogDetailsSchema = z.object({
   stratum_thickness_m: z.number(),
   remarks: z.string().optional(),
   created_by_user_id: z.string().uuid()
-});
+}).refine(
+  (data) => data.stratum_depth_from < data.stratum_depth_to,
+  {
+    message: "stratum_depth_from must be less than stratum_depth_to",
+    path: ["stratum_depth_from"]
+  }
+).refine(
+  (data) => data.stratum_thickness_m === (data.stratum_depth_to - data.stratum_depth_from),
+  {
+    message: "stratum_thickness_m must equal the difference between stratum_depth_to and stratum_depth_from",
+    path: ["stratum_thickness_m"]
+  }
+).refine(
+  (data) => new Date(data.commencement_date) <= new Date(data.completion_date),
+  {
+    message: "completion_date must be on or after commencement_date",
+    path: ["completion_date"]
+  }
+);
 
 export type GeologicalLogInput = z.infer<typeof GeologicalLogSchema>;
 export type BorelogDetailsInput = z.infer<typeof BorelogDetailsSchema>;

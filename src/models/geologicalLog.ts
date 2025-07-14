@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db';
-import { GeologicalLog, Point } from '../types/common';
+import { GeologicalLog } from '../types/common';
 import { GeologicalLogInput } from '../utils/validateInput';
 
 export async function insertGeologicalLog(data: GeologicalLogInput): Promise<GeologicalLog> {
@@ -90,52 +90,58 @@ export async function getGeologicalLogById(borelog_id: string): Promise<Geologic
   const sql = `
     SELECT 
       *,
-      ST_AsGeoJSON(coordinate)::json as coordinate
+      ST_AsGeoJSON(coordinate)::json as coordinate_json
     FROM geological_log 
     WHERE borelog_id = $1;
   `;
 
-  const result = await query<Omit<GeologicalLog, 'coordinate'> & { coordinate: string | null }>(sql, [borelog_id]);
+  type DbResult = Omit<GeologicalLog, 'coordinate'> & {
+    coordinate_json: string | null;
+  };
+
+  const result = await query<DbResult>(sql, [borelog_id]);
   
   if (result.length === 0) {
     return null;
   }
 
-  // Parse the GeoJSON coordinate if it exists
-  const log = { ...result[0] };
-  if (log.coordinate) {
-    const geoJson = JSON.parse(log.coordinate);
+  const log = { ...result[0] } as GeologicalLog;
+  if (result[0].coordinate_json) {
+    const geoJson = JSON.parse(result[0].coordinate_json);
     log.coordinate = {
       type: 'Point' as const,
       coordinates: geoJson.coordinates
     };
   }
 
-  return log as GeologicalLog;
+  return log;
 }
 
 export async function getGeologicalLogsByProjectName(project_name: string): Promise<GeologicalLog[]> {
   const sql = `
     SELECT 
       *,
-      ST_AsGeoJSON(coordinate)::json as coordinate
+      ST_AsGeoJSON(coordinate)::json as coordinate_json
     FROM geological_log 
     WHERE project_name = $1
     ORDER BY created_at DESC;
   `;
 
-  const result = await query<Omit<GeologicalLog, 'coordinate'> & { coordinate: string | null }>(sql, [project_name]);
+  type DbResult = Omit<GeologicalLog, 'coordinate'> & {
+    coordinate_json: string | null;
+  };
 
-  // Parse the GeoJSON coordinates
-  return result.map(log => {
-    const newLog = { ...log };
-    if (newLog.coordinate) {
-      const geoJson = JSON.parse(newLog.coordinate);
-      newLog.coordinate = {
+  const result = await query<DbResult>(sql, [project_name]);
+
+  return result.map(row => {
+    const log = { ...row } as GeologicalLog;
+    if (row.coordinate_json) {
+      const geoJson = JSON.parse(row.coordinate_json);
+      log.coordinate = {
         type: 'Point' as const,
         coordinates: geoJson.coordinates
       };
     }
-    return newLog as GeologicalLog;
+    return log;
   });
 } 

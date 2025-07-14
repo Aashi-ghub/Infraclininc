@@ -2,6 +2,7 @@ import { APIGatewayProxyEvent } from 'aws-lambda';
 import { getGeologicalLogById } from '../models/geologicalLog';
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
+import { validate as validateUUID } from 'uuid';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
@@ -15,6 +16,16 @@ export const handler = async (event: APIGatewayProxyEvent) => {
         success: false,
         message: 'Missing borelog_id parameter',
         error: 'borelog_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    if (!validateUUID(borelog_id)) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Invalid borelog_id format',
+        error: 'borelog_id must be a valid UUID'
       });
       logResponse(response, Date.now() - startTime);
       return response;
