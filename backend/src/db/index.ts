@@ -1,10 +1,6 @@
 import { Pool, PoolConfig } from 'pg';
 import { logger } from '../utils/logger';
 
-// Add dotenv config to ensure environment variables are loaded
-import dotenv from 'dotenv';
-dotenv.config();
-
 let pool: Pool | null = null;
 
 export async function getPool(): Promise<Pool> {
@@ -13,14 +9,6 @@ export async function getPool(): Promise<Pool> {
   }
 
   try {
-    // Log connection attempt
-    logger.info('Attempting to connect to database', {
-      host: process.env.PGHOST,
-      port: process.env.PGPORT,
-      database: process.env.PGDATABASE,
-      user: process.env.PGUSER
-    });
-
     const config: PoolConfig = {
       host: process.env.PGHOST,
       port: parseInt(process.env.PGPORT || '5432'),
@@ -32,7 +20,7 @@ export async function getPool(): Promise<Pool> {
       },
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 10000, // Increase timeout to 10 seconds
+      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
     };
 
     pool = new Pool(config);
@@ -50,15 +38,7 @@ export async function getPool(): Promise<Pool> {
 
     return pool;
   } catch (error) {
-    logger.error('Failed to initialize database pool', { 
-      error,
-      errorMessage: (error as Error).message,
-      errorStack: (error as Error).stack,
-      host: process.env.PGHOST,
-      port: process.env.PGPORT,
-      database: process.env.PGDATABASE,
-      user: process.env.PGUSER
-    });
+    logger.error('Failed to initialize database pool', { error });
     throw error;
   }
 }
@@ -80,11 +60,7 @@ export async function query<T>(text: string, params: any[] = []): Promise<T[]> {
     logger.debug('Executed query', { text, duration, rows: res.rowCount });
     return res.rows;
   } catch (error) {
-    logger.error('Database query error', { 
-      error, 
-      errorMessage: (error as Error).message,
-      text 
-    });
+    logger.error('Database query error', { error, text });
     throw error;
   }
 }

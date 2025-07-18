@@ -34,13 +34,11 @@ export const GeologicalLogSchema = z.object({
   fracture_frequency_per_m: z.number().optional(),
   size_of_core_pieces_distribution: z.record(z.string(), z.any()).optional(),
   remarks: z.string().optional(),
-  created_by_user_id: z.string().uuid().nullable().optional()
+  created_by_user_id: z.string().uuid()
 });
 
 export const BorelogDetailsSchema = z.object({
   borelog_id: z.string().uuid(),
-  project_id: z.string().uuid().optional(), // Add optional project_id
-  substructure_id: z.string().uuid().optional(), // Add optional substructure_id
   number: z.string(),
   msl: z.string().optional(),
   boring_method: z.string(),
@@ -61,7 +59,7 @@ export const BorelogDetailsSchema = z.object({
   stratum_depth_to: z.number(),
   stratum_thickness_m: z.number(),
   remarks: z.string().optional(),
-  created_by_user_id: z.string().uuid().optional() // Made optional
+  created_by_user_id: z.string().uuid()
 }).refine(
   (data) => data.stratum_depth_from < data.stratum_depth_to,
   {
@@ -79,7 +77,8 @@ export const BorelogDetailsSchema = z.object({
   {
     message: "completion_date must be on or after commencement_date",
     path: ["completion_date"]
-  });
+  }
+);
 
 export type GeologicalLogInput = z.infer<typeof GeologicalLogSchema>;
 export type BorelogDetailsInput = z.infer<typeof BorelogDetailsSchema>;

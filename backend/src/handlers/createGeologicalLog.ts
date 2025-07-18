@@ -19,17 +19,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    logger.debug('Received request body', { body: event.body });
-    
     const data = JSON.parse(event.body);
     const validationResult = GeologicalLogSchema.safeParse(data);
 
     if (!validationResult.success) {
-      logger.warn('Validation failed', { 
-        errors: validationResult.error.errors,
-        formattedErrors: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
-      });
-      
       const response = createResponse(400, {
         success: false,
         message: 'Validation failed',
@@ -39,33 +32,19 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    logger.debug('Validation successful, inserting geological log', { data: validationResult.data });
-    
-    try {
-      const geologicalLog = await insertGeologicalLog(validationResult.data);
-      
-      logger.info('Geological log created successfully', { borelog_id: geologicalLog.borelog_id });
-      
-      const response = createResponse(201, {
-        success: true,
-        message: 'Geological log created successfully',
-        data: geologicalLog
-      });
+    const geologicalLog = await insertGeologicalLog(validationResult.data);
 
-      logResponse(response, Date.now() - startTime);
-      return response;
-    } catch (dbError) {
-      logger.error('Database error creating geological log', { error: dbError });
-      throw dbError; // Re-throw to be caught by outer catch
-    }
+    const response = createResponse(201, {
+      success: true,
+      message: 'Geological log created successfully',
+      data: geologicalLog
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
 
   } catch (error) {
-    const err = error as Error;
-    logger.error('Error creating geological log', { 
-      error, 
-      errorMessage: err.message || 'Unknown error',
-      errorStack: err.stack || 'No stack trace'
-    });
+    logger.error('Error creating geological log', { error });
     
     const response = createResponse(500, {
       success: false,
