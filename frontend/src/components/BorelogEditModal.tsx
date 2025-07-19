@@ -24,17 +24,26 @@ export type Substructure = {
 
 interface BorelogEditModalProps {
   borelog: Borelog;
-  substructures: Substructure[];
+  substructures?: Substructure[];
   onUpdate: (updatedBorelog: Borelog) => void;
 }
 
-export function BorelogEditModal({ borelog, substructures, onUpdate }: BorelogEditModalProps) {
+export function BorelogEditModal({ borelog, substructures = [], onUpdate }: BorelogEditModalProps) {
   const [open, setOpen] = useState(false);
-  const [selectedSubstructure, setSelectedSubstructure] = useState(borelog.substructure_id || 'none');
+  const [selectedSubstructure, setSelectedSubstructure] = useState(borelog?.substructure_id || 'none');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   const handleSave = async () => {
+    if (!borelog) {
+      toast({
+        title: 'Error',
+        description: 'Borelog data is not available',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
       // Update only the substructure_id field
@@ -65,6 +74,11 @@ export function BorelogEditModal({ borelog, substructures, onUpdate }: BorelogEd
       setIsSubmitting(false);
     }
   };
+
+  // Guard against missing borelog data
+  if (!borelog) {
+    return null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

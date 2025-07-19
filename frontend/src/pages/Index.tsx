@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Building2, FileText, List, Plus, FlaskConical, ClipboardCheck } from 'lucide-react';
+import { Building2, FileText, List, Plus, FlaskConical, ClipboardCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import heroImage from '@/assets/hero-geological.jpg';
@@ -68,7 +68,7 @@ const Index = () => {
           </Card>
 
           {/* Create Logs - Admin, Engineer, Logger roles */}
-          <RoleBasedComponent allowedRoles={['Admin', 'Engineer', 'Logger']}>
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
             <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -89,8 +89,8 @@ const Index = () => {
             </Card>
           </RoleBasedComponent>
 
-          {/* Borelog Management - Admin, Engineer roles */}
-          <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
+          {/* Borelog Management - Admin, Project Manager, Site Engineer roles */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
             <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -105,6 +105,28 @@ const Index = () => {
                 <Button asChild variant="outline" className="w-full">
                   <Link to="/borelog/manage">
                     Manage Borelogs
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </RoleBasedComponent>
+          
+          {/* Contacts Management - Admin, Project Manager roles */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager']}>
+            <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Contacts Management
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Manage project contacts and team members
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link to="/contacts">
+                    Manage Contacts
                   </Link>
                 </Button>
               </CardContent>

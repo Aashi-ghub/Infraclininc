@@ -355,7 +355,7 @@ export default function ManageBorelogs() {
                               substructures={substructures}
                               onUpdate={handleBorelogUpdate}
                             />
-                            {(user?.role === 'Admin' || user?.role === 'Engineer') && (
+                            {(user?.role === 'Admin' || user?.role === 'Project Manager' || user?.role === 'Site Engineer') && (
                               <DeleteBorelogButton 
                                 borelogId={borelog.borelog_id} 
                                 onSuccess={() => handleBorelogDelete(borelog.borelog_id)}

@@ -142,3 +142,23 @@ export const anomalyApi = {
   list: () => apiClient.get('/anomalies'),
   update: (id: string, data: any) => apiClient.patch(`/anomalies/${id}`, data),
 };
+
+export const contactApi = {
+  create: (data: any) => 
+    apiClient.post('/contacts', data),
+  
+  list: () => 
+    apiClient.get('/contacts'),
+  
+  getById: (id: string) => 
+    apiClient.get(`/contacts/${id}`),
+  
+  getByOrganisation: (organisationId: string) => 
+    apiClient.get(`/contacts/organisation/${organisationId}`),
+  
+  update: (id: string, data: any) => 
+    apiClient.put(`/contacts/${id}`, data),
+  
+  delete: (id: string) => 
+    apiClient.delete(`/contacts/${id}`),
+};

@@ -135,7 +135,7 @@ export function CreateBorelogForm() {
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle>Create New Geological Log</CardTitle>
+        <CardTitle>Enter Details</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>

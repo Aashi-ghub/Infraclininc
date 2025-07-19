@@ -40,7 +40,7 @@ export interface GeologicalLog {
 }
 
 // User and Authentication Types
-export type UserRole = 'Admin' | 'Engineer' | 'Logger' | 'Viewer';
+export type UserRole = 'Admin' | 'Project Manager' | 'Site Engineer' | 'Approval Engineer' | 'Lab Engineer' | 'Customer';
 
 export interface User {
   id: string;
@@ -184,4 +184,21 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// Contact Types
+export type ContactRole = 'Admin' | 'Project Manager' | 'Site Engineer' | 'Supervisor' | 'QA/QC';
+
+export interface Contact {
+  contact_id: string;
+  organisation_id: string;
+  name: string;
+  role: ContactRole;
+  date_created: string;
+}
+
+export interface CreateContactInput {
+  organisation_id: string;
+  name: string;
+  role: ContactRole;
 } 

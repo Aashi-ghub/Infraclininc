@@ -295,7 +295,81 @@ const serverlessConfiguration: AWS = {
           }
         }
       ]
-    }
+    },
+    
+    // Contacts endpoints
+    createContact: {
+      handler: 'src/handlers/contacts.createContactHandler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/contacts',
+            cors: true
+          }
+        }
+      ]
+    },
+    listContacts: {
+      handler: 'src/handlers/contacts.listContactsHandler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/contacts',
+            cors: true
+          }
+        }
+      ]
+    },
+    getContactById: {
+      handler: 'src/handlers/contacts.getContactByIdHandler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/contacts/{contact_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getContactsByOrganisation: {
+      handler: 'src/handlers/contacts.getContactsByOrganisationHandler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/contacts/organisation/{organisation_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateContact: {
+      handler: 'src/handlers/contacts.updateContactHandler',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/contacts/{contact_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteContact: {
+      handler: 'src/handlers/contacts.deleteContactHandler',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/contacts/{contact_id}',
+            cors: true
+          }
+        }
+      ]
+    },
   },
   package: {
     individually: true

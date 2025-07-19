@@ -35,31 +35,60 @@ export function PDFExportButton({ data, filename = 'export' }: PDFExportButtonPr
       doc.setFontSize(10);
       doc.setTextColor(50);
 
+      // Extract coordinates if available
+      const coordinates = data.coordinate 
+        ? `Lat: ${data.coordinate.coordinates[1].toFixed(6)}, Long: ${data.coordinate.coordinates[0].toFixed(6)}`
+        : 'Not recorded';
+
       // Project details table
-      (doc as any).autoTable({
+      doc.autoTable({
         startY: 50,
         head: [['Field', 'Value']],
         body: [
-          ['Project ID', data.project_id],
-          ['Project Name', data.project_name],
-          ['Borehole ID', data.borehole_id],
-          ['Location', data.location],
-          ['Coordinates', `Lat: ${data.latitude}, Long: ${data.longitude}`],
-          ['Elevation', `${data.elevation} m`],
-          ['Total Depth', `${data.total_depth} m`],
-          ['Water Level', data.water_level !== undefined ? `${data.water_level} m` : 'Not recorded'],
-          ['Start Date', new Date(data.start_date).toLocaleDateString()],
-          ['End Date', new Date(data.end_date).toLocaleDateString()],
-          ['Logged By', data.logged_by],
-          ['Drilling Method', data.drilling_method],
+          ['Project Name', data.project_name || 'N/A'],
+          ['Borehole ID', data.borelog_id || 'N/A'],
+          ['Borehole Number', data.borehole_number || 'N/A'],
+          ['Location', data.borehole_location || 'N/A'],
+          ['Coordinates', coordinates],
+          ['MSL', data.msl || 'Not recorded'],
+          ['Total Depth', `${data.termination_depth || 'N/A'} m`],
+          ['Water Level', data.standing_water_level !== undefined ? `${data.standing_water_level} m` : 'Not recorded'],
+          ['Start Date', data.commencement_date ? new Date(data.commencement_date).toLocaleDateString() : 'N/A'],
+          ['End Date', data.completion_date ? new Date(data.completion_date).toLocaleDateString() : 'N/A'],
+          ['Logged By', data.logged_by || 'N/A'],
+          ['Checked By', data.checked_by || 'N/A'],
+          ['Method of Boring', data.method_of_boring || 'N/A'],
+          ['Diameter of Hole', `${data.diameter_of_hole || 'N/A'} mm`],
         ],
         theme: 'striped',
         headStyles: { fillColor: [41, 128, 185], textColor: 255 },
       });
 
+      // Add technical information if available
+      if (data.lithology || data.rock_methodology || data.structural_condition) {
+        const finalY = doc.lastAutoTable.finalY || 150;
+        doc.setFontSize(14);
+        doc.setTextColor(0);
+        doc.text('Technical Information', 14, finalY + 15);
+        
+        doc.autoTable({
+          startY: finalY + 20,
+          head: [['Field', 'Value']],
+          body: [
+            ['Lithology', data.lithology || 'Not recorded'],
+            ['Rock Methodology', data.rock_methodology || 'Not recorded'],
+            ['Structural Condition', data.structural_condition || 'Not recorded'],
+            ['Weathering Classification', data.weathering_classification || 'Not recorded'],
+            ['Fracture Frequency', data.fracture_frequency_per_m !== undefined ? `${data.fracture_frequency_per_m} per m` : 'Not recorded'],
+          ],
+          theme: 'striped',
+          headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+        });
+      }
+
       // Add remarks if available
       if (data.remarks) {
-        const finalY = (doc as any).lastAutoTable.finalY || 150;
+        const finalY = doc.lastAutoTable.finalY || 150;
         doc.setFontSize(14);
         doc.setTextColor(0);
         doc.text('Remarks', 14, finalY + 15);

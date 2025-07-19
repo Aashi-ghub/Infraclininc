@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader } from '@/components/Loader';
 import { PDFExportButton } from '@/components/PDFExportButton';
-import { BorelogEditModal } from '@/components/BorelogEditModal';
+import { BorelogEditModal, Substructure } from '@/components/BorelogEditModal';
 import { ProtectedRoute } from '@/lib/authComponents';
 import { RoleBasedComponent } from '@/components/RoleBasedComponent';
 import { Edit } from 'lucide-react';
@@ -24,6 +24,14 @@ export default function BorelogDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailsLoading, setIsDetailsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+  // Mock substructures for demo - in a real app, fetch these from an API
+  const [substructures, setSubstructures] = useState<Substructure[]>([
+    { id: '1', name: 'Bridge Pier 1', type: 'Pier' },
+    { id: '2', name: 'Bridge Pier 2', type: 'Pier' },
+    { id: '3', name: 'Abutment North', type: 'Abutment' },
+    { id: '4', name: 'Abutment South', type: 'Abutment' },
+  ]);
 
   useEffect(() => {
     const fetchGeologicalLog = async () => {
@@ -69,6 +77,10 @@ export default function BorelogDetailPage() {
     fetchBorelogDetails();
   }, [id, toast]);
 
+  const handleUpdateBorelog = (updatedBorelog: GeologicalLog) => {
+    setGeologicalLog(updatedBorelog);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -112,16 +124,14 @@ export default function BorelogDetailPage() {
             <p className="text-muted-foreground">Project: {geologicalLog.project_name}</p>
           </div>
           <div className="flex justify-end space-x-2 mt-4">
-            <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
-              <Button 
-                variant="outline" 
-                onClick={() => setIsEditModalOpen(true)}
-              >
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Log
-              </Button>
+            <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+              <BorelogEditModal 
+                borelog={geologicalLog}
+                substructures={substructures}
+                onUpdate={handleUpdateBorelog}
+              />
             </RoleBasedComponent>
-            <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
+            <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
               <DeleteBorelogButton 
                 borelogId={geologicalLog.borelog_id} 
                 onSuccess={handleDeleteSuccess}

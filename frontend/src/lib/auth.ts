@@ -6,22 +6,22 @@ import { User, UserRole } from './types';
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string, role?: UserRole) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
-  setRole: (role: UserRole) => void;
   hasPermission: (requiredRoles: UserRole[]) => boolean;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  token: null,
+  login: async () => {},
+  logout: () => {},
+  isLoading: true,
+  hasPermission: () => false,
+});
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 
 export const initializeAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -30,29 +30,41 @@ export const initializeAuth = () => {
 
   // Development mock users for different roles
   const mockUsers = {
-    Admin: {
+    'admin@example.com': {
       id: 'user-admin',
       email: 'admin@example.com',
       name: 'Admin User',
       role: 'Admin' as UserRole
     },
-    Engineer: {
-      id: 'user-engineer',
-      email: 'engineer@example.com',
-      name: 'Engineer User',
-      role: 'Engineer' as UserRole
+    'pm@example.com': {
+      id: 'user-pm',
+      email: 'pm@example.com',
+      name: 'Project Manager',
+      role: 'Project Manager' as UserRole
     },
-    Logger: {
-      id: 'user-logger',
-      email: 'logger@example.com',
-      name: 'Logger User',
-      role: 'Logger' as UserRole
+    'site@example.com': {
+      id: 'user-site',
+      email: 'site@example.com',
+      name: 'Site Engineer',
+      role: 'Site Engineer' as UserRole
     },
-    Viewer: {
-      id: 'user-viewer',
-      email: 'viewer@example.com',
-      name: 'Viewer User',
-      role: 'Viewer' as UserRole
+    'approval@example.com': {
+      id: 'user-approval',
+      email: 'approval@example.com',
+      name: 'Approval Engineer',
+      role: 'Approval Engineer' as UserRole
+    },
+    'lab@example.com': {
+      id: 'user-lab',
+      email: 'lab@example.com',
+      name: 'Lab Engineer',
+      role: 'Lab Engineer' as UserRole
+    },
+    'customer@example.com': {
+      id: 'user-customer',
+      email: 'customer@example.com',
+      name: 'Customer User',
+      role: 'Customer' as UserRole
     }
   };
   
@@ -61,7 +73,7 @@ export const initializeAuth = () => {
   const initialize = () => {
     // First check localStorage
     const storedToken = localStorage.getItem('auth_token');
-    const storedRole = localStorage.getItem('user_role') as UserRole | null;
+    const storedEmail = localStorage.getItem('user_email');
     
     if (storedToken) {
       setToken(storedToken);
@@ -71,9 +83,8 @@ export const initializeAuth = () => {
       try {
         // For development, immediately set the user if we have a token
         // This prevents API calls that might fail in development
-        if (import.meta.env.DEV) {
-          const role = storedRole || 'Admin';
-          setUser(mockUsers[role as keyof typeof mockUsers]);
+        if (import.meta.env.DEV && storedEmail && mockUsers[storedEmail as keyof typeof mockUsers]) {
+          setUser(mockUsers[storedEmail as keyof typeof mockUsers]);
           setIsLoading(false);
           return;
         }
@@ -86,7 +97,7 @@ export const initializeAuth = () => {
           .catch(() => {
             // Token invalid, clear it
             localStorage.removeItem('auth_token');
-            localStorage.removeItem('user_role');
+            localStorage.removeItem('user_email');
             setToken(null);
             delete apiClient.defaults.headers.common['Authorization'];
           })
@@ -98,16 +109,7 @@ export const initializeAuth = () => {
         setIsLoading(false);
       }
     } else {
-      // For development, auto-login with mock credentials
-      if (import.meta.env.DEV) {
-        const role = storedRole || 'Admin';
-        setToken(mockToken);
-        setUser(mockUsers[role as keyof typeof mockUsers]);
-        localStorage.setItem('auth_token', mockToken);
-        localStorage.setItem('user_role', role);
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
-      }
-      
+      // No token found, user is not logged in
       setIsLoading(false);
     }
   };
@@ -117,15 +119,26 @@ export const initializeAuth = () => {
     initialize();
   }, []);
 
-  const login = async (email: string, password: string, role: UserRole = 'Admin') => {
+  const login = async (email: string, password: string) => {
     try {
-      // For development/demo purposes - mock login with role selection
+      // For development/demo purposes - mock login
       if (import.meta.env.DEV) {
-        const mockUser = mockUsers[role];
+        // Check if the email exists in our mock users
+        const mockUser = mockUsers[email as keyof typeof mockUsers];
+        
+        if (!mockUser) {
+          throw new Error('Invalid credentials');
+        }
+        
+        // In a real app, you would validate the password here
+        if (password !== 'password123') {
+          throw new Error('Invalid credentials');
+        }
+        
         setToken(mockToken);
         setUser(mockUser);
         localStorage.setItem('auth_token', mockToken);
-        localStorage.setItem('user_role', role);
+        localStorage.setItem('user_email', email);
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
         return;
       }
@@ -137,7 +150,7 @@ export const initializeAuth = () => {
       setToken(newToken);
       setUser(userData);
       localStorage.setItem('auth_token', newToken);
-      localStorage.setItem('user_role', userData.role);
+      localStorage.setItem('user_email', userData.email);
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     } catch (error) {
       console.error('Login failed:', error);
@@ -146,20 +159,19 @@ export const initializeAuth = () => {
   };
 
   const logout = () => {
+    // Clear auth state
     setToken(null);
     setUser(null);
+    
+    // Clear local storage
     localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_email');
+    
+    // Clear API headers
     delete apiClient.defaults.headers.common['Authorization'];
-  };
-
-  // Function to change user role (for development/testing)
-  const setRole = (role: UserRole) => {
-    if (import.meta.env.DEV) {
-      const mockUser = mockUsers[role];
-      setUser(mockUser);
-      localStorage.setItem('user_role', role);
-    }
+    
+    // The actual navigation will be handled by the component that calls this function
+    // This makes the auth service more decoupled from routing
   };
 
   // Function to check if current user has required permissions
@@ -174,7 +186,6 @@ export const initializeAuth = () => {
     login,
     logout,
     isLoading,
-    setRole,
     hasPermission,
     initialize
   };

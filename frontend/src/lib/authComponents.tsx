@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { AuthContext, useAuth, initializeAuth } from './auth';
 import { UserRole } from './types';
+import { Navigate } from 'react-router-dom';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const auth = initializeAuth();
@@ -12,7 +13,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       login: auth.login, 
       logout: auth.logout, 
       isLoading: auth.isLoading,
-      setRole: auth.setRole,
       hasPermission: auth.hasPermission
     }}>
       {children}
@@ -30,13 +30,13 @@ export const ProtectedRoute = ({
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return null; // You should create a loading component
+    // You could return a loading spinner here
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
   if (!user) {
-    // Use the correct path that exists in the router
-    window.location.href = '/';
-    return null;
+    // Redirect to login page if not authenticated
+    return <Navigate to="/auth/login" replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {

@@ -9,8 +9,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   logRequest(event, { awsRequestId: 'local' });
 
   try {
-    // Check if user has appropriate role (only Admin and Engineer can delete logs)
-    const authError = checkRole(['Admin', 'Engineer'])(event);
+    // Check if user has appropriate role (only Admin, Project Manager, and Site Engineer can delete logs)
+    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
     if (authError) {
       logResponse(authError, Date.now() - startTime);
       return authError;

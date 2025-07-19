@@ -9,7 +9,8 @@
     "start:dev": "set IS_OFFLINE=true && set AWS_ACCESS_KEY_ID=dummy-access-key && set AWS_SECRET_ACCESS_KEY=dummy-secret-key && set AWS_REGION=us-east-1 && serverless offline",
     "deploy": "serverless deploy",
     "test": "jest",
-    "test:unit": "jest tests/unit"
+    "test:unit": "jest tests/unit",
+    "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.370.0",

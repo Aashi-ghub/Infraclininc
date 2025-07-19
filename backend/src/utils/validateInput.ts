@@ -5,7 +5,7 @@ import { logger } from './logger';
 import jwt from 'jsonwebtoken';
 
 // Define user roles
-export type UserRole = 'Admin' | 'Engineer' | 'Logger' | 'Viewer';
+export type UserRole = 'Admin' | 'Project Manager' | 'Site Engineer' | 'Approval Engineer' | 'Lab Engineer' | 'Customer';
 
 // JWT payload interface
 export interface JwtPayload {
@@ -180,7 +180,7 @@ export const BorelogDetailsSchema = z.object({
 export type GeologicalLogInput = z.infer<typeof GeologicalLogSchema>;
 export type BorelogDetailsInput = z.infer<typeof BorelogDetailsSchema>;
 
-export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): { success: boolean; data?: T; error?: string } {
+export function validateInput(data: unknown, schema: z.ZodSchema<any>): { success: boolean; data?: any; error?: string } {
   try {
     const validatedData = schema.parse(data);
     return { success: true, data: validatedData };

@@ -42,7 +42,7 @@ export function AdminOnlyButton(props: React.ButtonHTMLAttributes<HTMLButtonElem
  */
 export function AdminEngineerButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
+    <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
       <button {...props} />
     </RoleBasedComponent>
   );
@@ -57,14 +57,16 @@ export function UserRoleBadge() {
   if (!user) return null;
   
   const roleColors = {
-    Admin: 'bg-red-100 text-red-800 border-red-200',
-    Engineer: 'bg-blue-100 text-blue-800 border-blue-200',
-    Logger: 'bg-green-100 text-green-800 border-green-200',
-    Viewer: 'bg-gray-100 text-gray-800 border-gray-200'
+    'Admin': 'bg-red-100 text-red-800 border-red-200',
+    'Project Manager': 'bg-blue-100 text-blue-800 border-blue-200',
+    'Site Engineer': 'bg-green-100 text-green-800 border-green-200',
+    'Approval Engineer': 'bg-purple-100 text-purple-800 border-purple-200',
+    'Lab Engineer': 'bg-amber-100 text-amber-800 border-amber-200',
+    'Customer': 'bg-gray-100 text-gray-800 border-gray-200'
   };
   
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${roleColors[user.role]}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${roleColors[user.role] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
       {user.role}
     </span>
   );
