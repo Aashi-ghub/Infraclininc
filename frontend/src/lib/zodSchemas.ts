@@ -33,22 +33,29 @@ export const geologicalLogSchema = z.object({
   weathering_classification: z.string().optional(),
   fracture_frequency_per_m: z.number().optional(),
   remarks: z.string().optional(),
-  created_by_user_id: z.string().uuid().optional(),
+  created_by_user_id: z.string().uuid().nullable().optional(),
 });
 
 // Borelog Details Schema
 export const borelogDetailSchema = z.object({
   borelog_id: z.string().min(1, 'Borelog ID is required'),
-  depth: z.number().min(0, 'Depth must be a positive number'),
-  sample_type: z.string().min(1, 'Sample type is required'),
-  sample_number: z.string().min(1, 'Sample number is required'),
-  description: z.string().min(1, 'Description is required'),
-  soil_type: z.string().optional(),
-  moisture_content: z.number().optional(),
-  plasticity: z.string().optional(),
-  consistency: z.string().optional(),
-  color: z.string().optional(),
-  additional_notes: z.string().optional(),
+  number: z.string().min(1, 'Number is required'),
+  msl: z.string().optional(),
+  boring_method: z.string().min(1, 'Boring method is required'),
+  hole_diameter: z.number().min(0, 'Hole diameter must be a positive number'),
+  commencement_date: z.string().min(1, 'Commencement date is required'),
+  completion_date: z.string().min(1, 'Completion date is required'),
+  standing_water_level: z.number().optional(),
+  termination_depth: z.number().min(0, 'Termination depth must be a positive number'),
+  coordinate: z.object({
+    type: z.literal('Point'),
+    coordinates: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])
+  }).optional(),
+  stratum_description: z.string().optional(),
+  stratum_depth_from: z.number().min(0, 'Depth from must be a positive number'),
+  stratum_depth_to: z.number().min(0, 'Depth to must be a positive number'),
+  stratum_thickness_m: z.number().min(0, 'Thickness must be a positive number'),
+  remarks: z.string().optional(),
 });
 
 // Project Schema

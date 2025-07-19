@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { borelogApi } from '@/lib/api';
 import { BorelogEditModal, type Borelog, type Substructure } from '@/components/BorelogEditModal';
 import { Loader } from '@/components/Loader';
+import { Link } from 'react-router-dom';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
@@ -26,9 +27,12 @@ export default function ManageBorelogs() {
 
   // Mock projects for demo (in real app, fetch from API)
   const projects = [
-    { id: 'proj-1', name: 'Highway Extension Project' },
-    { id: 'proj-2', name: 'Metro Rail Construction' },
-    { id: 'proj-3', name: 'Bridge Foundation Survey' },
+    { id: 'Highway Expansion Project', name: 'Highway Expansion Project' },
+    { id: 'Metro Rail Construction', name: 'Metro Rail Construction' },
+    { id: 'Bridge Foundation Survey', name: 'Bridge Foundation Survey' },
+    { id: 'Test Project', name: 'Test Project' },
+    { id: 'Delhi Metro Phase 4', name: 'Delhi Metro Phase 4' },
+    { id: 'Direct Test Project', name: 'Direct Test Project' }
   ];
 
   // Load borelogs for selected project
@@ -43,9 +47,21 @@ export default function ManageBorelogs() {
 
       try {
         setIsLoading(true);
+        console.log('Loading borelogs for project:', selectedProject);
         const response = await borelogApi.getByProject(selectedProject);
-        setBorelogs(response.data);
-        setFilteredBorelogs(response.data);
+        console.log('Borelogs response:', response);
+        
+        if (response.data && Array.isArray(response.data.data)) {
+          setBorelogs(response.data.data);
+          setFilteredBorelogs(response.data.data);
+        } else if (response.data && Array.isArray(response.data)) {
+          setBorelogs(response.data);
+          setFilteredBorelogs(response.data);
+        } else {
+          console.error('Unexpected response format:', response);
+          setBorelogs([]);
+          setFilteredBorelogs([]);
+        }
       } catch (error) {
         console.error('Failed to load borelogs:', error);
         toast({
@@ -97,9 +113,9 @@ export default function ManageBorelogs() {
 
     if (searchFilter.trim()) {
       filtered = filtered.filter(borelog =>
-        borelog.borehole_number.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        borelog.location.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        (borelog.chainage && borelog.chainage.toLowerCase().includes(searchFilter.toLowerCase()))
+        borelog.borehole_number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        borelog.borehole_location?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        (borelog.chainage_km !== undefined && borelog.chainage_km.toString().includes(searchFilter.toLowerCase()))
       );
     }
 
@@ -109,7 +125,7 @@ export default function ManageBorelogs() {
   const handleBorelogUpdate = (updatedBorelog: Borelog) => {
     setBorelogs(prevBorelogs =>
       prevBorelogs.map(borelog =>
-        borelog.id === updatedBorelog.id ? updatedBorelog : borelog
+        borelog.borelog_id === updatedBorelog.borelog_id ? updatedBorelog : borelog
       )
     );
   };
@@ -122,12 +138,14 @@ export default function ManageBorelogs() {
 
   const handleQuickAssign = async (borelogId: string, substructureId: string) => {
     try {
-      await borelogApi.update(borelogId, { substructure_id: substructureId });
+      await borelogApi.update(borelogId, { 
+        substructure_id: substructureId === 'none' ? null : substructureId 
+      });
       
       setBorelogs(prevBorelogs =>
         prevBorelogs.map(borelog =>
-          borelog.id === borelogId 
-            ? { ...borelog, substructure_id: substructureId }
+          borelog.borelog_id === borelogId 
+            ? { ...borelog, substructure_id: substructureId === 'none' ? undefined : substructureId }
             : borelog
         )
       );
@@ -157,9 +175,11 @@ export default function ManageBorelogs() {
               View and edit borelog details for your projects
             </p>
           </div>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300">
-            <Plus className="h-4 w-4 mr-2" />
-            Create New Borelog
+          <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
+            <Link to="/geological-log/create">
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Borelog
+            </Link>
           </Button>
         </div>
 
@@ -244,75 +264,86 @@ export default function ManageBorelogs() {
                     : 'No borelogs match your search criteria.'
                   }
                 </p>
-                <Button className="bg-gradient-to-r from-primary to-primary-glow">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Borelog
+                <Button className="bg-gradient-to-r from-primary to-primary-glow" asChild>
+                  <Link to="/geological-log/create">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create First Borelog
+                  </Link>
                 </Button>
               </div>
             ) : (
-              <div className="rounded-md border">
+              <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/50">
+                    <TableRow>
                       <TableHead>Borehole Number</TableHead>
-                      <TableHead>Chainage</TableHead>
                       <TableHead>Location</TableHead>
-                      <TableHead>Diameter (mm)</TableHead>
                       <TableHead>Depth (m)</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>MSL (m)</TableHead>
-                      <TableHead>Assignment</TableHead>
-                      <TableHead className="text-center">Actions</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Substructure</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredBorelogs.map((borelog) => (
-                      <TableRow key={borelog.id} className="hover:bg-muted/30 transition-colors">
+                      <TableRow key={borelog.borelog_id}>
+                        <TableCell className="font-medium">{borelog.borehole_number}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{borelog.borehole_number}</Badge>
-                        </TableCell>
-                        <TableCell>{borelog.chainage || 'N/A'}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            {borelog.location}
+                          <div className="flex items-start gap-1.5">
+                            <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                            <span>{borelog.borehole_location}</span>
                           </div>
+                          {borelog.chainage_km && (
+                            <span className="text-xs text-muted-foreground block mt-1">
+                              Chainage: {borelog.chainage_km} km
+                            </span>
+                          )}
                         </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {borelog.hole_diameter}mm
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {borelog.termination_depth}m
-                        </TableCell>
-                        <TableCell>{borelog.method_of_boring}</TableCell>
-                        <TableCell className="text-right font-mono">
-                          {borelog.msl}m
+                        <TableCell>{borelog.termination_depth} m</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            Completed
+                          </Badge>
                         </TableCell>
                         <TableCell>
-                          <Select
-                            value={borelog.substructure_id || ''}
-                            onValueChange={(value) => handleQuickAssign(borelog.id, value)}
-                            disabled={isLoadingSubstructures}
-                          >
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Assign..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="">Not assigned</SelectItem>
-                              {substructures.map((substructure) => (
-                                <SelectItem key={substructure.id} value={substructure.id}>
-                                  {substructure.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {isLoadingSubstructures ? (
+                            <Loader size="sm" />
+                          ) : (
+                            <Select
+                              value={borelog.substructure_id || 'none'}
+                              onValueChange={(value) => handleQuickAssign(borelog.borelog_id, value === 'none' ? '' : value)}
+                            >
+                              <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Not assigned" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Not assigned</SelectItem>
+                                {substructures.map((sub) => (
+                                  <SelectItem key={sub.id} value={sub.id}>
+                                    {sub.name} ({sub.type})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                         </TableCell>
-                        <TableCell className="text-center">
-                          <BorelogEditModal
-                            borelog={borelog}
-                            substructures={substructures}
-                            onUpdate={handleBorelogUpdate}
-                          />
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                            >
+                              <Link to={`/geological-log/${borelog.borelog_id}`}>
+                                View
+                              </Link>
+                            </Button>
+                            <BorelogEditModal
+                              borelog={borelog}
+                              substructures={substructures}
+                              onUpdate={handleBorelogUpdate}
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -322,50 +353,6 @@ export default function ManageBorelogs() {
             )}
           </CardContent>
         </Card>
-
-        {/* Stats Cards */}
-        {selectedProject !== 'all' && !isLoading && borelogs.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-            <Card className="shadow-form">
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">{borelogs.length}</div>
-                  <div className="text-sm text-muted-foreground">Total Borelogs</div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="shadow-form">
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {Math.round(borelogs.reduce((sum, log) => sum + log.termination_depth, 0))}m
-                  </div>
-                  <div className="text-sm text-muted-foreground">Total Depth</div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="shadow-form">
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {borelogs.filter(b => b.substructure_id).length}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Assigned</div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="shadow-form">
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {Math.round(borelogs.reduce((sum, log) => sum + log.hole_diameter, 0) / borelogs.length)}mm
-                  </div>
-                  <div className="text-sm text-muted-foreground">Avg Diameter</div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -32,19 +32,47 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const borelogDetails = await insertBorelogDetails(validationResult.data);
+    try {
+      const borelogDetails = await insertBorelogDetails(validationResult.data);
 
-    const response = createResponse(201, {
-      success: true,
-      message: 'Borelog details created successfully',
-      data: borelogDetails
-    });
+      const response = createResponse(201, {
+        success: true,
+        message: 'Borelog details created successfully',
+        data: borelogDetails
+      });
 
-    logResponse(response, Date.now() - startTime);
-    return response;
+      logResponse(response, Date.now() - startTime);
+      return response;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('does not exist')) {
+        // Handle missing geological log reference
+        const response = createResponse(404, {
+          success: false,
+          message: 'Referenced geological log not found',
+          error: error.message
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+      
+      // Re-throw for general error handling
+      throw error;
+    }
 
   } catch (error) {
     logger.error('Error creating borelog details', { error });
+    
+    // Check for database constraint errors
+    const pgError = error as any;
+    if (pgError.code === '23503') {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Foreign key constraint violation',
+        error: pgError.detail || 'A referenced record does not exist'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
     
     const response = createResponse(500, {
       success: false,

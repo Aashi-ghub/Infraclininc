@@ -27,6 +27,7 @@ export default function BorelogListPage() {
           response = await geologicalLogApi.list();
         }
         
+        console.log('Borelogs response:', response);
         setBorelogs(response.data.data);
       } catch (error) {
         console.error('Error fetching borelogs:', error);
@@ -72,10 +73,10 @@ export default function BorelogListPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Borehole ID</TableHead>
+                      <TableHead>Borehole Number</TableHead>
                       <TableHead>Project</TableHead>
                       <TableHead>Location</TableHead>
-                      <TableHead>Total Depth</TableHead>
+                      <TableHead>Depth</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
                       <TableHead>Actions</TableHead>
@@ -83,16 +84,16 @@ export default function BorelogListPage() {
                   </TableHeader>
                   <TableBody>
                     {borelogs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell>{log.borehole_id}</TableCell>
+                      <TableRow key={log.borelog_id}>
+                        <TableCell>{log.borehole_number}</TableCell>
                         <TableCell>{log.project_name}</TableCell>
-                        <TableCell>{log.location}</TableCell>
-                        <TableCell>{log.total_depth} m</TableCell>
-                        <TableCell>{new Date(log.start_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{new Date(log.end_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{log.borehole_location}</TableCell>
+                        <TableCell>{log.termination_depth} m</TableCell>
+                        <TableCell>{new Date(log.commencement_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{new Date(log.completion_date).toLocaleDateString()}</TableCell>
                         <TableCell>
                           <Button asChild variant="outline" size="sm">
-                            <Link to={`/geological-log/${log.id}`}>View</Link>
+                            <Link to={`/geological-log/${log.borelog_id}`}>View</Link>
                           </Button>
                         </TableCell>
                       </TableRow>

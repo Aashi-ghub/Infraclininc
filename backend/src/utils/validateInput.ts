@@ -1,6 +1,92 @@
 import { z } from 'zod';
 import { logger } from './logger';
 
+// Add JWT validation imports
+import jwt from 'jsonwebtoken';
+
+// Define user roles
+export type UserRole = 'Admin' | 'Engineer' | 'Logger' | 'Viewer';
+
+// JWT payload interface
+export interface JwtPayload {
+  userId: string;
+  email: string;
+  role: UserRole;
+  iat?: number;
+  exp?: number;
+}
+
+// JWT secret key from environment variables or use a default for development
+const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key';
+
+// Function to validate JWT token
+export const validateToken = (token: string): JwtPayload | null => {
+  try {
+    // Remove 'Bearer ' prefix if present
+    const tokenString = token.startsWith('Bearer ') ? token.slice(7) : token;
+    
+    // Verify and decode the token
+    const decoded = jwt.verify(tokenString, JWT_SECRET) as JwtPayload;
+    return decoded;
+  } catch (error) {
+    console.error('Token validation error:', error);
+    return null;
+  }
+};
+
+// Function to check if user has required role
+export const hasRole = (userRole: UserRole, requiredRoles: UserRole[]): boolean => {
+  return requiredRoles.includes(userRole);
+};
+
+// RBAC middleware function
+export const checkRole = (requiredRoles: UserRole[]) => {
+  return (event: any) => {
+    // Extract authorization header
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    
+    if (!authHeader) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          message: 'Unauthorized: No token provided',
+          status: 'error'
+        })
+      };
+    }
+    
+    // Validate token
+    const payload = validateToken(authHeader);
+    
+    if (!payload) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          message: 'Unauthorized: Invalid token',
+          status: 'error'
+        })
+      };
+    }
+    
+    // Check role
+    if (!hasRole(payload.role, requiredRoles)) {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          message: 'Forbidden: Insufficient permissions',
+          status: 'error'
+        })
+      };
+    }
+    
+    // Add user info to event for handlers to use
+    event.user = payload;
+    
+    // Allow the request to proceed
+    return null;
+  };
+};
+
 export const GeologicalLogSchema = z.object({
   project_name: z.string(),
   client_name: z.string(),
@@ -34,11 +120,13 @@ export const GeologicalLogSchema = z.object({
   fracture_frequency_per_m: z.number().optional(),
   size_of_core_pieces_distribution: z.record(z.string(), z.any()).optional(),
   remarks: z.string().optional(),
-  created_by_user_id: z.string().uuid()
+  created_by_user_id: z.string().uuid().nullable().optional()
 });
 
 export const BorelogDetailsSchema = z.object({
   borelog_id: z.string().uuid(),
+  project_id: z.string().uuid().optional(), // Add optional project_id
+  substructure_id: z.string().uuid().optional(), // Add optional substructure_id
   number: z.string(),
   msl: z.string().optional(),
   boring_method: z.string(),
@@ -59,7 +147,7 @@ export const BorelogDetailsSchema = z.object({
   stratum_depth_to: z.number(),
   stratum_thickness_m: z.number(),
   remarks: z.string().optional(),
-  created_by_user_id: z.string().uuid()
+  created_by_user_id: z.string().uuid().optional() // Made optional
 }).refine(
   (data) => data.stratum_depth_from < data.stratum_depth_to,
   {
@@ -77,8 +165,7 @@ export const BorelogDetailsSchema = z.object({
   {
     message: "completion_date must be on or after commencement_date",
     path: ["completion_date"]
-  }
-);
+  });
 
 export type GeologicalLogInput = z.infer<typeof GeologicalLogSchema>;
 export type BorelogDetailsInput = z.infer<typeof BorelogDetailsSchema>;

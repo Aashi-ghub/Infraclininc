@@ -14,6 +14,7 @@ import ManageBorelogs from "./pages/borelog/manage";
 import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
 import ReviewerDashboard from "./pages/reviewer/dashboard";
+import CreateBorelogDetailPage from "./pages/borelog-details/create";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,9 @@ const App = () => (
             <Route path="/borelog/:id" element={<BorelogDetailPage />} />
             <Route path="/geological-log/:id" element={<BorelogDetailPage />} />
             <Route path="/projects/:projectId/borelogs" element={<BorelogListPage />} />
+            
+            {/* Borelog Details Routes */}
+            <Route path="/borelog-details/create" element={<CreateBorelogDetailPage />} />
             
             {/* Other Routes */}
             <Route path="/borelog/manage" element={<ManageBorelogs />} />

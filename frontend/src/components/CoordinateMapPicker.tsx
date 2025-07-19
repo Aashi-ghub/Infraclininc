@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,99 +16,129 @@ L.Icon.Default.mergeOptions({
 });
 
 interface CoordinateMapPickerProps {
-  initialLat?: number;
-  initialLng?: number;
-  onCoordinateChange: (lat: number, lng: number) => void;
+  value?: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  onChange: (value: { type: 'Point'; coordinates: [number, number] }) => void;
   className?: string;
 }
 
 export function CoordinateMapPicker({ 
-  initialLat = 0, 
-  initialLng = 0, 
-  onCoordinateChange, 
+  value, 
+  onChange, 
   className 
 }: CoordinateMapPickerProps) {
-  const [position, setPosition] = useState<[number, number]>([initialLat || 0, initialLng || 0]);
-  const [inputLat, setInputLat] = useState(initialLat?.toString() || '');
-  const [inputLng, setInputLng] = useState(initialLng?.toString() || '');
+  // Extract longitude and latitude from the value (note the order: [longitude, latitude])
+  const initialLng = value?.coordinates?.[0] || 0;
+  const initialLat = value?.coordinates?.[1] || 0;
+  
+  const [position, setPosition] = useState<[number, number]>([initialLat, initialLng]);
+  const [inputLat, setInputLat] = useState(initialLat.toString());
+  const [inputLng, setInputLng] = useState(initialLng.toString());
   const [isLoading, setIsLoading] = useState(false);
-  const [mapElement, setMapElement] = useState<HTMLDivElement | null>(null);
-  const [leafletMap, setLeafletMap] = useState<L.Map | null>(null);
-  const [marker, setMarker] = useState<L.Marker | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   // Initialize the map when the element is available
   useEffect(() => {
-    if (!mapElement) return;
+    if (!mapContainerRef.current) return;
 
-    // Create map instance
-    const map = L.map(mapElement).setView(position, 13);
-    
-    // Add tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-    
-    // Add marker if coordinates are valid
-    let mapMarker: L.Marker | null = null;
-    if (position[0] !== 0 || position[1] !== 0) {
-      mapMarker = L.marker(position).addTo(map);
-      setMarker(mapMarker);
-    }
-    
-    // Add click handler
-    map.on('click', (e) => {
-      const { lat, lng } = e.latlng;
-      const roundedLat = Number(lat.toFixed(6));
-      const roundedLng = Number(lng.toFixed(6));
-      
-      setPosition([roundedLat, roundedLng]);
-      setInputLat(roundedLat.toString());
-      setInputLng(roundedLng.toString());
-      onCoordinateChange(roundedLat, roundedLng);
-      
-      // Update marker
-      if (mapMarker) {
-        mapMarker.setLatLng([roundedLat, roundedLng]);
-      } else {
-        mapMarker = L.marker([roundedLat, roundedLng]).addTo(map);
-        setMarker(mapMarker);
+    // Use a small timeout to ensure the DOM is fully rendered
+    const initMap = setTimeout(() => {
+      try {
+        // Create map instance
+        const map = L.map(mapContainerRef.current!).setView([initialLat, initialLng], 13);
+        
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Add marker if coordinates are valid
+        if (initialLat !== 0 || initialLng !== 0) {
+          markerRef.current = L.marker([initialLat, initialLng]).addTo(map);
+        }
+        
+        // Add click handler
+        map.on('click', (e) => {
+          const { lat, lng } = e.latlng;
+          const roundedLat = Number(lat.toFixed(6));
+          const roundedLng = Number(lng.toFixed(6));
+          
+          setPosition([roundedLat, roundedLng]);
+          setInputLat(roundedLat.toString());
+          setInputLng(roundedLng.toString());
+          
+          // Update with GeoJSON Point format (note the order: [longitude, latitude])
+          onChange({
+            type: 'Point',
+            coordinates: [roundedLng, roundedLat]
+          });
+          
+          // Update marker
+          if (markerRef.current) {
+            markerRef.current.setLatLng([roundedLat, roundedLng]);
+          } else {
+            markerRef.current = L.marker([roundedLat, roundedLng]).addTo(map);
+          }
+        });
+        
+        // Save map instance
+        mapRef.current = map;
+        setIsMapReady(true);
+        
+        // Invalidate size to handle any container resizing issues
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 100);
+      } catch (error) {
+        console.error("Error initializing map:", error);
       }
-    });
-    
-    // Save map instance
-    setLeafletMap(map);
+    }, 300);
     
     // Cleanup
     return () => {
-      map.remove();
-      setLeafletMap(null);
-      setMarker(null);
+      clearTimeout(initMap);
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      markerRef.current = null;
     };
-  }, [mapElement, onCoordinateChange]);
+  }, [initialLat, initialLng, onChange]);
   
   // Update map when position changes from outside
   useEffect(() => {
-    if (!leafletMap) return;
+    if (!mapRef.current || !isMapReady) return;
     
-    leafletMap.setView(position, leafletMap.getZoom());
-    
-    // Update marker
-    if (marker) {
-      marker.setLatLng(position);
-    } else if (position[0] !== 0 || position[1] !== 0) {
-      const newMarker = L.marker(position).addTo(leafletMap);
-      setMarker(newMarker);
+    try {
+      mapRef.current.setView(position, mapRef.current.getZoom());
+      
+      // Update marker
+      if (markerRef.current) {
+        markerRef.current.setLatLng(position);
+      } else if (position[0] !== 0 || position[1] !== 0) {
+        markerRef.current = L.marker(position).addTo(mapRef.current);
+      }
+    } catch (error) {
+      console.error("Error updating map position:", error);
     }
-  }, [position, leafletMap, marker]);
+  }, [position, isMapReady]);
 
-  // Update position from initial props
+  // Update position from value prop
   useEffect(() => {
-    if (initialLat && initialLng) {
-      setPosition([initialLat, initialLng]);
-      setInputLat(initialLat.toString());
-      setInputLng(initialLng.toString());
+    if (value?.coordinates) {
+      // Note: value.coordinates is [longitude, latitude] but we need [latitude, longitude] for the map
+      const lng = value.coordinates[0];
+      const lat = value.coordinates[1];
+      setPosition([lat, lng]);
+      setInputLat(lat.toString());
+      setInputLng(lng.toString());
     }
-  }, [initialLat, initialLng]);
+  }, [value]);
 
   const handleInputChange = () => {
     const newLat = parseFloat(inputLat);
@@ -118,7 +148,12 @@ export function CoordinateMapPicker({
         newLat >= -90 && newLat <= 90 && 
         newLng >= -180 && newLng <= 180) {
       setPosition([newLat, newLng]);
-      onCoordinateChange(newLat, newLng);
+      
+      // Update with GeoJSON Point format (note the order: [longitude, latitude])
+      onChange({
+        type: 'Point',
+        coordinates: [newLng, newLat]
+      });
     }
   };
 
@@ -138,11 +173,20 @@ export function CoordinateMapPicker({
         setPosition([roundedLat, roundedLng]);
         setInputLat(roundedLat.toString());
         setInputLng(roundedLng.toString());
-        onCoordinateChange(roundedLat, roundedLng);
         
-        // Update map view
-        if (leafletMap) {
-          leafletMap.setView([roundedLat, roundedLng], 15);
+        // Update with GeoJSON Point format (note the order: [longitude, latitude])
+        onChange({
+          type: 'Point',
+          coordinates: [roundedLng, roundedLat]
+        });
+        
+        // Update map view if map is ready
+        if (mapRef.current && isMapReady) {
+          try {
+            mapRef.current.setView([roundedLat, roundedLng], 15);
+          } catch (error) {
+            console.error("Error updating map view:", error);
+          }
         }
         
         setIsLoading(false);
@@ -212,7 +256,7 @@ export function CoordinateMapPicker({
         {/* Map */}
         <div 
           className="h-[300px] border rounded-lg overflow-hidden"
-          ref={setMapElement}
+          ref={mapContainerRef}
         />
 
         <p className="text-sm text-muted-foreground">

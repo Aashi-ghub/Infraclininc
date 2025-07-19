@@ -57,11 +57,17 @@ export const geologicalLogApi = {
   getById: (id: string) => 
     apiClient.get<ApiResponse<GeologicalLog>>(`/geological-log/${id}`),
   
-  getByProject: (projectId: string) => 
-    apiClient.get<ApiResponse<GeologicalLog[]>>(`/geological-log/project/${projectId}`),
+  getByProject: (projectName: string) => 
+    apiClient.get<ApiResponse<GeologicalLog[]>>(`/geological-log/project-name/${encodeURIComponent(projectName)}`),
+  
+  getByProjectWithSubstructures: (projectName: string) => 
+    apiClient.get<ApiResponse<GeologicalLog[]>>(`/geological-log/project-name/${encodeURIComponent(projectName)}/with-substructures`),
   
   update: (id: string, data: Partial<CreateGeologicalLogInput>) => 
     apiClient.put<ApiResponse<GeologicalLog>>(`/geological-log/${id}`, data),
+  
+  updateSubstructure: (id: string, substructure_id: string | null) => 
+    apiClient.put<ApiResponse<GeologicalLog>>(`/geological-log/${id}/substructure`, { substructure_id }),
   
   delete: (id: string) => 
     apiClient.delete<ApiResponse<null>>(`/geological-log/${id}`),
@@ -74,8 +80,14 @@ export const geologicalLogApi = {
 export const borelogApi = {
   create: (data: any) => geologicalLogApi.create(data),
   getById: (id: string) => geologicalLogApi.getById(id),
-  getByProject: (projectId: string) => geologicalLogApi.getByProject(projectId),
-  update: (id: string, data: any) => geologicalLogApi.update(id, data),
+  getByProject: (projectName: string) => geologicalLogApi.getByProject(projectName),
+  update: (id: string, data: any) => {
+    // Check if the update is only for substructure_id
+    if (Object.keys(data).length === 1 && 'substructure_id' in data) {
+      return geologicalLogApi.updateSubstructure(id, data.substructure_id);
+    }
+    return geologicalLogApi.update(id, data);
+  },
   delete: (id: string) => geologicalLogApi.delete(id),
   list: () => geologicalLogApi.list(),
 };

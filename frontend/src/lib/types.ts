@@ -36,6 +36,17 @@ export interface GeologicalLog {
   created_at: string;
   updated_at: string;
   created_by_user_id?: string | null;
+  substructure_id?: string; // Added for UI functionality
+}
+
+// User and Authentication Types
+export type UserRole = 'Admin' | 'Engineer' | 'Logger' | 'Viewer';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
 }
 
 export interface CreateGeologicalLogInput {
@@ -71,39 +82,53 @@ export interface CreateGeologicalLogInput {
   fracture_frequency_per_m?: number;
   size_of_core_pieces_distribution?: Record<string, any>;
   remarks?: string;
-  created_by_user_id: string; // Required field for backend
+  created_by_user_id: string | null; // Allow null value
 }
 
 // Borelog Details Types
 export interface BorelogDetail {
   id: string;
   borelog_id: string;
-  depth: number;
-  sample_type: string;
-  sample_number: string;
-  description: string;
-  soil_type?: string;
-  moisture_content?: number;
-  plasticity?: string;
-  consistency?: string;
-  color?: string;
-  additional_notes?: string;
+  number: string;
+  msl?: string;
+  boring_method: string;
+  hole_diameter: number;
+  commencement_date: string;
+  completion_date: string;
+  standing_water_level?: number;
+  termination_depth: number;
+  coordinate?: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  stratum_description?: string;
+  stratum_depth_from: number;
+  stratum_depth_to: number;
+  stratum_thickness_m: number;
+  remarks?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateBorelogDetailInput {
   borelog_id: string;
-  depth: number;
-  sample_type: string;
-  sample_number: string;
-  description: string;
-  soil_type?: string;
-  moisture_content?: number;
-  plasticity?: string;
-  consistency?: string;
-  color?: string;
-  additional_notes?: string;
+  number: string;
+  msl?: string;
+  boring_method: string;
+  hole_diameter: number;
+  commencement_date: string;
+  completion_date: string;
+  standing_water_level?: number;
+  termination_depth: number;
+  coordinate?: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  stratum_description?: string;
+  stratum_depth_from: number;
+  stratum_depth_to: number;
+  stratum_thickness_m: number;
+  remarks?: string;
 }
 
 // Project Types

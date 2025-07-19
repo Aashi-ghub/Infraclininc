@@ -12,9 +12,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CoordinateMapPicker } from '@/components/CoordinateMapPicker';
 
-// Mock UUID for testing
-const MOCK_USER_ID = "00000000-0000-0000-0000-000000000000";
-
 export function CreateBorelogForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -54,25 +51,58 @@ export function CreateBorelogForm() {
       weathering_classification: '',
       fracture_frequency_per_m: undefined,
       remarks: '',
-      created_by_user_id: MOCK_USER_ID // Add mock user ID for testing
+      created_by_user_id: null
     }
   });
 
   const onSubmit = async (data: GeologicalLogFormData) => {
     setIsSubmitting(true);
     try {
-      // Ensure created_by_user_id is included
+      // Create a clean copy of the data without any undefined values
+      const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+        return acc;
+      }, {} as Record<string, any>);
+      
+      // Ensure created_by_user_id is explicitly set to null
       const submissionData = {
-        ...data,
-        created_by_user_id: MOCK_USER_ID
+        ...cleanData,
+        created_by_user_id: null
       };
       
+      console.log('Submitting data:', submissionData);
       const response = await geologicalLogApi.create(submissionData);
+      
+      // Log the full response for debugging
+      console.log('API Response:', response);
+      console.log('Response data:', response.data);
+      console.log('Geological log data:', response.data.data);
+      
+      // Extract the borelog_id from the response
+      const borelogId = response.data.data.borelog_id;
+      console.log('Extracted borelog_id:', borelogId);
+      
       toast({
         title: 'Success',
         description: 'Geological log created successfully',
       });
-      navigate(`/geological-log/${response.data.data.id}`);
+      
+      // Navigate to the correct URL with the borelog_id
+      if (borelogId) {
+        console.log('Navigating to:', `/geological-log/${borelogId}`);
+        navigate(`/geological-log/${borelogId}`);
+      } else {
+        console.error('No borelog_id in response:', response);
+        toast({
+          title: 'Warning',
+          description: 'Log created but could not navigate to details page.',
+          variant: 'warning',
+        });
+        // Navigate to the list page instead
+        navigate('/geological-log/list');
+      }
     } catch (error) {
       console.error('Error creating geological log:', error);
       toast({
@@ -90,6 +120,16 @@ export function CreateBorelogForm() {
       type: 'Point',
       coordinates: [lng, lat] // Note: GeoJSON uses [longitude, latitude] order
     });
+  };
+
+  // Helper function to safely handle number inputs
+  const handleNumberInput = (value: string, onChange: (...event: any[]) => void) => {
+    if (value === '') {
+      onChange(undefined);
+    } else {
+      const parsedValue = parseFloat(value);
+      onChange(isNaN(parsedValue) ? undefined : parsedValue);
+    }
   };
 
   return (
@@ -193,9 +233,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Chainage in km" 
-                          {...field}
                           value={field.value === undefined ? '' : field.value}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} 
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />
@@ -272,8 +311,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Diameter in mm" 
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value))} 
+                          value={field.value === undefined || isNaN(field.value) ? '' : field.value}
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />
@@ -291,8 +330,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Depth in meters" 
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value))} 
+                          value={field.value === undefined || isNaN(field.value) ? '' : field.value}
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />
@@ -310,9 +349,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Water level in meters"
-                          {...field} 
                           value={field.value === undefined ? '' : field.value}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} 
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />
@@ -432,9 +470,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Collar Elevation" 
-                          {...field}
                           value={field.value === undefined ? '' : field.value}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} 
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />
@@ -504,9 +541,8 @@ export function CreateBorelogForm() {
                           type="number" 
                           step="any" 
                           placeholder="Fracture Frequency" 
-                          {...field}
                           value={field.value === undefined ? '' : field.value}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} 
+                          onChange={(e) => handleNumberInput(e.target.value, field.onChange)} 
                         />
                       </FormControl>
                       <FormMessage />

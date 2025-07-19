@@ -65,6 +65,66 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    updateGeologicalLog: {
+      handler: 'src/handlers/updateGeologicalLog.handler',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/geological-log/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateSubstructureAssignment: {
+      handler: 'src/handlers/updateSubstructureAssignment.handler',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/geological-log/{borelog_id}/substructure',
+            cors: true
+          }
+        }
+      ]
+    },
+    listGeologicalLogs: {
+      handler: 'src/handlers/listGeologicalLogs.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/geological-log',
+            cors: true
+          }
+        }
+      ]
+    },
+    getGeologicalLogsByProjectName: {
+      handler: 'src/handlers/getGeologicalLogsByProjectName.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/geological-log/project-name/{project_name}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getGeologicalLogsByProjectNameWithSubstructures: {
+      handler: 'src/handlers/getGeologicalLogsByProjectNameWithSubstructures.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/geological-log/project-name/{project_name}/with-substructures',
+            cors: true
+          }
+        }
+      ]
+    },
     createBorelogDetails: {
       handler: 'src/handlers/createBorelogDetails.handler',
       events: [
@@ -77,13 +137,25 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    getBorelogDetailsByBorelogId: {
+      handler: 'src/handlers/getBorelogDetailsByBorelogId.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-details/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
     getBorelogsByProject: {
       handler: 'src/handlers/getBorelogsByProject.handler',
       events: [
         {
           http: {
             method: 'get',
-            path: '/borelogs/project/{project_id}',
+            path: '/geological-log/project/{project_id}',
             cors: true
           }
         }

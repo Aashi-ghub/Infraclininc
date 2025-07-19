@@ -28,6 +28,7 @@ export default function BorelogDetailPage() {
       try {
         setIsLoading(true);
         const response = await geologicalLogApi.getById(id);
+        console.log('Geological log response:', response);
         setGeologicalLog(response.data.data);
       } catch (error) {
         console.error('Error fetching geological log:', error);
@@ -84,19 +85,24 @@ export default function BorelogDetailPage() {
     );
   }
 
+  // Extract coordinates from GeoJSON if available
+  const coordinates = geologicalLog.coordinate 
+    ? { lat: geologicalLog.coordinate.coordinates[1], lng: geologicalLog.coordinate.coordinates[0] }
+    : null;
+
   return (
     <ProtectedRoute>
       <div className="container mx-auto py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Borehole: {geologicalLog.borehole_id}</h1>
+            <h1 className="text-3xl font-bold">Borehole: {geologicalLog.borehole_number}</h1>
             <p className="text-muted-foreground">Project: {geologicalLog.project_name}</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
               Edit Details
             </Button>
-            <PDFExportButton data={geologicalLog} filename={`borelog-${geologicalLog.borehole_id}`} />
+            <PDFExportButton data={geologicalLog} filename={`borelog-${geologicalLog.borelog_id}`} />
             <Button asChild variant="secondary">
               <Link to="/geological-log/list">Back to List</Link>
             </Button>
@@ -111,54 +117,120 @@ export default function BorelogDetailPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Project ID</h3>
-                <p>{geologicalLog.project_id}</p>
-              </div>
-              <div>
                 <h3 className="font-medium text-sm text-muted-foreground mb-1">Project Name</h3>
                 <p>{geologicalLog.project_name}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Borehole ID</h3>
-                <p>{geologicalLog.borehole_id}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Client Name</h3>
+                <p>{geologicalLog.client_name}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Location</h3>
-                <p>{geologicalLog.location}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Job Code</h3>
+                <p>{geologicalLog.job_code}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Coordinates</h3>
-                <p>Lat: {geologicalLog.latitude}, Long: {geologicalLog.longitude}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Borehole Number</h3>
+                <p>{geologicalLog.borehole_number}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Elevation</h3>
-                <p>{geologicalLog.elevation} m</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Borehole Location</h3>
+                <p>{geologicalLog.borehole_location}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Total Depth</h3>
-                <p>{geologicalLog.total_depth} m</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Project Location</h3>
+                <p>{geologicalLog.project_location}</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Area</h3>
+                <p>{geologicalLog.area}</p>
+              </div>
+              {coordinates && (
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">Coordinates</h3>
+                  <p>Lat: {coordinates.lat.toFixed(6)}, Long: {coordinates.lng.toFixed(6)}</p>
+                </div>
+              )}
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">MSL</h3>
+                <p>{geologicalLog.msl || 'Not specified'}</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Termination Depth</h3>
+                <p>{geologicalLog.termination_depth} m</p>
               </div>
               <div>
                 <h3 className="font-medium text-sm text-muted-foreground mb-1">Water Level</h3>
-                <p>{geologicalLog.water_level !== undefined ? `${geologicalLog.water_level} m` : 'Not recorded'}</p>
+                <p>{geologicalLog.standing_water_level !== undefined ? `${geologicalLog.standing_water_level} m` : 'Not recorded'}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Drilling Method</h3>
-                <p>{geologicalLog.drilling_method}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Method of Boring</h3>
+                <p>{geologicalLog.method_of_boring}</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">Start Date</h3>
-                <p>{new Date(geologicalLog.start_date).toLocaleDateString()}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Diameter of Hole</h3>
+                <p>{geologicalLog.diameter_of_hole} mm</p>
               </div>
               <div>
-                <h3 className="font-medium text-sm text-muted-foreground mb-1">End Date</h3>
-                <p>{new Date(geologicalLog.end_date).toLocaleDateString()}</p>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Commencement Date</h3>
+                <p>{new Date(geologicalLog.commencement_date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Completion Date</h3>
+                <p>{new Date(geologicalLog.completion_date).toLocaleDateString()}</p>
               </div>
               <div>
                 <h3 className="font-medium text-sm text-muted-foreground mb-1">Logged By</h3>
                 <p>{geologicalLog.logged_by}</p>
               </div>
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">Checked By</h3>
+                <p>{geologicalLog.checked_by}</p>
+              </div>
             </div>
+
+            {/* Additional Technical Information */}
+            {(geologicalLog.lithology || 
+              geologicalLog.rock_methodology || 
+              geologicalLog.structural_condition || 
+              geologicalLog.weathering_classification || 
+              geologicalLog.fracture_frequency_per_m) && (
+              <>
+                <Separator className="my-6" />
+                <h3 className="font-medium mb-4">Additional Technical Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {geologicalLog.lithology && (
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Lithology</h3>
+                      <p>{geologicalLog.lithology}</p>
+                    </div>
+                  )}
+                  {geologicalLog.rock_methodology && (
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Rock Methodology</h3>
+                      <p>{geologicalLog.rock_methodology}</p>
+                    </div>
+                  )}
+                  {geologicalLog.structural_condition && (
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Structural Condition</h3>
+                      <p>{geologicalLog.structural_condition}</p>
+                    </div>
+                  )}
+                  {geologicalLog.weathering_classification && (
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Weathering Classification</h3>
+                      <p>{geologicalLog.weathering_classification}</p>
+                    </div>
+                  )}
+                  {geologicalLog.fracture_frequency_per_m !== undefined && (
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Fracture Frequency (per m)</h3>
+                      <p>{geologicalLog.fracture_frequency_per_m}</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             {geologicalLog.remarks && (
               <>
@@ -177,19 +249,23 @@ export default function BorelogDetailPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Borelog Details</CardTitle>
             <Button asChild>
-              <Link to={`/borelog/${id}/add-detail`}>Add Detail</Link>
+              <Link to={`/borelog-details/create?borelog_id=${geologicalLog.borelog_id}`}>
+                Add Detail
+              </Link>
             </Button>
           </CardHeader>
           <CardContent>
             {isDetailsLoading ? (
-              <div className="flex justify-center p-8">
+              <div className="flex justify-center py-8">
                 <Loader size="md" />
               </div>
             ) : borelogDetails.length === 0 ? (
-              <div className="text-center p-8">
-                <p className="text-muted-foreground">No borelog details found.</p>
-                <Button asChild className="mt-4">
-                  <Link to={`/borelog/${id}/add-detail`}>Add your first detail</Link>
+              <div className="text-center py-8">
+                <p className="text-muted-foreground mb-4">No borelog details found.</p>
+                <Button asChild>
+                  <Link to={`/borelog-details/create?borelog_id=${geologicalLog.borelog_id}`}>
+                    Add your first detail
+                  </Link>
                 </Button>
               </div>
             ) : (
@@ -197,31 +273,29 @@ export default function BorelogDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Depth (m)</TableHead>
-                      <TableHead>Sample Type</TableHead>
+                      <TableHead>Depth Range (m)</TableHead>
+                      <TableHead>Stratum Description</TableHead>
+                      <TableHead>Boring Method</TableHead>
                       <TableHead>Sample Number</TableHead>
-                      <TableHead>Soil Type</TableHead>
-                      <TableHead>Description</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {borelogDetails
-                      .sort((a, b) => a.depth - b.depth)
-                      .map((detail) => (
-                        <TableRow key={detail.id}>
-                          <TableCell>{detail.depth}</TableCell>
-                          <TableCell>{detail.sample_type}</TableCell>
-                          <TableCell>{detail.sample_number}</TableCell>
-                          <TableCell>{detail.soil_type || '-'}</TableCell>
-                          <TableCell>{detail.description}</TableCell>
-                          <TableCell>
-                            <Button asChild variant="outline" size="sm">
-                              <Link to={`/borelog-detail/${detail.id}`}>View</Link>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                    {borelogDetails.map((detail) => (
+                      <TableRow key={`${detail.borelog_id}-${detail.number}`}>
+                        <TableCell>{detail.stratum_depth_from} - {detail.stratum_depth_to}</TableCell>
+                        <TableCell>{detail.stratum_description}</TableCell>
+                        <TableCell>{detail.boring_method}</TableCell>
+                        <TableCell>{detail.number}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to={`/geological-log/${detail.borelog_id}`}>
+                              View
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>

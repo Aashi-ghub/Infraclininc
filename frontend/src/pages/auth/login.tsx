@@ -9,10 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { UserRole } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  role: z.enum(['Admin', 'Engineer', 'Logger', 'Viewer'] as const).optional()
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -22,22 +25,24 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const { toast } = useToast();
+  const isDev = import.meta.env.DEV;
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
-      password: '',
+      email: isDev ? 'admin@example.com' : '',
+      password: isDev ? 'password123' : '',
+      role: 'Admin'
     },
   });
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      await login(data.email, data.password);
+      await login(data.email, data.password, data.role as UserRole);
       toast({
         title: 'Login successful',
-        description: 'Welcome back!',
+        description: `Welcome back! You are logged in as ${data.role || 'Admin'}.`,
       });
       window.location.href = '/';
     } catch (error: any) {
@@ -121,6 +126,35 @@ export default function Login() {
                   </FormItem>
                 )}
               />
+
+              {isDev && (
+                <FormField
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role (Development Only)</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                          <SelectItem value="Engineer">Engineer</SelectItem>
+                          <SelectItem value="Logger">Logger</SelectItem>
+                          <SelectItem value="Viewer">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <Button 
                 type="submit" 

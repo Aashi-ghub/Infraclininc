@@ -1,20 +1,16 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient } from './api';
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'Admin' | 'Project Manager' | 'Reviewer' | 'Technician';
-}
+import { User, UserRole } from './types';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, role?: UserRole) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+  setRole: (role: UserRole) => void;
+  hasPermission: (requiredRoles: UserRole[]) => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,18 +28,40 @@ export const initializeAuth = () => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Development mock user
-  const mockUser = {
-    id: 'user-1',
-    email: 'admin@example.com',
-    name: 'Admin User',
-    role: 'Admin' as const
+  // Development mock users for different roles
+  const mockUsers = {
+    Admin: {
+      id: 'user-admin',
+      email: 'admin@example.com',
+      name: 'Admin User',
+      role: 'Admin' as UserRole
+    },
+    Engineer: {
+      id: 'user-engineer',
+      email: 'engineer@example.com',
+      name: 'Engineer User',
+      role: 'Engineer' as UserRole
+    },
+    Logger: {
+      id: 'user-logger',
+      email: 'logger@example.com',
+      name: 'Logger User',
+      role: 'Logger' as UserRole
+    },
+    Viewer: {
+      id: 'user-viewer',
+      email: 'viewer@example.com',
+      name: 'Viewer User',
+      role: 'Viewer' as UserRole
+    }
   };
+  
   const mockToken = 'mock-jwt-token-for-development';
 
   const initialize = () => {
     // First check localStorage
     const storedToken = localStorage.getItem('auth_token');
+    const storedRole = localStorage.getItem('user_role') as UserRole | null;
     
     if (storedToken) {
       setToken(storedToken);
@@ -54,7 +72,8 @@ export const initializeAuth = () => {
         // For development, immediately set the user if we have a token
         // This prevents API calls that might fail in development
         if (import.meta.env.DEV) {
-          setUser(mockUser);
+          const role = storedRole || 'Admin';
+          setUser(mockUsers[role as keyof typeof mockUsers]);
           setIsLoading(false);
           return;
         }
@@ -67,6 +86,7 @@ export const initializeAuth = () => {
           .catch(() => {
             // Token invalid, clear it
             localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_role');
             setToken(null);
             delete apiClient.defaults.headers.common['Authorization'];
           })
@@ -80,9 +100,11 @@ export const initializeAuth = () => {
     } else {
       // For development, auto-login with mock credentials
       if (import.meta.env.DEV) {
+        const role = storedRole || 'Admin';
         setToken(mockToken);
-        setUser(mockUser);
+        setUser(mockUsers[role as keyof typeof mockUsers]);
         localStorage.setItem('auth_token', mockToken);
+        localStorage.setItem('user_role', role);
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
       }
       
@@ -95,13 +117,15 @@ export const initializeAuth = () => {
     initialize();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, role: UserRole = 'Admin') => {
     try {
-      // For development/demo purposes - mock login
-      if (email === 'admin@example.com' && password === 'password123') {
+      // For development/demo purposes - mock login with role selection
+      if (import.meta.env.DEV) {
+        const mockUser = mockUsers[role];
         setToken(mockToken);
         setUser(mockUser);
         localStorage.setItem('auth_token', mockToken);
+        localStorage.setItem('user_role', role);
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
         return;
       }
@@ -113,6 +137,7 @@ export const initializeAuth = () => {
       setToken(newToken);
       setUser(userData);
       localStorage.setItem('auth_token', newToken);
+      localStorage.setItem('user_role', userData.role);
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     } catch (error) {
       console.error('Login failed:', error);
@@ -124,7 +149,23 @@ export const initializeAuth = () => {
     setToken(null);
     setUser(null);
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_role');
     delete apiClient.defaults.headers.common['Authorization'];
+  };
+
+  // Function to change user role (for development/testing)
+  const setRole = (role: UserRole) => {
+    if (import.meta.env.DEV) {
+      const mockUser = mockUsers[role];
+      setUser(mockUser);
+      localStorage.setItem('user_role', role);
+    }
+  };
+
+  // Function to check if current user has required permissions
+  const hasPermission = (requiredRoles: UserRole[]): boolean => {
+    if (!user) return false;
+    return requiredRoles.includes(user.role);
   };
 
   return {
@@ -133,6 +174,8 @@ export const initializeAuth = () => {
     login,
     logout,
     isLoading,
+    setRole,
+    hasPermission,
     initialize
   };
 };

@@ -1,28 +1,20 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useToast } from '@/hooks/use-toast';
-import { geologicalLogSchema, GeologicalLogFormData } from '@/lib/zodSchemas';
-import { geologicalLogApi } from '@/lib/api';
-import { GeologicalLog } from '@/lib/types';
+import { Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
+  DialogTrigger,
 } from '@/components/ui/dialog';
+import { GeologicalLog } from '@/lib/types';
+import { borelogApi } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Export types needed by other components
-export type Borelog = GeologicalLog & {
-  substructure_id?: string;
-  borehole_number?: string;
-  chainage?: string;
-};
+export type Borelog = GeologicalLog;
 
 export type Substructure = {
   id: string;
@@ -31,51 +23,42 @@ export type Substructure = {
 };
 
 interface BorelogEditModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  geologicalLog: GeologicalLog;
-  onUpdate: (updatedLog: GeologicalLog) => void;
+  borelog: Borelog;
+  substructures: Substructure[];
+  onUpdate: (updatedBorelog: Borelog) => void;
 }
 
-export function BorelogEditModal({ isOpen, onClose, geologicalLog, onUpdate }: BorelogEditModalProps) {
+export function BorelogEditModal({ borelog, substructures, onUpdate }: BorelogEditModalProps) {
+  const [open, setOpen] = useState(false);
+  const [selectedSubstructure, setSelectedSubstructure] = useState(borelog.substructure_id || 'none');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  const form = useForm<GeologicalLogFormData>({
-    resolver: zodResolver(geologicalLogSchema),
-    defaultValues: {
-      project_id: geologicalLog.project_id,
-      project_name: geologicalLog.project_name,
-      borehole_id: geologicalLog.borehole_id,
-      location: geologicalLog.location,
-      latitude: geologicalLog.latitude,
-      longitude: geologicalLog.longitude,
-      elevation: geologicalLog.elevation,
-      total_depth: geologicalLog.total_depth,
-      start_date: geologicalLog.start_date,
-      end_date: geologicalLog.end_date,
-      logged_by: geologicalLog.logged_by,
-      drilling_method: geologicalLog.drilling_method,
-      water_level: geologicalLog.water_level,
-      remarks: geologicalLog.remarks || '',
-    }
-  });
-
-  const onSubmit = async (data: GeologicalLogFormData) => {
+  const handleSave = async () => {
     setIsSubmitting(true);
     try {
-      const response = await geologicalLogApi.update(geologicalLog.id, data);
+      // Update only the substructure_id field
+      await borelogApi.update(borelog.borelog_id, { 
+        substructure_id: selectedSubstructure === 'none' ? null : selectedSubstructure
+      });
+
+      // Update local state with the new value
+      const updatedBorelog = {
+        ...borelog,
+        substructure_id: selectedSubstructure === 'none' ? undefined : selectedSubstructure
+      };
+
+      onUpdate(updatedBorelog);
       toast({
         title: 'Success',
-        description: 'Geological log updated successfully',
+        description: 'Borelog updated successfully',
       });
-      onUpdate(response.data.data);
-      onClose();
+      setOpen(false);
     } catch (error) {
-      console.error('Error updating geological log:', error);
+      console.error('Error updating borelog:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update geological log. Please try again.',
+        description: 'Failed to update borelog. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -84,221 +67,58 @@ export function BorelogEditModal({ isOpen, onClose, geologicalLog, onUpdate }: B
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Edit className="h-4 w-4 mr-1" />
+          Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Geological Log</DialogTitle>
+          <DialogTitle>Edit Borelog</DialogTitle>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="project_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Project ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Project ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="project_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Project Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Project Name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="borehole_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Borehole ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Borehole ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="location"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Location</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Location" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <div className="col-span-4">
+              <p className="text-sm font-medium mb-2">Borelog ID: {borelog.borelog_id}</p>
+              <p className="text-sm font-medium mb-2">Borehole Number: {borelog.borehole_number}</p>
+              <p className="text-sm font-medium mb-2">Location: {borelog.borehole_location}</p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField
-                control={form.control}
-                name="latitude"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Latitude</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="any" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="longitude"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Longitude</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="any" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="elevation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Elevation (m)</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="any" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          </div>
+          
+          <div className="grid grid-cols-4 items-center gap-4">
+            <div className="col-span-4">
+              <label className="text-sm font-medium mb-2 block">Assign to Substructure</label>
+              <Select 
+                value={selectedSubstructure} 
+                onValueChange={setSelectedSubstructure}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a substructure" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not assigned</SelectItem>
+                  {substructures.map((sub) => (
+                    <SelectItem key={sub.id} value={sub.id}>
+                      {sub.name} ({sub.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="total_depth"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Total Depth (m)</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="any" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="water_level"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Water Level (m, optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        step="any" 
-                        {...field} 
-                        value={field.value === undefined ? '' : field.value}
-                        onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} 
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="start_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Start Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="end_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>End Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="logged_by"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Logged By</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Logged By" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="drilling_method"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Drilling Method</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Drilling Method" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="remarks"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Remarks (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Additional remarks or notes" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Updating...' : 'Update Geological Log'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+          </div>
+        </div>
+        
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isSubmitting}>
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
