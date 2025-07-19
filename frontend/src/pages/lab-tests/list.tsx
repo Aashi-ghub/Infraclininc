@@ -36,7 +36,7 @@ export default function LabTestsList() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [selectedProject, setSelectedProject] = useState<string>('all');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,9 +49,25 @@ export default function LabTestsList() {
         apiClient.get('/lab-tests'),
         apiClient.get('/projects'),
       ]);
-      setLabTests(testsResponse.data);
-      setProjects(projectsResponse.data);
+      
+      // Extract data arrays from responses
+      if (testsResponse.data && testsResponse.data.data) {
+        setLabTests(testsResponse.data.data);
+      } else {
+        setLabTests([]);
+        console.error('Unexpected lab tests API response format:', testsResponse);
+      }
+      
+      if (projectsResponse.data && projectsResponse.data.data) {
+        setProjects(projectsResponse.data.data);
+      } else {
+        setProjects([]);
+        console.error('Unexpected projects API response format:', projectsResponse);
+      }
     } catch (error) {
+      console.error('Error fetching data:', error);
+      setLabTests([]);
+      setProjects([]);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -68,7 +84,7 @@ export default function LabTestsList() {
       test.tested_by.toLowerCase().includes(searchTerm.toLowerCase()) ||
       test.borelog.borehole_number.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesProject = !selectedProject || 
+    const matchesProject = selectedProject === 'all' || 
       test.borelog.project_name.toLowerCase().includes(selectedProject.toLowerCase());
     
     return matchesSearch && matchesProject;
@@ -142,7 +158,7 @@ export default function LabTestsList() {
                   <SelectValue placeholder="Filter by project" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Projects</SelectItem>
+                  <SelectItem value="all">All Projects</SelectItem>
                   {projects.map((project) => (
                     <SelectItem key={project.id} value={project.name}>
                       {project.name}
@@ -164,7 +180,7 @@ export default function LabTestsList() {
                 <TestTube className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No lab tests found</h3>
                 <p className="text-muted-foreground mb-4">
-                  {searchTerm || selectedProject 
+                  {searchTerm || selectedProject !== 'all' 
                     ? 'Try adjusting your filters' 
                     : 'Get started by creating your first lab test'
                   }

@@ -2,8 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "./lib/authComponents";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, ProtectedRoute } from "./lib/authComponents";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/auth/login";
@@ -15,6 +15,7 @@ import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
 import ReviewerDashboard from "./pages/reviewer/dashboard";
 import CreateBorelogDetailPage from "./pages/borelog-details/create";
+import { RoleSelector } from "./components/RoleSelector";
 
 const queryClient = new QueryClient();
 
@@ -26,30 +27,84 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public Routes */}
             <Route path="/auth/login" element={<Login />} />
             <Route path="/" element={<Index />} />
             
-            {/* Geological Log Routes */}
-            <Route path="/create-borelog" element={<CreateGeologicalLogPage />} />
-            <Route path="/geological-log/create" element={<CreateGeologicalLogPage />} />
-            <Route path="/borelogs" element={<BorelogListPage />} />
-            <Route path="/geological-log/list" element={<BorelogListPage />} />
-            <Route path="/borelog/:id" element={<BorelogDetailPage />} />
-            <Route path="/geological-log/:id" element={<BorelogDetailPage />} />
-            <Route path="/projects/:projectId/borelogs" element={<BorelogListPage />} />
+            {/* Protected Routes - View Access */}
+            <Route path="/borelogs" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger', 'Viewer']}>
+                <BorelogListPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/geological-log/list" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger', 'Viewer']}>
+                <BorelogListPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/borelog/:id" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger', 'Viewer']}>
+                <BorelogDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/geological-log/:id" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger', 'Viewer']}>
+                <BorelogDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/projects/:projectId/borelogs" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger', 'Viewer']}>
+                <BorelogListPage />
+              </ProtectedRoute>
+            } />
             
-            {/* Borelog Details Routes */}
-            <Route path="/borelog-details/create" element={<CreateBorelogDetailPage />} />
+            {/* Protected Routes - Create Access */}
+            <Route path="/create-borelog" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger']}>
+                <CreateGeologicalLogPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/geological-log/create" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer', 'Logger']}>
+                <CreateGeologicalLogPage />
+              </ProtectedRoute>
+            } />
             
-            {/* Other Routes */}
-            <Route path="/borelog/manage" element={<ManageBorelogs />} />
-            <Route path="/lab-tests/create" element={<CreateLabTest />} />
-            <Route path="/lab-tests/list" element={<LabTestsList />} />
-            <Route path="/reviewer/dashboard" element={<ReviewerDashboard />} />
+            {/* Protected Routes - Admin/Engineer Access */}
+            <Route path="/borelog-details/create" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer']}>
+                <CreateBorelogDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/borelog/manage" element={
+              <ProtectedRoute allowedRoles={['Admin', 'Engineer']}>
+                <ManageBorelogs />
+              </ProtectedRoute>
+            } />
             
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            {/* Protected Routes - Admin Only */}
+            <Route path="/lab-tests/create" element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <CreateLabTest />
+              </ProtectedRoute>
+            } />
+            <Route path="/lab-tests/list" element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <LabTestsList />
+              </ProtectedRoute>
+            } />
+            <Route path="/reviewer/dashboard" element={
+              <ProtectedRoute allowedRoles={['Admin']}>
+                <ReviewerDashboard />
+              </ProtectedRoute>
+            } />
+            
+            {/* Catch-all route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          
+          {/* Role selector for development/testing */}
+          <RoleSelector />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

@@ -25,6 +25,16 @@ export const validateToken = (token: string): JwtPayload | null => {
     // Remove 'Bearer ' prefix if present
     const tokenString = token.startsWith('Bearer ') ? token.slice(7) : token;
     
+    // Special handling for development mock token
+    if (process.env.IS_OFFLINE && tokenString === 'mock-jwt-token-for-development') {
+      // Return a mock payload for development
+      return {
+        userId: 'mock-user-id',
+        email: 'admin@example.com',
+        role: 'Admin'
+      };
+    }
+    
     // Verify and decode the token
     const decoded = jwt.verify(tokenString, JWT_SECRET) as JwtPayload;
     return decoded;

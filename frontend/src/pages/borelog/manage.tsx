@@ -12,9 +12,12 @@ import { borelogApi } from '@/lib/api';
 import { BorelogEditModal, type Borelog, type Substructure } from '@/components/BorelogEditModal';
 import { Loader } from '@/components/Loader';
 import { Link } from 'react-router-dom';
+import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
+import { useAuth } from '@/lib/auth';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [borelogs, setBorelogs] = useState<Borelog[]>([]);
   const [filteredBorelogs, setFilteredBorelogs] = useState<Borelog[]>([]);
   const [substructures, setSubstructures] = useState<Substructure[]>([]);
@@ -127,6 +130,15 @@ export default function ManageBorelogs() {
       prevBorelogs.map(borelog =>
         borelog.borelog_id === updatedBorelog.borelog_id ? updatedBorelog : borelog
       )
+    );
+  };
+
+  const handleBorelogDelete = (deletedBorelogId: string) => {
+    setBorelogs(prevBorelogs => 
+      prevBorelogs.filter(borelog => borelog.borelog_id !== deletedBorelogId)
+    );
+    setFilteredBorelogs(prevFilteredBorelogs => 
+      prevFilteredBorelogs.filter(borelog => borelog.borelog_id !== deletedBorelogId)
     );
   };
 
@@ -343,6 +355,12 @@ export default function ManageBorelogs() {
                               substructures={substructures}
                               onUpdate={handleBorelogUpdate}
                             />
+                            {(user?.role === 'Admin' || user?.role === 'Engineer') && (
+                              <DeleteBorelogButton 
+                                borelogId={borelog.borelog_id} 
+                                onSuccess={() => handleBorelogDelete(borelog.borelog_id)}
+                              />
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

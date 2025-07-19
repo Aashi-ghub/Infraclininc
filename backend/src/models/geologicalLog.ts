@@ -449,3 +449,41 @@ export async function updateGeologicalLog(borelog_id: string, data: Partial<Geol
     throw error;
   }
 } 
+
+export async function deleteGeologicalLog(borelog_id: string): Promise<boolean> {
+  try {
+    logger.info(`Deleting geological log with ID: ${borelog_id}`);
+    
+    // First check if the log exists
+    const existingLog = await getGeologicalLogById(borelog_id);
+    if (!existingLog) {
+      logger.warn(`No geological log found with ID: ${borelog_id}`);
+      return false;
+    }
+
+    // Delete the geological log
+    const sql = `
+      DELETE FROM geological_log
+      WHERE borelog_id = $1
+      RETURNING borelog_id;
+    `;
+
+    const result = await query<{ borelog_id: string }>(sql, [borelog_id]);
+    
+    if (result.length === 0) {
+      logger.warn(`Delete failed for geological log with ID: ${borelog_id}`);
+      return false;
+    }
+
+    logger.info(`Successfully deleted geological log with ID: ${borelog_id}`);
+    return true;
+  } catch (error) {
+    logger.error('Error in deleteGeologicalLog', { 
+      error, 
+      borelog_id,
+      errorMessage: (error as Error).message,
+      errorStack: (error as Error).stack
+    });
+    throw error;
+  }
+} 

@@ -23,6 +23,8 @@ const serverlessConfiguration: AWS = {
       PGDATABASE: process.env.PGDATABASE || '',
       PGUSER: process.env.PGUSER || '',
       PGPASSWORD: process.env.PGPASSWORD || '',
+      // JWT Secret for authentication
+      JWT_SECRET: process.env.JWT_SECRET || 'development-secret-key',
     },
     iam: {
       role: {
@@ -41,6 +43,33 @@ const serverlessConfiguration: AWS = {
     }
   },
   functions: {
+    // Auth endpoints
+    login: {
+      handler: 'src/handlers/auth.login',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/auth/login',
+            cors: true
+          }
+        }
+      ]
+    },
+    me: {
+      handler: 'src/handlers/auth.me',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/auth/me',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Geological Log endpoints
     createGeologicalLog: {
       handler: 'src/handlers/createGeologicalLog.handler',
       events: [
@@ -71,6 +100,18 @@ const serverlessConfiguration: AWS = {
         {
           http: {
             method: 'put',
+            path: '/geological-log/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteGeologicalLog: {
+      handler: 'src/handlers/deleteGeologicalLog.handler',
+      events: [
+        {
+          http: {
+            method: 'delete',
             path: '/geological-log/{borelog_id}',
             cors: true
           }
@@ -125,6 +166,8 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    
+    // Borelog Details endpoints
     createBorelogDetails: {
       handler: 'src/handlers/createBorelogDetails.handler',
       events: [
@@ -160,6 +203,98 @@ const serverlessConfiguration: AWS = {
           }
         }
       ]
+    },
+    
+    // Add alias for backward compatibility
+    listBorelogs: {
+      handler: 'src/handlers/listGeologicalLogs.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelogs',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Lab Tests endpoints
+    createLabTest: {
+      handler: 'src/handlers/labTests.createLabTest',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/lab-tests',
+            cors: true
+          }
+        }
+      ]
+    },
+    listLabTests: {
+      handler: 'src/handlers/labTests.listLabTests',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-tests',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Projects endpoints
+    listProjects: {
+      handler: 'src/handlers/projects.listProjects',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/projects',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Anomalies endpoints
+    listAnomalies: {
+      handler: 'src/handlers/anomalies.listAnomalies',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/anomalies',
+            cors: true
+          }
+        }
+      ]
+    },
+    createAnomaly: {
+      handler: 'src/handlers/anomalies.createAnomaly',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/anomalies',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateAnomaly: {
+      handler: 'src/handlers/anomalies.updateAnomaly',
+      events: [
+        {
+          http: {
+            method: 'patch',
+            path: '/anomalies/{anomaly_id}',
+            cors: true
+          }
+        }
+      ]
     }
   },
   package: {
@@ -174,7 +309,7 @@ const serverlessConfiguration: AWS = {
       define: { 'require.resolve': undefined },
       platform: 'node',
       concurrency: 10,
-      external: ['pg-native']
+      external: ['pg-native', 'jsonwebtoken']
     }
   }
 };

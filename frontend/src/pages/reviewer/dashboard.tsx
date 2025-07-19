@@ -27,7 +27,7 @@ interface Anomaly {
 export default function ReviewerDashboard() {
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -37,8 +37,17 @@ export default function ReviewerDashboard() {
   const fetchAnomalies = async () => {
     try {
       const response = await apiClient.get('/anomalies');
-      setAnomalies(response.data);
+      
+      // Extract data array from response
+      if (response.data && response.data.data) {
+        setAnomalies(response.data.data);
+      } else {
+        setAnomalies([]);
+        console.error('Unexpected anomalies API response format:', response);
+      }
     } catch (error) {
+      console.error('Error fetching anomalies:', error);
+      setAnomalies([]);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -51,17 +60,30 @@ export default function ReviewerDashboard() {
 
   const updateAnomalyStatus = async (anomalyId: string, status: 'Accepted' | 'Rejected') => {
     try {
-      await apiClient.patch(`/anomalies/${anomalyId}`, { status });
-      setAnomalies(prev => 
-        prev.map(anomaly => 
-          anomaly.id === anomalyId ? { ...anomaly, status } : anomaly
-        )
-      );
-      toast({
-        title: 'Success',
-        description: `Anomaly ${status.toLowerCase()} successfully`,
-      });
+      const response = await apiClient.patch(`/anomalies/${anomalyId}`, { status });
+      
+      // Extract updated anomaly data from response
+      if (response.data && response.data.data) {
+        setAnomalies(prev => 
+          prev.map(anomaly => 
+            anomaly.id === anomalyId ? { ...anomaly, status, ...response.data.data } : anomaly
+          )
+        );
+        
+        toast({
+          title: 'Success',
+          description: `Anomaly ${status.toLowerCase()} successfully`,
+        });
+      } else {
+        console.error('Unexpected API response format:', response);
+        toast({
+          variant: 'warning',
+          title: 'Warning',
+          description: 'Status updated but response format was unexpected',
+        });
+      }
     } catch (error) {
+      console.error('Error updating anomaly status:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -93,7 +115,7 @@ export default function ReviewerDashboard() {
   };
 
   const filteredAnomalies = anomalies.filter(anomaly => 
-    !statusFilter || anomaly.status === statusFilter
+    statusFilter === 'all' || anomaly.status === statusFilter
   );
 
   const stats = {
@@ -187,7 +209,7 @@ export default function ReviewerDashboard() {
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Accepted">Accepted</SelectItem>
                   <SelectItem value="Rejected">Rejected</SelectItem>
@@ -201,7 +223,7 @@ export default function ReviewerDashboard() {
                 <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No anomalies found</h3>
                 <p className="text-muted-foreground">
-                  {statusFilter 
+                  {statusFilter !== 'all' 
                     ? `No anomalies with status: ${statusFilter}` 
                     : 'No anomalies have been flagged yet'
                   }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { geologicalLogApi, borelogDetailsApi } from '@/lib/api';
 import { GeologicalLog, BorelogDetail } from '@/lib/types';
@@ -11,9 +11,13 @@ import { Loader } from '@/components/Loader';
 import { PDFExportButton } from '@/components/PDFExportButton';
 import { BorelogEditModal } from '@/components/BorelogEditModal';
 import { ProtectedRoute } from '@/lib/authComponents';
+import { RoleBasedComponent } from '@/components/RoleBasedComponent';
+import { Edit } from 'lucide-react';
+import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 
 export default function BorelogDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [geologicalLog, setGeologicalLog] = useState<GeologicalLog | null>(null);
   const [borelogDetails, setBorelogDetails] = useState<BorelogDetail[]>([]);
@@ -90,6 +94,15 @@ export default function BorelogDetailPage() {
     ? { lat: geologicalLog.coordinate.coordinates[1], lng: geologicalLog.coordinate.coordinates[0] }
     : null;
 
+  const handleDeleteSuccess = () => {
+    toast({
+      title: 'Success',
+      description: 'Borelog deleted successfully',
+    });
+    // Navigate to the list page
+    navigate('/geological-log/list', { replace: true });
+  };
+
   return (
     <ProtectedRoute>
       <div className="container mx-auto py-8">
@@ -98,10 +111,22 @@ export default function BorelogDetailPage() {
             <h1 className="text-3xl font-bold">Borehole: {geologicalLog.borehole_number}</h1>
             <p className="text-muted-foreground">Project: {geologicalLog.project_name}</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsEditModalOpen(true)}>
-              Edit Details
-            </Button>
+          <div className="flex justify-end space-x-2 mt-4">
+            <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsEditModalOpen(true)}
+              >
+                <Edit className="mr-2 h-4 w-4" />
+                Edit Log
+              </Button>
+            </RoleBasedComponent>
+            <RoleBasedComponent allowedRoles={['Admin', 'Engineer']}>
+              <DeleteBorelogButton 
+                borelogId={geologicalLog.borelog_id} 
+                onSuccess={handleDeleteSuccess}
+              />
+            </RoleBasedComponent>
             <PDFExportButton data={geologicalLog} filename={`borelog-${geologicalLog.borelog_id}`} />
             <Button asChild variant="secondary">
               <Link to="/geological-log/list">Back to List</Link>

@@ -34,7 +34,8 @@ export const ProtectedRoute = ({
   }
 
   if (!user) {
-    window.location.href = '/auth/login';
+    // Use the correct path that exists in the router
+    window.location.href = '/';
     return null;
   }
 

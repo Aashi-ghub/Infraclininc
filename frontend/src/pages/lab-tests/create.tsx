@@ -30,10 +30,12 @@ const labTestSchema = z.object({
 type LabTestFormData = z.infer<typeof labTestSchema>;
 
 interface Borelog {
-  id: string;
+  borelog_id: string;
   borehole_number: string;
   project_name: string;
-  chainage: string;
+  chainage_km?: number;
+  borehole_location: string;
+  client_name: string;
 }
 
 const testTypes = [
@@ -70,9 +72,18 @@ export default function CreateLabTest() {
 
   const fetchBorelogs = async () => {
     try {
-      const response = await apiClient.get('/borelogs');
-      setBorelogs(response.data);
+      const response = await apiClient.get('/geological-log');
+      // Extract the data array from the response
+      if (response.data && response.data.data) {
+        setBorelogs(response.data.data);
+      } else {
+        // Fallback to empty array if data structure is unexpected
+        setBorelogs([]);
+        console.error('Unexpected API response format:', response);
+      }
     } catch (error) {
+      console.error('Error fetching borelogs:', error);
+      setBorelogs([]); // Set to empty array on error
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -135,9 +146,9 @@ export default function CreateLabTest() {
                           </FormControl>
                           <SelectContent>
                             {borelogs.map((borelog) => (
-                              <SelectItem key={borelog.id} value={borelog.id}>
+                              <SelectItem key={borelog.borelog_id} value={borelog.borelog_id}>
                                 {borelog.borehole_number} - {borelog.project_name}
-                                {borelog.chainage && ` (CH: ${borelog.chainage})`}
+                                {borelog.chainage_km && ` (CH: ${borelog.chainage_km} km)`}
                               </SelectItem>
                             ))}
                           </SelectContent>

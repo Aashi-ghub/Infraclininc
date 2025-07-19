@@ -1,58 +1,70 @@
-import { APIGatewayProxyEvent } from 'aws-lambda';
-import { GeologicalLogSchema } from '../utils/validateInput';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { GeologicalLogSchema, validateInput, checkRole } from '../utils/validateInput';
 import { insertGeologicalLog } from '../models/geologicalLog';
-import { createResponse } from '../types/common';
-import { logger, logRequest, logResponse } from '../utils/logger';
+import { logger } from '../utils/logger';
 
-export const handler = async (event: APIGatewayProxyEvent) => {
-  const startTime = Date.now();
-  logRequest(event, { awsRequestId: 'local' });
-
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    if (!event.body) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Request body is missing',
-        error: 'Missing request body'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
+    // Check if user has appropriate role (Admin, Engineer, or Logger can create logs)
+    const authError = checkRole(['Admin', 'Engineer', 'Logger'])(event);
+    if (authError) {
+      return authError;
     }
 
-    const data = JSON.parse(event.body);
-    const validationResult = GeologicalLogSchema.safeParse(data);
-
-    if (!validationResult.success) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Validation failed',
-        error: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
-
-    const geologicalLog = await insertGeologicalLog(validationResult.data);
-
-    const response = createResponse(201, {
-      success: true,
-      message: 'Geological log created successfully',
-      data: geologicalLog
-    });
-
-    logResponse(response, Date.now() - startTime);
-    return response;
-
-  } catch (error) {
-    logger.error('Error creating geological log', { error });
+    // Parse and validate input
+    const body = JSON.parse(event.body || '{}');
+    const validationResult = validateInput(body, GeologicalLogSchema);
     
-    const response = createResponse(500, {
-      success: false,
-      message: 'Internal server error',
-      error: 'Failed to create geological log'
-    });
+    if (!validationResult.success) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({
+          message: 'Validation error',
+          errors: validationResult.errors,
+          status: 'error'
+        })
+      };
+    }
 
-    logResponse(response, Date.now() - startTime);
-    return response;
+    // Get user info from event (added by checkRole middleware)
+    const user = event.user;
+    
+    // Set created_by_user_id if not provided
+    if (!body.created_by_user_id && user) {
+      body.created_by_user_id = user.userId;
+    }
+    
+    // Create geological log
+    const result = await insertGeologicalLog(body);
+    
+    return {
+      statusCode: 201,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'Geological log created successfully',
+        data: result,
+        status: 'success'
+      })
+    };
+  } catch (error) {
+    logger.error('Error creating geological log:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'Internal server error',
+        status: 'error'
+      })
+    };
   }
 }; 
