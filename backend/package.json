@@ -10,9 +10,7 @@
     "deploy": "serverless deploy",
     "test": "jest",
     "test:unit": "jest tests/unit",
-    "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts",
-    "seed:users": "set IS_OFFLINE=true && ts-node scripts/seed-users.ts",
-    "add-passwords": "set IS_OFFLINE=true && ts-node scripts/add-passwords.ts"
+    "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.370.0",

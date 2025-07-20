@@ -68,216 +68,38 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
-
-    // Admin endpoints
-    createUser: {
-      handler: 'src/handlers/admin.createUser',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/admin/users',
-            cors: true
-          }
-        }
-      ]
-    },
-    updateUserRole: {
-      handler: 'src/handlers/admin.updateUserRole',
-      events: [
-        {
-          http: {
-            method: 'put',
-            path: '/admin/users/{userId}/role',
-            cors: true
-          }
-        }
-      ]
-    },
-    listUsers: {
-      handler: 'src/handlers/admin.listUsers',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/admin/users',
-            cors: true
-          }
-        }
-      ]
-    },
-
-    // Project Manager endpoints
-    assignTeamMembers: {
-      handler: 'src/handlers/projectManager.assignTeamMembers',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/project-manager/assign-team',
-            cors: true
-          }
-        }
-      ]
-    },
-    getProjectTeam: {
-      handler: 'src/handlers/projectManager.getProjectTeam',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/project-manager/projects/{projectId}/team',
-            cors: true
-          }
-        }
-      ]
-    },
-    getManagerProjects: {
-      handler: 'src/handlers/projectManager.getManagerProjects',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/project-manager/projects',
-            cors: true
-          }
-        }
-      ]
-    },
-    createProject: {
-      handler: 'src/handlers/projects.createProject',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/projects',
-            cors: true
-          }
-        }
-      ]
-    },
-
-    // Site Engineer endpoints
-    createEngineerGeologicalLog: {
-      handler: 'src/handlers/siteEngineer.createGeologicalLog',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/site-engineer/geological-logs',
-            cors: true
-          }
-        }
-      ]
-    },
-    getEngineerLogs: {
-      handler: 'src/handlers/siteEngineer.getEngineerLogs',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/site-engineer/geological-logs',
-            cors: true
-          }
-        }
-      ]
-    },
-    updateEngineerGeologicalLog: {
-      handler: 'src/handlers/siteEngineer.updateGeologicalLog',
-      events: [
-        {
-          http: {
-            method: 'put',
-            path: '/site-engineer/geological-logs/{borelog_id}',
-            cors: true
-          }
-        }
-      ]
-    },
-
-    // Lab Engineer endpoints
-    addLabTestResults: {
-      handler: 'src/handlers/labEngineer.addLabTestResults',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/lab-engineer/test-results',
-            cors: true
-          }
-        }
-      ]
-    },
-    getLabTestsByProject: {
-      handler: 'src/handlers/labEngineer.getLabTestsByProject',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/lab-engineer/test-results',
-            cors: true
-          }
-        }
-      ]
-    },
-    updateLabTestResults: {
-      handler: 'src/handlers/labEngineer.updateLabTestResults',
-      events: [
-        {
-          http: {
-            method: 'put',
-            path: '/lab-engineer/test-results/{borelog_id}',
-            cors: true
-          }
-        }
-      ]
-    },
-
-    // Approval Engineer endpoints
-    reviewGeologicalLog: {
-      handler: 'src/handlers/approvalEngineer.reviewGeologicalLog',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/approval-engineer/review',
-            cors: true
-          }
-        }
-      ]
-    },
-    getLogsForReview: {
-      handler: 'src/handlers/approvalEngineer.getLogsForReview',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/approval-engineer/logs-for-review',
-            cors: true
-          }
-        }
-      ]
-    },
-    getAnomaliesByProject: {
-      handler: 'src/handlers/approvalEngineer.getAnomaliesByProject',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/approval-engineer/anomalies',
-            cors: true
-          }
-        }
-      ]
-    },
     
-    // Geological Log endpoints (legacy - kept for backward compatibility)
+    // Geological Log endpoints
+    createGeologicalLog: {
+      handler: 'src/handlers/createGeologicalLog.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/geological-log',
+            cors: true
+          }
+        }
+      ]
+    },
     getGeologicalLogById: {
       handler: 'src/handlers/getGeologicalLogById.handler',
       events: [
         {
           http: {
             method: 'get',
+            path: '/geological-log/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateGeologicalLog: {
+      handler: 'src/handlers/updateGeologicalLog.handler',
+      events: [
+        {
+          http: {
+            method: 'put',
             path: '/geological-log/{borelog_id}',
             cors: true
           }
