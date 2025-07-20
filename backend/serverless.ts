@@ -258,6 +258,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    getProject: {
+      handler: 'src/handlers/projects.getProject',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/projects/{project_id}',
+            cors: true
+          }
+        }
+      ]
+    },
     
     // Anomalies endpoints
     listAnomalies: {

@@ -133,14 +133,10 @@ export interface CreateBorelogDetailInput {
 
 // Project Types
 export interface Project {
-  id: string;
+  project_id: string;
   name: string;
-  client: string;
-  location: string;
-  start_date: string;
-  end_date?: string;
-  status: 'active' | 'completed' | 'on-hold';
-  description?: string;
+  location?: string;
+  created_by?: string;
   created_at: string;
   updated_at: string;
 }

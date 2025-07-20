@@ -8,12 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { borelogApi } from '@/lib/api';
+import { borelogApi, projectApi } from '@/lib/api';
 import { BorelogEditModal, type Borelog, type Substructure } from '@/components/BorelogEditModal';
 import { Loader } from '@/components/Loader';
 import { Link } from 'react-router-dom';
 import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 import { useAuth } from '@/lib/auth';
+import { Project } from '@/lib/types';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
@@ -21,22 +22,46 @@ export default function ManageBorelogs() {
   const [borelogs, setBorelogs] = useState<Borelog[]>([]);
   const [filteredBorelogs, setFilteredBorelogs] = useState<Borelog[]>([]);
   const [substructures, setSubstructures] = useState<Substructure[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSubstructures, setIsLoadingSubstructures] = useState(true);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   
   // Filter states
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
-  // Mock projects for demo (in real app, fetch from API)
-  const projects = [
-    { id: 'Highway Expansion Project', name: 'Highway Expansion Project' },
-    { id: 'Metro Rail Construction', name: 'Metro Rail Construction' },
-    { id: 'Bridge Foundation Survey', name: 'Bridge Foundation Survey' },
-    { id: 'Test Project', name: 'Test Project' },
-    { id: 'Delhi Metro Phase 4', name: 'Delhi Metro Phase 4' },
-    { id: 'Direct Test Project', name: 'Direct Test Project' }
-  ];
+  // Load projects
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        setIsLoadingProjects(true);
+        const response = await projectApi.list();
+        console.log('Projects response:', response);
+        
+        if (response.data && Array.isArray(response.data.data)) {
+          setProjects(response.data.data);
+        } else if (response.data && Array.isArray(response.data)) {
+          setProjects(response.data);
+        } else {
+          console.error('Unexpected projects response format:', response);
+          setProjects([]);
+        }
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load projects. Please try again.',
+          variant: 'destructive',
+        });
+        setProjects([]);
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    };
+
+    loadProjects();
+  }, [toast]);
 
   // Load borelogs for selected project
   useEffect(() => {
@@ -208,14 +233,14 @@ export default function ManageBorelogs() {
               {/* Project Selection */}
               <div>
                 <label className="text-sm font-medium mb-2 block">Project</label>
-                <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <Select value={selectedProject} onValueChange={setSelectedProject} disabled={isLoadingProjects}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a project" />
+                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : "Select a project"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Select a project...</SelectItem>
                     {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
+                      <SelectItem key={project.project_id} value={project.name}>
                         {project.name}
                       </SelectItem>
                     ))}
