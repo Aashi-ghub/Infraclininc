@@ -24,7 +24,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         },
         body: JSON.stringify({
           message: 'Validation error',
-          errors: validationResult.errors,
+          error: validationResult.error,
           status: 'error'
         })
       };
@@ -39,7 +39,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
     
     // Create geological log
-    const result = await insertGeologicalLog(body);
+    const result = await insertGeologicalLog(validationResult.data);
     
     return {
       statusCode: 201,

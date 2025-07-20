@@ -27,10 +27,10 @@ export const validateToken = (token: string): JwtPayload | null => {
     
     // Special handling for development mock token
     if (process.env.IS_OFFLINE && tokenString === 'mock-jwt-token-for-development') {
-      // Return a mock payload for development
+      // Return a mock payload for development using a valid UUID
       return {
-        userId: 'mock-user-id',
-        email: 'admin@example.com',
+        userId: '550e8400-e29b-41d4-a716-446655442222', // Admin user UUID from database
+        email: 'admin@acme.com',
         role: 'Admin'
       };
     }
@@ -117,7 +117,7 @@ export const GeologicalLogSchema = z.object({
   coordinate: z.object({
     type: z.literal('Point'),
     coordinates: z.tuple([z.number(), z.number()]) // [longitude, latitude]
-  }).optional(),
+  }).optional().nullable(),
   type_of_core_barrel: z.string().optional(),
   bearing_of_hole: z.string().optional(),
   collar_elevation: z.number().optional(),

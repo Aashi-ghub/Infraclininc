@@ -36,10 +36,7 @@ export function CreateBorelogForm() {
       completion_date: '',
       standing_water_level: undefined,
       termination_depth: 0,
-      coordinate: {
-        type: 'Point',
-        coordinates: [0, 0]
-      },
+      coordinate: undefined,
       type_of_core_barrel: '',
       bearing_of_hole: '',
       collar_elevation: undefined,
@@ -61,6 +58,13 @@ export function CreateBorelogForm() {
       // Create a clean copy of the data without any undefined values
       const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
         if (value !== undefined) {
+          // Skip coordinate if it's the default [0, 0] or undefined
+          if (key === 'coordinate') {
+            if (value && value.coordinates && 
+                value.coordinates[0] === 0 && value.coordinates[1] === 0) {
+              return acc; // Skip this field
+            }
+          }
           acc[key] = value;
         }
         return acc;
@@ -73,6 +77,8 @@ export function CreateBorelogForm() {
       };
       
       console.log('Submitting data:', submissionData);
+      console.log('Auth token:', localStorage.getItem('auth_token'));
+      console.log('API base URL:', import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/dev");
       const response = await geologicalLogApi.create(submissionData);
       
       // Log the full response for debugging
@@ -115,11 +121,9 @@ export function CreateBorelogForm() {
     }
   };
 
-  const handleCoordinateChange = (lat: number, lng: number) => {
-    form.setValue('coordinate', {
-      type: 'Point',
-      coordinates: [lng, lat] // Note: GeoJSON uses [longitude, latitude] order
-    });
+  const handleCoordinateChange = (coordinate: { type: 'Point'; coordinates: [number, number] }) => {
+    console.log('Coordinate changed:', coordinate);
+    form.setValue('coordinate', coordinate);
   };
 
   // Helper function to safely handle number inputs
@@ -364,9 +368,8 @@ export function CreateBorelogForm() {
             <div className="space-y-2">
               <h3 className="text-lg font-medium">Coordinates</h3>
               <CoordinateMapPicker
-                initialLat={form.getValues('coordinate')?.coordinates[1] || 0}
-                initialLng={form.getValues('coordinate')?.coordinates[0] || 0}
-                onCoordinateChange={handleCoordinateChange}
+                value={form.watch('coordinate')}
+                onChange={handleCoordinateChange}
               />
             </div>
 

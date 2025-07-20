@@ -29,6 +29,14 @@ export function CoordinateMapPicker({
   onChange, 
   className 
 }: CoordinateMapPickerProps) {
+  console.log('CoordinateMapPicker props:', { value, onChange: typeof onChange, className });
+  
+  // Safety check for onChange
+  if (typeof onChange !== 'function') {
+    console.error('CoordinateMapPicker: onChange is not a function:', onChange);
+    return <div>Error: Invalid onChange prop</div>;
+  }
+  
   // Extract longitude and latitude from the value (note the order: [longitude, latitude])
   const initialLng = value?.coordinates?.[0] || 0;
   const initialLat = value?.coordinates?.[1] || 0;

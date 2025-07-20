@@ -12,6 +12,9 @@ jest.mock('../../src/models/geologicalLog', () => ({
   }))
 }));
 
+// Mock environment variable for offline mode
+process.env.IS_OFFLINE = 'true';
+
 const mockValidGeologicalLog = {
   project_name: 'Test Project',
   client_name: 'Test Client',
@@ -34,7 +37,9 @@ const mockValidGeologicalLog = {
 const createFakeEvent = (bodyObj: object): APIGatewayProxyEvent => {
   return {
     body: JSON.stringify(bodyObj),
-    headers: {},
+    headers: {
+      Authorization: 'mock-jwt-token-for-development'
+    },
     multiValueHeaders: {},
     httpMethod: 'POST',
     isBase64Encoded: false,
