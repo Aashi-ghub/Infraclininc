@@ -1,41 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import jwt from 'jsonwebtoken';
 import { UserRole } from '../utils/validateInput';
+import { query } from '../db';
 
 // JWT secret key from environment variables or use a default for development
 const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key';
-
-// Mock users for development/testing
-const mockUsers = {
-  'admin@example.com': {
-    id: 'user-admin',
-    email: 'admin@example.com',
-    password: 'password123',
-    name: 'Admin User',
-    role: 'Admin' as UserRole
-  },
-  'engineer@example.com': {
-    id: 'user-engineer',
-    email: 'engineer@example.com',
-    password: 'password123',
-    name: 'Engineer User',
-    role: 'Engineer' as UserRole
-  },
-  'logger@example.com': {
-    id: 'user-logger',
-    email: 'logger@example.com',
-    password: 'password123',
-    name: 'Logger User',
-    role: 'Logger' as UserRole
-  },
-  'viewer@example.com': {
-    id: 'user-viewer',
-    email: 'viewer@example.com',
-    password: 'password123',
-    name: 'Viewer User',
-    role: 'Viewer' as UserRole
-  }
-};
 
 // Generate JWT token
 const generateToken = (userId: string, email: string, role: UserRole): string => {
@@ -68,11 +37,16 @@ export const login = async (event: APIGatewayProxyEvent): Promise<APIGatewayProx
       };
     }
     
-    // Find user (in a real app, this would query a database)
-    const user = mockUsers[email];
+    // Find user in database
+    const users = await query(
+      'SELECT user_id, name, email, role, password_hash FROM users WHERE email = $1',
+      [email]
+    );
+    
+    const user = users[0];
     
     // Check if user exists and password matches
-    if (!user || user.password !== password) {
+    if (!user || user.password_hash !== password) {
       return {
         statusCode: 401,
         headers: {
@@ -87,10 +61,10 @@ export const login = async (event: APIGatewayProxyEvent): Promise<APIGatewayProx
     }
     
     // Generate token
-    const token = generateToken(user.id, user.email, user.role);
+    const token = generateToken(user.user_id, user.email, user.role);
     
     // Return user info and token (excluding password)
-    const { password: _, ...userWithoutPassword } = user;
+    const { password_hash: _, ...userWithoutPassword } = user;
     
     return {
       statusCode: 200,
@@ -149,8 +123,13 @@ export const me = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyRe
     // Verify and decode the token
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; email: string; role: UserRole };
     
-    // Find user (in a real app, this would query a database)
-    const user = mockUsers[decoded.email];
+    // Find user in database
+    const users = await query(
+      'SELECT user_id, name, email, role FROM users WHERE email = $1',
+      [decoded.email]
+    );
+    
+    const user = users[0];
     
     if (!user) {
       return {
@@ -167,7 +146,12 @@ export const me = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyRe
     }
     
     // Return user info (excluding password)
-    const { password: _, ...userWithoutPassword } = user;
+    const userWithoutPassword = {
+      id: user.user_id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    };
     
     return {
       statusCode: 200,
