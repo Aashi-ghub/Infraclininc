@@ -37,6 +37,10 @@ export interface GeologicalLog {
   updated_at: string;
   created_by_user_id?: string | null;
   substructure_id?: string; // Added for UI functionality
+  // Approval fields
+  is_approved?: boolean;
+  approved_by?: string | null;
+  approved_at?: string | null;
 }
 
 // User and Authentication Types
@@ -139,6 +143,68 @@ export interface Project {
   created_by?: string;
   created_at: string;
   updated_at: string;
+  created_by_user_id?: string;
+}
+
+export interface CreateProjectInput {
+  name: string;
+  location?: string;
+  created_by?: string;
+}
+
+// Structure Types
+export interface Structure {
+  structure_id: string;
+  project_id: string;
+  type: 'Tunnel' | 'Bridge' | 'LevelCrossing' | 'Viaduct' | 'Embankment' | 'Alignment' | 'Yeard' | 'StationBuilding' | 'Building' | 'SlopeStability';
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  created_by_user_id?: string;
+}
+
+export interface CreateStructureInput {
+  project_id: string;
+  type: 'Tunnel' | 'Bridge' | 'LevelCrossing' | 'Viaduct' | 'Embankment' | 'Alignment' | 'Yeard' | 'StationBuilding' | 'Building' | 'SlopeStability';
+  description?: string;
+}
+
+// Substructure Types
+export interface Substructure {
+  substructure_id: string;
+  structure_id: string;
+  project_id: string;
+  type: 'P1' | 'P2' | 'M' | 'E' | 'Abutment1' | 'Abutment2' | 'LC' | 'Right side' | 'Left side';
+  remark?: string;
+  created_at: string;
+  updated_at: string;
+  created_by_user_id?: string;
+}
+
+export interface CreateSubstructureInput {
+  structure_id: string;
+  project_id: string;
+  type: 'P1' | 'P2' | 'M' | 'E' | 'Abutment1' | 'Abutment2' | 'LC' | 'Right side' | 'Left side';
+  remark?: string;
+}
+
+// User Assignment Types
+export interface UserAssignment {
+  id: string;
+  assignment_type: 'AdminToManager' | 'ManagerToTeam';
+  project_id: string;
+  assigner: string[];
+  assignee: string[];
+  created_at: string;
+  updated_at: string;
+  created_by_user_id?: string;
+}
+
+export interface AssignUsersInput {
+  project_id: string;
+  assignment_type: 'AdminToManager' | 'ManagerToTeam';
+  assigner: string[];
+  assignee: string[];
 }
 
 // Lab Test Types

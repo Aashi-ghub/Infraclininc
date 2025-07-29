@@ -89,6 +89,26 @@ const Index = () => {
             </Card>
           </RoleBasedComponent>
 
+          {/* Project Management - Available to all roles */}
+          <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                Project Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                View and manage infrastructure projects
+              </p>
+              <Button asChild variant="outline" className="w-full">
+                <Link to="/projects">
+                  View Projects
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Borelog Management - Admin, Project Manager, Site Engineer roles */}
           <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
             <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">

@@ -18,6 +18,12 @@ import ReviewerDashboard from "./pages/reviewer/dashboard";
 import CreateBorelogDetailPage from "./pages/borelog-details/create";
 import ContactsListPage from "./pages/contacts/list";
 import CreateContactPage from "./pages/contacts/create";
+import ProjectListPage from "./pages/projects/list";
+import CreateProjectPage from "./pages/projects/create";
+import StructureListPage from "./pages/structures/list";
+import CreateStructurePage from "./pages/structures/create";
+import SubstructureListPage from "./pages/substructures/list";
+import CreateSubstructurePage from "./pages/substructures/create";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +92,38 @@ const App = () => (
                 </ProtectedRoute>
               } />
               
+              {/* Project Management Routes */}
+              <Route path="/projects" element={
+                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                  <ProjectListPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/projects/create" element={
+                <ProtectedRoute allowedRoles={['Admin']}>
+                  <CreateProjectPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/projects/:projectId/structures" element={
+                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                  <StructureListPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/projects/:projectId/structures/create" element={
+                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                  <CreateStructurePage />
+                </ProtectedRoute>
+              } />
+              <Route path="/projects/:projectId/structures/:structureId/substructures" element={
+                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                  <SubstructureListPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/projects/:projectId/structures/:structureId/substructures/create" element={
+                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                  <CreateSubstructurePage />
+                </ProtectedRoute>
+              } />
+
               {/* Contact Management Routes */}
               <Route path="/contacts" element={
                 <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>

@@ -50,6 +50,10 @@ export interface GeologicalLog {
   created_by_user_id: string;
   created_at: Date;
   updated_at: Date;
+  // Approval fields
+  is_approved?: boolean;
+  approved_by?: string | null;
+  approved_at?: Date | null;
 }
 
 export interface BorelogDetails {

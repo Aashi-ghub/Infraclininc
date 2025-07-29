@@ -10,10 +10,12 @@
     "deploy": "serverless deploy",
     "test": "jest",
     "test:unit": "jest tests/unit",
-    "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts"
+    "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts",
+    "seed:users": "set IS_OFFLINE=true && ts-node scripts/seed-users.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.370.0",
+    "csv-parse": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
     "pg": "^8.11.1",

@@ -14,55 +14,14 @@ export async function insertBorelogDetails(data: BorelogDetailsInput): Promise<B
     throw new Error(`Geological log with ID ${data.borelog_id} does not exist in geological_log table`);
   }
 
-  // Check if the borelog exists in the boreloge table
-  const checkBorelogeSql = `
-    SELECT EXISTS(SELECT 1 FROM boreloge WHERE borelog_id = $1) as exists
+  // Check if borelog_details already exists for this borelog_id
+  const checkDetailsSql = `
+    SELECT EXISTS(SELECT 1 FROM borelog_details WHERE borelog_id = $1) as exists
   `;
-  const checkBorelogeResult = await query<{ exists: boolean }>(checkBorelogeSql, [data.borelog_id]);
+  const checkDetailsResult = await query<{ exists: boolean }>(checkDetailsSql, [data.borelog_id]);
   
-  // If the borelog doesn't exist in boreloge table, we need to create it
-  if (!checkBorelogeResult[0]?.exists) {
-    logger.info(`Creating boreloge record for geological log ID ${data.borelog_id}`);
-    
-    // Get the project_id from the geological_log table
-    const getProjectSql = `
-      SELECT project_name FROM geological_log WHERE borelog_id = $1
-    `;
-    const projectResult = await query<{ project_name: string }>(getProjectSql, [data.borelog_id]);
-    
-    if (!projectResult.length) {
-      throw new Error(`Could not find project name for geological log ID ${data.borelog_id}`);
-    }
-    
-    // Find a substructure to associate with this borelog (using the first available one)
-    const getSubstructureSql = `
-      SELECT substructure_id, project_id FROM sub_structures LIMIT 1
-    `;
-    const substructureResult = await query<{ substructure_id: string, project_id: string }>(getSubstructureSql, []);
-    
-    if (!substructureResult.length) {
-      throw new Error(`No substructures found in the database. Please create a substructure first.`);
-    }
-    
-    // Insert into boreloge table
-    const insertBorelogeSql = `
-      INSERT INTO boreloge (
-        borelog_id,
-        substructure_id,
-        project_id,
-        type
-      )
-      VALUES ($1, $2, $3, 'Geological')
-      RETURNING *
-    `;
-    
-    await query(insertBorelogeSql, [
-      data.borelog_id,
-      substructureResult[0].substructure_id,
-      substructureResult[0].project_id
-    ]);
-    
-    logger.info(`Successfully created boreloge record for geological log ID ${data.borelog_id}`);
+  if (checkDetailsResult[0]?.exists) {
+    throw new Error(`Borelog details already exist for borelog ID ${data.borelog_id}. Use update instead.`);
   }
 
   const sql = `
@@ -109,138 +68,100 @@ export async function insertBorelogDetails(data: BorelogDetailsInput): Promise<B
   ];
 
   try {
-    type DbResult = Omit<BorelogDetails, 'coordinate'> & {
-      coordinate: string | null;
-    };
-
-    const result = await query<DbResult>(sql, values);
-    const borelogDetails = { ...result[0], coordinate: undefined } as BorelogDetails;
+    const result = await query<BorelogDetails>(sql, values);
     
-    if (data.coordinate) {
-      borelogDetails.coordinate = data.coordinate;
-    }
-
-    return borelogDetails;
+    // Transform the result to handle coordinate conversion
+    const dbResult = result[0] as any;
+    
+    return {
+      ...dbResult,
+      coordinate: dbResult.coordinate ? {
+        type: 'Point' as const,
+        coordinates: dbResult.coordinate.replace('POINT(', '').replace(')', '').split(' ').map(Number) as [number, number]
+      } : undefined
+    };
   } catch (error) {
-    logger.error('Error inserting borelog details', { error });
+    logger.error('Error inserting borelog details', { error, borelog_id: data.borelog_id });
     throw error;
   }
 }
 
 export async function getBorelogsByProjectId(project_id: string): Promise<BorelogDetails[]> {
   const sql = `
-    SELECT 
-      bd.*,
-      ST_AsGeoJSON(bd.coordinate)::json as coordinate_json
+    SELECT bd.*, gl.project_name
     FROM borelog_details bd
-    INNER JOIN boreloge b ON b.borelog_id = bd.borelog_id
-    WHERE b.project_id = $1
-    ORDER BY bd.created_at DESC;
+    INNER JOIN geological_log gl ON gl.borelog_id = bd.borelog_id
+    WHERE gl.project_name = $1
+    ORDER BY bd.created_at DESC
   `;
 
-  type DbResult = Omit<BorelogDetails, 'coordinate'> & {
-    coordinate_json: string | null;
-  };
-
-  const result = await query<DbResult>(sql, [project_id]);
-
-  return result.map(row => {
-    const log = { ...row, coordinate: undefined } as BorelogDetails;
-    if (row.coordinate_json) {
-      const geoJson = JSON.parse(row.coordinate_json);
-      log.coordinate = {
+  try {
+    const result = await query<BorelogDetails>(sql, [project_id]);
+    
+    // Transform the result to handle coordinate conversion
+    return result.map((row: any) => ({
+      ...row,
+      coordinate: row.coordinate ? {
         type: 'Point' as const,
-        coordinates: geoJson.coordinates
-      };
-    }
-    return log;
-  });
+        coordinates: row.coordinate.replace('POINT(', '').replace(')', '').split(' ').map(Number) as [number, number]
+      } : undefined
+    }));
+  } catch (error) {
+    logger.error('Error getting borelogs by project ID', { error, project_id });
+    throw error;
+  }
 }
 
 export async function getBorelogDetailsById(borelog_id: string): Promise<BorelogDetails | null> {
   const sql = `
-    SELECT 
-      *,
-      ST_AsGeoJSON(coordinate)::json as coordinate_json
-    FROM borelog_details 
-    WHERE borelog_id = $1;
+    SELECT * FROM borelog_details WHERE borelog_id = $1
   `;
 
-  type DbResult = Omit<BorelogDetails, 'coordinate'> & {
-    coordinate_json: string | null;
-  };
-
-  const result = await query<DbResult>(sql, [borelog_id]);
-  
-  if (result.length === 0) {
-    return null;
-  }
-
-  const log = { ...result[0], coordinate: undefined } as BorelogDetails;
-  if (result[0].coordinate_json) {
-    const geoJson = JSON.parse(result[0].coordinate_json);
-    log.coordinate = {
-      type: 'Point' as const,
-      coordinates: geoJson.coordinates
+  try {
+    const result = await query<BorelogDetails>(sql, [borelog_id]);
+    
+    if (result.length === 0) {
+      return null;
+    }
+    
+    // Transform the result to handle coordinate conversion
+    const dbResult = result[0] as any;
+    
+    return {
+      ...dbResult,
+      coordinate: dbResult.coordinate ? {
+        type: 'Point' as const,
+        coordinates: dbResult.coordinate.replace('POINT(', '').replace(')', '').split(' ').map(Number) as [number, number]
+      } : undefined
     };
+  } catch (error) {
+    logger.error('Error getting borelog details by ID', { error, borelog_id });
+    throw error;
   }
-
-  return log;
-} 
+}
 
 export async function getBorelogDetailsByBorelogId(borelog_id: string): Promise<BorelogDetails[]> {
+  const sql = `
+    SELECT bd.*, gl.project_name
+    FROM borelog_details bd
+    INNER JOIN geological_log gl ON gl.borelog_id = bd.borelog_id
+    WHERE bd.borelog_id = $1
+    ORDER BY bd.created_at DESC
+  `;
+
   try {
-    const sql = `
-      SELECT 
-        *,
-        ST_AsGeoJSON(coordinate)::json as coordinate_json
-      FROM borelog_details 
-      WHERE borelog_id = $1
-      ORDER BY created_at DESC;
-    `;
-
-    type DbResult = Omit<BorelogDetails, 'coordinate'> & {
-      coordinate_json: any; // Changed from string | null to any
-    };
-
-    const result = await query<DbResult>(sql, [borelog_id]);
-
-    return result.map(row => {
-      const log = { ...row, coordinate: undefined } as BorelogDetails;
-      
-      // Handle coordinate conversion safely
-      if (row.coordinate_json) {
-        try {
-          // Check if coordinate_json is already an object or needs parsing
-          const geoJson = typeof row.coordinate_json === 'string' 
-            ? JSON.parse(row.coordinate_json) 
-            : row.coordinate_json;
-            
-          log.coordinate = {
-            type: 'Point' as const,
-            coordinates: geoJson.coordinates
-          };
-        } catch (parseError) {
-          logger.error('Error parsing coordinate JSON', { 
-            error: parseError, 
-            coordinate_json: row.coordinate_json 
-          });
-          // Continue without the coordinate data
-        }
-      }
-      
-      // Remove coordinate_json from the result
-      delete (log as any).coordinate_json;
-      
-      return log;
-    });
+    const result = await query<BorelogDetails>(sql, [borelog_id]);
+    
+    // Transform the result to handle coordinate conversion
+    return result.map((row: any) => ({
+      ...row,
+      coordinate: row.coordinate ? {
+        type: 'Point' as const,
+        coordinates: row.coordinate.replace('POINT(', '').replace(')', '').split(' ').map(Number) as [number, number]
+      } : undefined
+    }));
   } catch (error) {
-    logger.error('Error in getBorelogDetailsByBorelogId', { 
-      error, 
-      borelog_id,
-      errorMessage: (error as Error).message,
-      errorStack: (error as Error).stack
-    });
+    logger.error('Error getting borelog details by borelog ID', { error, borelog_id });
     throw error;
   }
 } 

@@ -60,14 +60,31 @@ export const borelogDetailSchema = z.object({
 
 // Project Schema
 export const projectSchema = z.object({
-  id: z.string().optional(),
   name: z.string().min(1, 'Project name is required'),
-  client: z.string().min(1, 'Client name is required'),
-  location: z.string().min(1, 'Location is required'),
-  start_date: z.string().min(1, 'Start date is required'),
-  end_date: z.string().optional(),
-  status: z.enum(['active', 'completed', 'on-hold']),
+  location: z.string().optional(),
+});
+
+// Structure Schema
+export const structureSchema = z.object({
+  project_id: z.string().uuid('Invalid project ID'),
+  type: z.enum(['Tunnel', 'Bridge', 'LevelCrossing', 'Viaduct', 'Embankment', 'Alignment', 'Yeard', 'StationBuilding', 'Building', 'SlopeStability']),
   description: z.string().optional(),
+});
+
+// Substructure Schema
+export const substructureSchema = z.object({
+  structure_id: z.string().uuid('Invalid structure ID'),
+  project_id: z.string().uuid('Invalid project ID'),
+  type: z.enum(['P1', 'P2', 'M', 'E', 'Abutment1', 'Abutment2', 'LC', 'Right side', 'Left side']),
+  remark: z.string().optional(),
+});
+
+// User Assignment Schema
+export const userAssignmentSchema = z.object({
+  project_id: z.string().uuid('Invalid project ID'),
+  assignment_type: z.enum(['AdminToManager', 'ManagerToTeam']),
+  assigner: z.array(z.string().uuid('Invalid assigner ID')),
+  assignee: z.array(z.string().uuid('Invalid assignee ID')),
 });
 
 // Lab Test Schema
@@ -101,5 +118,8 @@ export type GeologicalLogFormData = z.infer<typeof geologicalLogSchema>;
 export type BorelogDetailFormData = z.infer<typeof borelogDetailSchema>;
 export type LabTestFormData = z.infer<typeof labTestSchema>;
 export type ProjectFormData = z.infer<typeof projectSchema>;
+export type StructureFormData = z.infer<typeof structureSchema>;
+export type SubstructureFormData = z.infer<typeof substructureSchema>;
+export type UserAssignmentFormData = z.infer<typeof userAssignmentSchema>;
 export type UserFormData = z.infer<typeof userSchema>;
 export type LoginFormData = z.infer<typeof loginSchema>;

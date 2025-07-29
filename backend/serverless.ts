@@ -270,6 +270,132 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    createProject: {
+      handler: 'src/handlers/createProject.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/projects',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Structures endpoints
+    listStructures: {
+      handler: 'src/handlers/listStructures.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/structures',
+            cors: true
+          }
+        }
+      ]
+    },
+    createStructure: {
+      handler: 'src/handlers/createStructure.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/structures',
+            cors: true
+          }
+        }
+      ]
+    },
+    getStructureById: {
+      handler: 'src/handlers/getStructureById.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/structures/{structure_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // Substructure endpoints
+    listSubstructures: {
+      handler: 'src/handlers/listSubstructures.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/substructures',
+            cors: true
+          }
+        }
+      ]
+    },
+    createSubstructure: {
+      handler: 'src/handlers/createSubstructure.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/substructures',
+            cors: true
+          }
+        }
+      ]
+    },
+    uploadBorelogCSV: {
+      handler: 'src/handlers/uploadBorelogCSV.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog/upload-csv',
+            cors: true
+          }
+        }
+      ]
+    },
+    approveBorelog: {
+      handler: 'src/handlers/approveBorelog.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog/{borelog_id}/approve',
+            cors: true
+          }
+        }
+      ]
+    },
+    getSubstructureById: {
+      handler: 'src/handlers/getSubstructureById.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/substructures/{substructure_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    
+    // User Assignment endpoints
+    assignUsers: {
+      handler: 'src/handlers/assignUsers.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/assignments',
+            cors: true
+          }
+        }
+      ]
+    },
     
     // Anomalies endpoints
     listAnomalies: {

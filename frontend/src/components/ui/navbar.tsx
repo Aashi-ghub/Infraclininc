@@ -45,6 +45,9 @@ export function Navbar() {
           
           {user && (
             <div className="hidden md:flex space-x-4">
+              <Link to="/projects" className="text-foreground/80 hover:text-foreground">
+                Projects
+              </Link>
               <Link to="/geological-log/list" className="text-foreground/80 hover:text-foreground">
                 Geological Logs
               </Link>
@@ -91,7 +94,7 @@ export function Navbar() {
                   <DropdownMenuItem asChild>
                     <Link to="/reviewer/dashboard" className="flex items-center">
                       <UserIcon className="mr-2 h-4 w-4" />
-                      Admin Dashboard
+                      Review Dashboard
                     </Link>
                   </DropdownMenuItem>
                 )}

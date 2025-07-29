@@ -5,8 +5,8 @@ import { logger } from '../utils/logger';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // Check if user has appropriate role (Admin, Engineer, or Logger can create logs)
-    const authError = checkRole(['Admin', 'Engineer', 'Logger'])(event);
+    // Check if user has appropriate role (Admin, Project Manager, Site Engineer can create logs)
+    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
     if (authError) {
       return authError;
     }

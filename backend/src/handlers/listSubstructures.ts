@@ -1,0 +1,71 @@
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { checkRole, validateToken } from '../utils/validateInput';
+import { logger, logRequest, logResponse } from '../utils/logger';
+import { getSubstructuresByProject, getSubstructuresByStructure } from '../models/structures';
+import { createResponse } from '../types/common';
+
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has appropriate role
+    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer'])(event);
+    if (authError) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const projectId = event.queryStringParameters?.project_id;
+    const structureId = event.queryStringParameters?.structure_id;
+
+    if (!projectId && !structureId) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing required parameter',
+        error: 'Either project_id or structure_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    let substructures;
+    if (structureId) {
+      substructures = await getSubstructuresByStructure(structureId);
+    } else {
+      substructures = await getSubstructuresByProject(projectId!);
+    }
+    
+    const response = createResponse(200, {
+      success: true,
+      message: 'Substructures retrieved successfully',
+      data: substructures
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  } catch (error) {
+    logger.error('Error listing substructures:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to retrieve substructures'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+}; 

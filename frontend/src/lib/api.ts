@@ -5,6 +5,13 @@ import {
   BorelogDetail,
   CreateBorelogDetailInput,
   Project,
+  CreateProjectInput,
+  Structure,
+  CreateStructureInput,
+  Substructure,
+  CreateSubstructureInput,
+  UserAssignment,
+  AssignUsersInput,
   LabTest,
   CreateLabTestInput,
   ApiResponse,
@@ -74,6 +81,13 @@ export const geologicalLogApi = {
   
   list: () => 
     apiClient.get<ApiResponse<GeologicalLog[]>>('/geological-log'),
+  
+  // New approval and CSV upload endpoints
+  approve: (id: string, data: { is_approved: boolean; remarks?: string }) => 
+    apiClient.post<ApiResponse<GeologicalLog>>(`/borelog/${id}/approve`, data),
+  
+  uploadCSV: (data: { csvData: string; projectId: string }) => 
+    apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data),
 };
 
 // Borelog API - alias to geologicalLogApi for backward compatibility
@@ -106,6 +120,39 @@ export const projectApi = {
   
   getById: (id: string) => 
     apiClient.get<ApiResponse<Project>>(`/projects/${id}`),
+  
+  create: (data: CreateProjectInput) => 
+    apiClient.post<ApiResponse<Project>>('/projects', data),
+};
+
+export const structureApi = {
+  list: (projectId: string) => 
+    apiClient.get<ApiResponse<Structure[]>>(`/structures?project_id=${projectId}`),
+  
+  create: (data: CreateStructureInput) => 
+    apiClient.post<ApiResponse<Structure>>('/structures', data),
+  
+  getById: (id: string) => 
+    apiClient.get<ApiResponse<Structure>>(`/structures/${id}`),
+};
+
+export const substructureApi = {
+  list: (projectId: string, structureId?: string) => {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (structureId) params.append('structure_id', structureId);
+    return apiClient.get<ApiResponse<Substructure[]>>(`/substructures?${params.toString()}`);
+  },
+  
+  create: (data: CreateSubstructureInput) => 
+    apiClient.post<ApiResponse<Substructure>>('/substructures', data),
+  
+  getById: (id: string) => 
+    apiClient.get<ApiResponse<Substructure>>(`/substructures/${id}`),
+};
+
+export const assignmentApi = {
+  assignUsers: (data: AssignUsersInput) => 
+    apiClient.post<ApiResponse<UserAssignment>>('/assignments', data),
 };
 
 export const userApi = {

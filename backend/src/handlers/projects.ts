@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { checkRole } from '../utils/validateInput';
+import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
-import { getAllProjects, getProjectById } from '../models/projects';
+import { getAllProjects, getProjectById, getProjectsByUser } from '../models/projects';
 import { createResponse } from '../types/common';
 
 export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -14,8 +14,22 @@ export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGate
     if (authError) {
       return authError;
     }
-    
-    const projects = await getAllProjects();
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Get projects based on user role and assignments
+    const projects = await getProjectsByUser(payload.userId, payload.role);
     
     const response = createResponse(200, {
       success: true,
