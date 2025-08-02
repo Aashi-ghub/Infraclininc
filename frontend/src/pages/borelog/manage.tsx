@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Building, MapPin, Drill } from 'lucide-react';
+import { Search, Plus, Building, MapPin, Drill, Upload } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 import { useAuth } from '@/lib/auth';
 import { Project } from '@/lib/types';
+import { BorelogCSVUpload } from '@/components/BorelogCSVUpload';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
@@ -30,6 +31,7 @@ export default function ManageBorelogs() {
   // Filter states
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedProject, setSelectedProject] = useState<string>('all');
+  const [showCSVUpload, setShowCSVUpload] = useState(false);
 
   // Load projects
   useEffect(() => {
@@ -75,9 +77,9 @@ export default function ManageBorelogs() {
 
       try {
         setIsLoading(true);
-        console.log('Loading borelogs for project:', selectedProject);
+        console.log('Loading geological logs for project:', selectedProject);
         const response = await borelogApi.getByProject(selectedProject);
-        console.log('Borelogs response:', response);
+        console.log('Geological logs response:', response);
         
         if (response.data && Array.isArray(response.data.data)) {
           setBorelogs(response.data.data);
@@ -91,10 +93,10 @@ export default function ManageBorelogs() {
           setFilteredBorelogs([]);
         }
       } catch (error) {
-        console.error('Failed to load borelogs:', error);
+        console.error('Failed to load geological logs:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load borelogs. Please try again.',
+          description: 'Failed to load geological logs. Please try again.',
           variant: 'destructive',
         });
         setBorelogs([]);
@@ -167,6 +169,32 @@ export default function ManageBorelogs() {
     );
   };
 
+  const handleCSVUploadSuccess = () => {
+    // Refresh the borelogs list after successful upload
+    if (selectedProject !== 'all') {
+      const loadBorelogs = async () => {
+        try {
+          setIsLoading(true);
+          const response = await borelogApi.getByProject(selectedProject);
+          
+          if (response.data && Array.isArray(response.data.data)) {
+            setBorelogs(response.data.data);
+            setFilteredBorelogs(response.data.data);
+          } else if (response.data && Array.isArray(response.data)) {
+            setBorelogs(response.data);
+            setFilteredBorelogs(response.data);
+          }
+        } catch (error) {
+          console.error('Failed to refresh borelogs:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadBorelogs();
+    }
+    setShowCSVUpload(false);
+  };
+
   const getSubstructureName = (substructureId?: string) => {
     if (!substructureId) return 'Not assigned';
     const substructure = substructures.find(s => s.id === substructureId);
@@ -207,17 +235,26 @@ export default function ManageBorelogs() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Manage Borelogs</h1>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Manage Geological Logs</h1>
             <p className="text-muted-foreground">
-              View and edit borelog details for your projects
+              View and edit geological log details for your projects
             </p>
           </div>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
-            <Link to="/geological-log/create">
-              <Plus className="h-4 w-4 mr-2" />
-              Create New Borelog
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300"
+              onClick={() => setShowCSVUpload(!showCSVUpload)}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload CSV
+            </Button>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
+              <Link to="/geological-log/create">
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Geological Log
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -266,11 +303,29 @@ export default function ManageBorelogs() {
           </CardContent>
         </Card>
 
+        {/* CSV Upload Section */}
+        {showCSVUpload && (
+          <Card className="shadow-form mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5 text-primary" />
+                Upload Geological Logs via CSV
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BorelogCSVUpload 
+                projects={projects} 
+                onUploadSuccess={handleCSVUploadSuccess}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Results Summary */}
         {selectedProject !== 'all' && !isLoading && (
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredBorelogs.length} of {borelogs.length} borelogs
+              Showing {filteredBorelogs.length} of {borelogs.length} geological logs
               {searchFilter.trim() && ' (filtered)'}
             </p>
           </div>
@@ -284,29 +339,38 @@ export default function ManageBorelogs() {
                 <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Select a Project</h3>
                 <p className="text-muted-foreground">
-                  Choose a project from the dropdown above to view and manage its borelogs.
+                  Choose a project from the dropdown above to view and manage its geological logs.
                 </p>
               </div>
             ) : isLoading ? (
               <div className="p-8 text-center">
-                <Loader size="lg" text="Loading borelogs..." />
+                <Loader size="lg" text="Loading geological logs..." />
               </div>
             ) : filteredBorelogs.length === 0 ? (
               <div className="p-8 text-center">
                 <Drill className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No borelogs found</h3>
+                <h3 className="text-lg font-semibold mb-2">No geological logs found</h3>
                 <p className="text-muted-foreground mb-4">
                   {borelogs.length === 0 
-                    ? 'This project has no borelogs yet.'
-                    : 'No borelogs match your search criteria.'
+                    ? 'This project has no geological logs yet.'
+                    : 'No geological logs match your search criteria.'
                   }
                 </p>
-                <Button className="bg-gradient-to-r from-primary to-primary-glow" asChild>
-                  <Link to="/geological-log/create">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create First Borelog
-                  </Link>
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    className="bg-gradient-to-r from-primary to-primary-glow"
+                    onClick={() => setShowCSVUpload(true)}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload CSV
+                  </Button>
+                  <Button className="bg-gradient-to-r from-primary to-primary-glow" asChild>
+                    <Link to="/geological-log/create">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create First Geological Log
+                    </Link>
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">

@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { checkRole, validateToken } from '../utils/validateInput';
+import { checkRole, validateToken, GeologicalLogSchema, validateInput } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { parse } from 'csv-parse/sync';
-import { createGeologicalLog } from '../models/geologicalLog';
+import { insertGeologicalLog } from '../models/geologicalLog';
 import { z } from 'zod';
 
 // CSV Schema for borelog upload
@@ -85,11 +85,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Parse CSV data
     let parsedData;
     try {
+      logger.info('Parsing CSV data...');
       parsedData = parse(csvData, {
         columns: true,
         skip_empty_lines: true,
         trim: true
       });
+      logger.info(`Parsed ${parsedData.length} rows from CSV`);
+      logger.info('First row sample:', parsedData[0]);
     } catch (error) {
       const response = createResponse(400, {
         success: false,
@@ -109,55 +112,82 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const rowNumber = i + 2; // +2 because CSV has header and arrays are 0-indexed
 
       try {
-        // Validate row data
-        const validation = BorelogCSVSchema.safeParse(row);
-        if (!validation.success) {
+        // Validate row data with CSV schema first
+        const csvValidation = BorelogCSVSchema.safeParse(row);
+        if (!csvValidation.success) {
           errors.push({
             row: rowNumber,
-            errors: validation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
+            errors: csvValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
           });
           continue;
         }
 
-        const validatedData = validation.data;
+        const csvData = csvValidation.data;
+        logger.info(`Processing validated data for row ${rowNumber}:`, { 
+          borehole_number: csvData.borehole_number,
+          project_name: csvData.project_name 
+        });
 
         // Convert string values to appropriate types
         const borelogData = {
-          project_name: validatedData.project_name,
-          client_name: validatedData.client_name,
-          design_consultant: validatedData.design_consultant,
-          job_code: validatedData.job_code,
-          project_location: validatedData.project_location,
-          chainage_km: validatedData.chainage_km ? parseFloat(validatedData.chainage_km) : undefined,
-          area: validatedData.area,
-          borehole_location: validatedData.borehole_location,
-          borehole_number: validatedData.borehole_number,
-          msl: validatedData.msl,
-          method_of_boring: validatedData.method_of_boring,
-          diameter_of_hole: parseFloat(validatedData.diameter_of_hole),
-          commencement_date: validatedData.commencement_date,
-          completion_date: validatedData.completion_date,
-          standing_water_level: validatedData.standing_water_level ? parseFloat(validatedData.standing_water_level) : undefined,
-          termination_depth: parseFloat(validatedData.termination_depth),
-          coordinate: (validatedData.coordinate_lat && validatedData.coordinate_lng) ? {
+          project_name: csvData.project_name,
+          client_name: csvData.client_name,
+          design_consultant: csvData.design_consultant,
+          job_code: csvData.job_code,
+          project_location: csvData.project_location,
+          chainage_km: csvData.chainage_km ? parseFloat(csvData.chainage_km) : undefined,
+          area: csvData.area,
+          borehole_location: csvData.borehole_location,
+          borehole_number: csvData.borehole_number,
+          msl: csvData.msl,
+          method_of_boring: csvData.method_of_boring,
+          diameter_of_hole: parseFloat(csvData.diameter_of_hole),
+          commencement_date: csvData.commencement_date,
+          completion_date: csvData.completion_date,
+          standing_water_level: csvData.standing_water_level ? parseFloat(csvData.standing_water_level) : undefined,
+          termination_depth: parseFloat(csvData.termination_depth),
+          coordinate: (csvData.coordinate_lat && csvData.coordinate_lng) ? {
             type: 'Point',
-            coordinates: [parseFloat(validatedData.coordinate_lng), parseFloat(validatedData.coordinate_lat)]
+            coordinates: [parseFloat(csvData.coordinate_lng), parseFloat(csvData.coordinate_lat)]
           } : undefined,
-          type_of_core_barrel: validatedData.type_of_core_barrel,
-          bearing_of_hole: validatedData.bearing_of_hole,
-          collar_elevation: validatedData.collar_elevation ? parseFloat(validatedData.collar_elevation) : undefined,
-          logged_by: validatedData.logged_by,
-          checked_by: validatedData.checked_by,
-          created_by_user_id: payload.userId,
-          is_approved: false // Default to unapproved
+          type_of_core_barrel: csvData.type_of_core_barrel,
+          bearing_of_hole: csvData.bearing_of_hole,
+          collar_elevation: csvData.collar_elevation ? parseFloat(csvData.collar_elevation) : undefined,
+          logged_by: csvData.logged_by,
+          checked_by: csvData.checked_by,
+          // Add missing optional fields with default values
+          lithology: undefined,
+          rock_methodology: undefined,
+          structural_condition: undefined,
+          weathering_classification: undefined,
+          fracture_frequency_per_m: undefined,
+          size_of_core_pieces_distribution: undefined,
+          remarks: undefined,
+          created_by_user_id: payload.userId
         };
 
+        // Validate the borelog data with the proper schema
+        logger.info(`Validating borelog data for row ${rowNumber}:`, borelogData);
+        const validationResult = validateInput(borelogData, GeologicalLogSchema);
+        if (!validationResult.success) {
+          logger.error(`Validation failed for row ${rowNumber}:`, validationResult.error);
+          errors.push({
+            row: rowNumber,
+            borehole_number: csvData.borehole_number,
+            error: `Validation error: ${validationResult.error}`
+          });
+          continue;
+        }
+        logger.info(`Validation successful for row ${rowNumber}`);
+
         // Create the geological log
-        const createdBorelog = await createGeologicalLog(borelogData);
+        logger.info(`Attempting to create borelog for row ${rowNumber}, borehole: ${csvData.borehole_number}`);
+        const createdBorelog = await insertGeologicalLog(validationResult.data);
+        logger.info(`Successfully created borelog with ID: ${createdBorelog.borelog_id}`);
         
         results.push({
           row: rowNumber,
-          borehole_number: validatedData.borehole_number,
+          borehole_number: csvData.borehole_number,
           borelog_id: createdBorelog.borelog_id,
           status: 'created'
         });
@@ -167,11 +197,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         errors.push({
           row: rowNumber,
           borehole_number: row.borehole_number || 'Unknown',
-          error: 'Failed to create borelog'
+          error: error instanceof Error ? error.message : 'Failed to create borelog'
         });
       }
     }
 
+    logger.info(`CSV upload summary: ${results.length} successful, ${errors.length} errors`);
+    logger.info('Results:', results);
+    logger.info('Errors:', errors);
+    
     const response = createResponse(201, {
       success: true,
       message: `CSV upload completed. ${results.length} borelogs created, ${errors.length} errors.`,
