@@ -144,6 +144,11 @@ export interface Project {
   created_at: string;
   updated_at: string;
   created_by_user_id?: string;
+  assigned_manager?: {
+    user_id: string;
+    name: string;
+    email: string;
+  };
 }
 
 export interface CreateProjectInput {

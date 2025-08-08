@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/Loader';
 import { RoleBasedComponent } from '@/components/RoleBasedComponent';
+import { AssignProjectManager } from '@/components/AssignProjectManager';
 
 export default function ProjectListPage() {
   const { toast } = useToast();
@@ -20,33 +21,33 @@ export default function ProjectListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        setIsLoading(true);
-        const response = await projectApi.list();
-        
-        if (response.data && Array.isArray(response.data.data)) {
-          setProjects(response.data.data);
-        } else if (response.data && Array.isArray(response.data)) {
-          setProjects(response.data);
-        } else {
-          console.error('Unexpected projects response format:', response);
-          setProjects([]);
-        }
-      } catch (error) {
-        console.error('Failed to load projects:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load projects. Please try again.',
-          variant: 'destructive',
-        });
+  const loadProjects = async () => {
+    try {
+      setIsLoading(true);
+      const response = await projectApi.list();
+      
+      if (response.data && Array.isArray(response.data.data)) {
+        setProjects(response.data.data);
+      } else if (response.data && Array.isArray(response.data)) {
+        setProjects(response.data);
+      } else {
+        console.error('Unexpected projects response format:', response);
         setProjects([]);
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load projects. Please try again.',
+        variant: 'destructive',
+      });
+      setProjects([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadProjects();
   }, [toast]);
 
@@ -178,6 +179,15 @@ export default function ProjectListPage() {
                         Open
                       </Link>
                     </Button>
+                    
+                    <RoleBasedComponent allowedRoles={['Admin']}>
+                      <AssignProjectManager
+                        projectId={project.project_id}
+                        projectName={project.name}
+                        assignedManager={project.assigned_manager}
+                        onAssignmentComplete={() => loadProjects()}
+                      />
+                    </RoleBasedComponent>
                     
                     <RoleBasedComponent allowedRoles={['Admin', 'Project Manager']}>
                       <Button variant="outline" size="sm" asChild className="flex-1">

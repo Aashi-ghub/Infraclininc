@@ -410,18 +410,6 @@ const serverlessConfiguration: AWS = {
     },
     
     // User Management endpoints
-    createUser: {
-      handler: 'src/handlers/users.createUser',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/users',
-            cors: true
-          }
-        }
-      ]
-    },
     listUsers: {
       handler: 'src/handlers/users.listUsers',
       events: [
@@ -440,30 +428,6 @@ const serverlessConfiguration: AWS = {
         {
           http: {
             method: 'get',
-            path: '/users/{user_id}',
-            cors: true
-          }
-        }
-      ]
-    },
-    updateUser: {
-      handler: 'src/handlers/users.updateUser',
-      events: [
-        {
-          http: {
-            method: 'put',
-            path: '/users/{user_id}',
-            cors: true
-          }
-        }
-      ]
-    },
-    deleteUser: {
-      handler: 'src/handlers/users.deleteUser',
-      events: [
-        {
-          http: {
-            method: 'delete',
             path: '/users/{user_id}',
             cors: true
           }
