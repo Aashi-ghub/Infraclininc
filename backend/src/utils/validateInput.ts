@@ -16,8 +16,10 @@ export interface JwtPayload {
   exp?: number;
 }
 
-// JWT secret key from environment variables or use a default for development
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key';
+// JWT secret key from environment variables or use a fixed secret for development
+const JWT_SECRET = process.env.NODE_ENV === 'production'
+  ? (process.env.JWT_SECRET || '')
+  : 'your-fixed-development-secret-key-make-it-long-and-secure-123';
 
 // Function to validate JWT token
 export const validateToken = (token: string): JwtPayload | null => {

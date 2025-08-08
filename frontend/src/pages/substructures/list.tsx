@@ -280,18 +280,13 @@ export default function SubstructureListPage() {
 
                   <div className="flex gap-2 mt-4">
                     <Button variant="outline" size="sm" asChild className="flex-1">
-                      <Link to={`/projects/${projectId}/structures/${structureId}/substructures/${substructure.substructure_id}`}>
-                        View Details
+                      <Link to={`/projects/${projectId}/structures/${structureId}/substructures/create`}>
+                        Add / Edit
                       </Link>
                     </Button>
-                    
-                    <RoleBasedComponent allowedRoles={['Admin', 'Project Manager']}>
-                      <Button variant="outline" size="sm" asChild className="flex-1">
-                        <Link to={`/projects/${projectId}/structures/${structureId}/substructures/${substructure.substructure_id}/edit`}>
-                          Edit
-                        </Link>
-                      </Button>
-                    </RoleBasedComponent>
+                    <Button variant="outline" size="sm" asChild className="flex-1">
+                      <Link to="/borelog/manage">Manage Borelogs</Link>
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

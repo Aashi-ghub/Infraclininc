@@ -21,13 +21,11 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { login, user } = useAuth();
+  const { login, user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const isDev = import.meta.env.DEV;
-
   // If user is already logged in, redirect to home
-  if (user) {
+  if (!authLoading && user) {
     navigate('/');
     return null;
   }
@@ -35,8 +33,8 @@ export default function Login() {
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: isDev ? 'admin@example.com' : '',
-      password: isDev ? 'password123' : '',
+      email: '',
+      password: '',
     },
   });
 

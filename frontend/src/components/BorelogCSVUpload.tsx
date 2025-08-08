@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 interface BorelogCSVUploadProps {
   projects: Array<{ project_id: string; name: string }>;
   onUploadSuccess?: () => void;
+  selectedProjectId?: string; // Optional: when provided, use this and hide selector
 }
 
 interface UploadResult {
@@ -38,15 +39,22 @@ interface UploadResponse {
   };
 }
 
-export function BorelogCSVUpload({ projects, onUploadSuccess }: BorelogCSVUploadProps) {
+export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId }: BorelogCSVUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [selectedProject, setSelectedProject] = useState<string>(selectedProjectId || '');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // Keep internal state in sync if parent changes selection
+  useEffect(() => {
+    if (selectedProjectId) {
+      setSelectedProject(selectedProjectId);
+    }
+  }, [selectedProjectId]);
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -186,22 +194,24 @@ export function BorelogCSVUpload({ projects, onUploadSuccess }: BorelogCSVUpload
 
   return (
     <div className="space-y-6">
-      {/* Project Selection */}
-      <div>
-        <label className="text-sm font-medium mb-2 block">Select Project</label>
-        <Select value={selectedProject} onValueChange={setSelectedProject}>
-          <SelectTrigger>
-            <SelectValue placeholder="Choose a project for the CSV upload" />
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map((project) => (
-              <SelectItem key={project.project_id} value={project.project_id}>
-                {project.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Project Selection - hidden if parent already picked a project */}
+      {!selectedProjectId && (
+        <div>
+          <label className="text-sm font-medium mb-2 block">Select Project</label>
+          <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a project for the CSV upload" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map((project) => (
+                <SelectItem key={project.project_id} value={project.project_id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* File Upload Area */}
       <Card

@@ -11,10 +11,15 @@
     "test": "jest",
     "test:unit": "jest tests/unit",
     "seed:organisations": "set IS_OFFLINE=true && ts-node scripts/seed-organisations.ts",
-    "seed:users": "set IS_OFFLINE=true && ts-node scripts/seed-users.ts"
+    "seed:users": "set IS_OFFLINE=true && ts-node scripts/seed-users.ts",
+    "seed:admin-users": "set IS_OFFLINE=true && ts-node scripts/seed-admin-users.ts",
+    "migrate:password-hash": "set IS_OFFLINE=true && ts-node scripts/add-password-hash-migration.ts",
+    "fix:passwords": "set IS_OFFLINE=true && ts-node scripts/fix-passwords.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.370.0",
+    "aws-sdk": "^2.1692.0",
+    "bcryptjs": "^2.4.3",
     "csv-parse": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
@@ -26,6 +31,7 @@
   "devDependencies": {
     "@serverless/typescript": "^4.17.1",
     "@types/aws-lambda": "^8.10.130",
+    "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.11",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.10.4",

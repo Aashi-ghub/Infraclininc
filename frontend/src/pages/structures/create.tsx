@@ -15,8 +15,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Save, Building2 } from 'lucide-react';
 import { useEffect } from 'react';
 
-export default function CreateStructurePage() {
-  const { projectId } = useParams<{ projectId: string }>();
+interface CreateStructurePageProps {
+  mode?: 'create' | 'edit';
+}
+
+export default function CreateStructurePage({ mode = 'create' }: CreateStructurePageProps) {
+  const { projectId, structureId } = useParams<{ projectId: string; structureId?: string }>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
@@ -33,23 +37,37 @@ export default function CreateStructurePage() {
   });
 
   useEffect(() => {
-    const loadProject = async () => {
+    const loadData = async () => {
       if (!projectId) return;
       
       try {
         setIsLoadingProject(true);
-        const response = await projectApi.getById(projectId);
         
-        if (response.data && response.data.data) {
-          setProject(response.data.data);
-        } else if (response.data) {
-          setProject(response.data);
+        // Load project
+        const projectResponse = await projectApi.getById(projectId);
+        if (projectResponse.data && projectResponse.data.data) {
+          setProject(projectResponse.data.data);
+        } else if (projectResponse.data) {
+          setProject(projectResponse.data);
+        }
+
+        // If in edit mode, load structure data
+        if (mode === 'edit' && structureId) {
+          const structureResponse = await structureApi.getById(structureId);
+          const structureData = structureResponse.data.data;
+          
+          // Pre-fill form with structure data
+          form.reset({
+            project_id: projectId,
+            type: structureData.type,
+            description: structureData.description || '',
+          });
         }
       } catch (error) {
-        console.error('Failed to load project:', error);
+        console.error('Failed to load data:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load project details.',
+          description: 'Failed to load required data.',
           variant: 'destructive',
         });
       } finally {
@@ -57,27 +75,36 @@ export default function CreateStructurePage() {
       }
     };
 
-    loadProject();
-  }, [projectId, toast]);
+    loadData();
+  }, [projectId, structureId, mode, toast, form]);
 
   const onSubmit = async (data: StructureFormData) => {
     try {
       setIsSubmitting(true);
       
-      const response = await structureApi.create(data);
-      
-      toast({
-        title: 'Success',
-        description: 'Structure created successfully!',
-      });
+      if (mode === 'edit' && structureId) {
+        // Update existing structure
+        await structureApi.update(structureId, data);
+        toast({
+          title: 'Success',
+          description: 'Structure updated successfully!',
+        });
+      } else {
+        // Create new structure
+        await structureApi.create(data);
+        toast({
+          title: 'Success',
+          description: 'Structure created successfully!',
+        });
+      }
 
       // Navigate to the structures list
       navigate(`/projects/${projectId}/structures`);
     } catch (error: any) {
-      console.error('Failed to create structure:', error);
+      console.error(`Failed to ${mode} structure:`, error);
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to create structure. Please try again.',
+        description: error.response?.data?.message || `Failed to ${mode} structure. Please try again.`,
         variant: 'destructive',
       });
     } finally {
@@ -141,10 +168,10 @@ export default function CreateStructurePage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Building2 className="h-8 w-8 text-primary" />
-            Add Structure
+            {mode === 'edit' ? 'Edit Structure' : 'Add Structure'}
           </h1>
           <p className="text-muted-foreground">
-            {project.name} • Add a new structure to this project
+            {project.name} • {mode === 'edit' ? 'Edit existing structure' : 'Add a new structure to this project'}
           </p>
         </div>
 
@@ -228,7 +255,7 @@ export default function CreateStructurePage() {
                     ) : (
                       <>
                         <Save className="h-4 w-4 mr-2" />
-                        Create Structure
+                        {mode === 'edit' ? 'Save Changes' : 'Create Structure'}
                       </>
                     )}
                   </Button>

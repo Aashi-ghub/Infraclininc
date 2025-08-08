@@ -174,8 +174,8 @@ export default function ProjectListPage() {
 
                   <div className="flex gap-2 mt-4">
                     <Button variant="outline" size="sm" asChild className="flex-1">
-                      <Link to={`/projects/${project.project_id}`}>
-                        View Details
+                      <Link to={`/projects/${project.project_id}/structures`}>
+                        Open
                       </Link>
                     </Button>
                     

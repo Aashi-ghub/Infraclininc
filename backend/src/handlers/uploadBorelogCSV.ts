@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { parse } from 'csv-parse/sync';
 import { insertGeologicalLog } from '../models/geologicalLog';
+import { getProjectById } from '../models/projects';
 import { z } from 'zod';
 
 // CSV Schema for borelog upload
@@ -82,6 +83,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
+    // Ensure the project exists and capture its authoritative name
+    const project = await getProjectById(projectId);
+    if (!project) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Invalid projectId: project not found',
+        error: 'PROJECT_NOT_FOUND'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const targetProjectName = project.name;
+
     // Parse CSV data
     let parsedData;
     try {
@@ -130,7 +145,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Convert string values to appropriate types
         const borelogData = {
-          project_name: csvData.project_name,
+          // Override CSV project to the selected project to avoid mismatches
+          project_name: targetProjectName,
           client_name: csvData.client_name,
           design_consultant: csvData.design_consultant,
           job_code: csvData.job_code,
@@ -182,8 +198,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Create the geological log
         logger.info(`Attempting to create borelog for row ${rowNumber}, borehole: ${csvData.borehole_number}`);
+        logger.info('Validated data being sent to database:', JSON.stringify(validationResult.data, null, 2));
         const createdBorelog = await insertGeologicalLog(validationResult.data);
-        logger.info(`Successfully created borelog with ID: ${createdBorelog.borelog_id}`);
+        logger.info(`Successfully created borelog with ID: ${createdBorelog.borelog_id}`, { createdBorelog });
         
         results.push({
           row: rowNumber,

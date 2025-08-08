@@ -13,7 +13,7 @@ import {
 import { LogOut, User as UserIcon } from "lucide-react";
 
 export function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const navigate = useNavigate();
 
   const getInitials = (name: string) => {
@@ -66,12 +66,19 @@ export function Navbar() {
                   Lab Tests
                 </Link>
               )}
+              {user.role === "Admin" && (
+                <Link to="/users" className="text-foreground/80 hover:text-foreground">
+                  Users
+                </Link>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex items-center space-x-4">
-          {user ? (
+          {isLoading ? (
+            <div className="h-10 w-10 rounded-full bg-muted animate-pulse"></div>
+          ) : user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 rounded-full flex items-center gap-2 px-2">
@@ -95,6 +102,22 @@ export function Navbar() {
                     <Link to="/reviewer/dashboard" className="flex items-center">
                       <UserIcon className="mr-2 h-4 w-4" />
                       Review Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {user.role === "Admin" && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/users" className="flex items-center">
+                      <UserIcon className="mr-2 h-4 w-4" />
+                      User Management
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {user.role === "Admin" && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/assignments/create" className="flex items-center">
+                      <UserIcon className="mr-2 h-4 w-4" />
+                      Project Assignments
                     </Link>
                   </DropdownMenuItem>
                 )}

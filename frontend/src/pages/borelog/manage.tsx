@@ -316,6 +316,12 @@ export default function ManageBorelogs() {
               <BorelogCSVUpload 
                 projects={projects} 
                 onUploadSuccess={handleCSVUploadSuccess}
+                selectedProjectId={
+                  // Map current selection (by name) to the project_id expected by uploader
+                  selectedProject === 'all' 
+                    ? undefined 
+                    : (projects.find(p => p.name === selectedProject)?.project_id)
+                }
               />
             </CardContent>
           </Card>

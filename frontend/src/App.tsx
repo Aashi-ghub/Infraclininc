@@ -34,129 +34,146 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Navbar />
-          <div className="pt-4">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/auth/login" element={<Login />} />
-              <Route path="/" element={<Index />} />
-              
-              {/* Protected Routes - View Access */}
-              <Route path="/borelogs" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <BorelogListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/geological-log/list" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <BorelogListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/borelog/:id" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <BorelogDetailPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/geological-log/:id" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <BorelogDetailPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/:projectId/borelogs" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <BorelogListPage />
-                </ProtectedRoute>
-              } />
-              
-              {/* Protected Routes - Create Access */}
-              <Route path="/create-borelog" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
-                  <CreateGeologicalLogPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/geological-log/create" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
-                  <CreateGeologicalLogPage />
-                </ProtectedRoute>
-              } />
-              
-              {/* Protected Routes - Admin/Engineer Access */}
-              <Route path="/borelog-details/create" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
-                  <CreateBorelogDetailPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/borelog/manage" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
-                  <ManageBorelogs />
-                </ProtectedRoute>
-              } />
-              
-              {/* Project Management Routes */}
-              <Route path="/projects" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <ProjectListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/create" element={
-                <ProtectedRoute allowedRoles={['Admin']}>
-                  <CreateProjectPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/:projectId/structures" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <StructureListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/:projectId/structures/create" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
-                  <CreateStructurePage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/:projectId/structures/:structureId/substructures" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                  <SubstructureListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/projects/:projectId/structures/:structureId/substructures/create" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
-                  <CreateSubstructurePage />
-                </ProtectedRoute>
-              } />
+          <Routes>
+            {/* Login route with no navbar */}
+            <Route path="/auth/login" element={<Login />} />
+            
+            {/* All other routes with navbar */}
+            <Route path="/*" element={
+              <>
+                <Navbar />
+                <div className="pt-4">
+                  <Routes>
+                    <Route path="/" element={
+                      <ProtectedRoute>
+                        <Index />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Protected Routes - View Access */}
+                    <Route path="/borelogs" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/geological-log/list" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/borelog/:id" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogDetailPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/geological-log/:id" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogDetailPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/borelogs" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogListPage />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Protected Routes - Create Access */}
+                    <Route path="/create-borelog" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <CreateGeologicalLogPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/geological-log/create" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <CreateGeologicalLogPage />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Protected Routes - Admin/Engineer Access */}
+                    <Route path="/borelog-details/create" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <CreateBorelogDetailPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/borelog/manage" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <ManageBorelogs />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Project Management Routes */}
+                    <Route path="/projects" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <ProjectListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/create" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <CreateProjectPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/structures" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <StructureListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/structures/create" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <CreateStructurePage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/structures/:structureId/substructures" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <SubstructureListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/structures/:structureId/substructures/create" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <CreateSubstructurePage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/projects/:projectId/structures/:structureId/edit" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <CreateStructurePage mode="edit" />
+                      </ProtectedRoute>
+                    } />
 
-              {/* Contact Management Routes */}
-              <Route path="/contacts" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
-                  <ContactsListPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/contacts/create" element={
-                <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
-                  <CreateContactPage />
-                </ProtectedRoute>
-              } />
-              
-              {/* Protected Routes - Admin Only */}
-              <Route path="/lab-tests/create" element={
-                <ProtectedRoute allowedRoles={['Admin']}>
-                  <CreateLabTest />
-                </ProtectedRoute>
-              } />
-              <Route path="/lab-tests/list" element={
-                <ProtectedRoute allowedRoles={['Admin']}>
-                  <LabTestsList />
-                </ProtectedRoute>
-              } />
-              <Route path="/reviewer/dashboard" element={
-                <ProtectedRoute allowedRoles={['Admin']}>
-                  <ReviewerDashboard />
-                </ProtectedRoute>
-              } />
-              
-              {/* Catch-all route */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </div>
+                    {/* Contact Management Routes */}
+                    <Route path="/contacts" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <ContactsListPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/contacts/create" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <CreateContactPage />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Protected Routes - Admin Only */}
+                    <Route path="/lab-tests/create" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <CreateLabTest />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/lab-tests/list" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <LabTestsList />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/reviewer/dashboard" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <ReviewerDashboard />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Catch-all route */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </div>
+              </>
+            } />
+          </Routes>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

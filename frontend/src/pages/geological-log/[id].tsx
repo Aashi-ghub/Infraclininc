@@ -14,6 +14,7 @@ import { ProtectedRoute } from '@/lib/authComponents';
 import { RoleBasedComponent } from '@/components/RoleBasedComponent';
 import { Edit } from 'lucide-react';
 import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
+import { BorelogImageManager } from '@/components/BorelogImageManager';
 
 export default function BorelogDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -276,6 +277,25 @@ export default function BorelogDetailPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Borelog Images */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Borelog Images</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BorelogImageManager
+              borelogId={geologicalLog.borelog_id}
+              onImagesChange={() => {
+                // Optionally refresh the page or update state
+                toast({
+                  title: 'Success',
+                  description: 'Images updated successfully',
+                });
+              }}
+            />
           </CardContent>
         </Card>
 

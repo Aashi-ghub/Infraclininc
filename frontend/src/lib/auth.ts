@@ -28,124 +28,55 @@ export const initializeAuth = () => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Development mock users for different roles
-  const mockUsers = {
-    'admin@example.com': {
-      id: 'user-admin',
-      email: 'admin@example.com',
-      name: 'Admin User',
-      role: 'Admin' as UserRole
-    },
-    'pm@example.com': {
-      id: 'user-pm',
-      email: 'pm@example.com',
-      name: 'Project Manager',
-      role: 'Project Manager' as UserRole
-    },
-    'site@example.com': {
-      id: 'user-site',
-      email: 'site@example.com',
-      name: 'Site Engineer',
-      role: 'Site Engineer' as UserRole
-    },
-    'approval@example.com': {
-      id: 'user-approval',
-      email: 'approval@example.com',
-      name: 'Approval Engineer',
-      role: 'Approval Engineer' as UserRole
-    },
-    'lab@example.com': {
-      id: 'user-lab',
-      email: 'lab@example.com',
-      name: 'Lab Engineer',
-      role: 'Lab Engineer' as UserRole
-    },
-    'customer@example.com': {
-      id: 'user-customer',
-      email: 'customer@example.com',
-      name: 'Customer User',
-      role: 'Customer' as UserRole
-    }
-  };
-  
-  const mockToken = 'mock-jwt-token-for-development';
-
-  const initialize = () => {
-    // First check localStorage
-    const storedToken = localStorage.getItem('auth_token');
-    const storedEmail = localStorage.getItem('user_email');
-    
-    if (storedToken) {
-      setToken(storedToken);
-      // Set axios default header
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-      
-      try {
-        // For development, immediately set the user if we have a token
-        // This prevents API calls that might fail in development
-        if (import.meta.env.DEV && storedEmail && mockUsers[storedEmail as keyof typeof mockUsers]) {
-          setUser(mockUsers[storedEmail as keyof typeof mockUsers]);
-          setIsLoading(false);
-          return;
-        }
-        
-        // For production, validate token and get user info
-        apiClient.get('/auth/me')
-          .then(response => {
-            setUser(response.data);
-          })
-          .catch(() => {
-            // Token invalid, clear it
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('user_email');
-            setToken(null);
-            delete apiClient.defaults.headers.common['Authorization'];
-          })
-          .finally(() => {
-            setIsLoading(false);
-          });
-      } catch (error) {
-        console.error('Error initializing auth:', error);
-        setIsLoading(false);
-      }
-    } else {
-      // No token found, user is not logged in
-      setIsLoading(false);
-    }
-  };
-
-  // Run initialize on component mount
   useEffect(() => {
     initialize();
   }, []);
 
+  const initialize = async () => {
+    try {
+      // First check localStorage
+      const storedToken = localStorage.getItem('auth_token');
+      const storedEmail = localStorage.getItem('user_email');
+      
+      if (storedToken) {
+        setToken(storedToken);
+        // Set axios default header
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+        
+        try {
+          // Try to validate token with backend
+          const response = await apiClient.get('/auth/me');
+          setUser(response.data.data);
+        } catch (error) {
+          console.warn('Token validation failed');
+          
+          // Token invalid, clear it
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('user_email');
+          setToken(null);
+          setUser(null);
+          delete apiClient.defaults.headers.common['Authorization'];
+        }
+      } else {
+        // No token found, user is not logged in
+        setToken(null);
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Error during auth initialization:', error);
+      // Ensure user is null if there's an error
+      setToken(null);
+      setUser(null);
+    } finally {
+      // Always set isLoading to false when done
+      setIsLoading(false);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     try {
-      // For development/demo purposes - mock login
-      if (import.meta.env.DEV) {
-        // Check if the email exists in our mock users
-        const mockUser = mockUsers[email as keyof typeof mockUsers];
-        
-        if (!mockUser) {
-          throw new Error('Invalid credentials');
-        }
-        
-        // In a real app, you would validate the password here
-        if (password !== 'password123') {
-          throw new Error('Invalid credentials');
-        }
-        
-        setToken(mockToken);
-        setUser(mockUser);
-        localStorage.setItem('auth_token', mockToken);
-        localStorage.setItem('user_email', email);
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
-        return;
-      }
-      
-      // Real API call for production
       const response = await apiClient.post('/auth/login', { email, password });
-      const { token: newToken, user: userData } = response.data;
+      const { token: newToken, user: userData } = response.data.data;
       
       setToken(newToken);
       setUser(userData);
@@ -153,7 +84,7 @@ export const initializeAuth = () => {
       localStorage.setItem('user_email', userData.email);
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('Login error:', error);
       throw error;
     }
   };
@@ -169,9 +100,6 @@ export const initializeAuth = () => {
     
     // Clear API headers
     delete apiClient.defaults.headers.common['Authorization'];
-    
-    // The actual navigation will be handled by the component that calls this function
-    // This makes the auth service more decoupled from routing
   };
 
   // Function to check if current user has required permissions
@@ -188,5 +116,5 @@ export const initializeAuth = () => {
     isLoading,
     hasPermission,
     initialize
-  };
+  } as const;
 };

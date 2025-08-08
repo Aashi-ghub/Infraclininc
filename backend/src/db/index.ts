@@ -23,6 +23,15 @@ async function initializePool(): Promise<Pool> {
   }
 
   try {
+    // Log database configuration (excluding password)
+    logger.info('Database configuration:', {
+      host: process.env.PGHOST,
+      port: process.env.PGPORT,
+      database: process.env.PGDATABASE,
+      user: process.env.PGUSER,
+      ssl: process.env.PGSSL,
+    });
+
     const config: PoolConfig = {
       host: process.env.PGHOST,
       port: parseInt(process.env.PGPORT || '5432'),
@@ -36,8 +45,7 @@ async function initializePool(): Promise<Pool> {
       min: 0, // Start with no connections
       idleTimeoutMillis: 60000, // Keep connections alive longer
       connectionTimeoutMillis: 10000, // Increased timeout for serverless cold starts
-      acquireTimeoutMillis: 10000, // Timeout for acquiring connection from pool
-      reapIntervalMillis: 1000, // Check for dead connections every second
+      // reapIntervalMillis: 1000, // Check for dead connections every second
     };
 
     pool = new Pool(config);

@@ -3,12 +3,32 @@ import { getGeologicalLogsByProjectName } from '../models/geologicalLog';
 import { getAllSubstructureAssignments } from '../models/substructureAssignment';
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
+import { checkRole, validateToken } from '../utils/validateInput';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
   try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
     const project_name = event.pathParameters?.project_name;
 
     if (!project_name) {

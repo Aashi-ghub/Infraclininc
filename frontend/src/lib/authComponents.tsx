@@ -5,6 +5,10 @@ import { Navigate } from 'react-router-dom';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const auth = initializeAuth();
+
+  useEffect(() => {
+    auth.initialize();
+  }, []);
   
   return (
     <AuthContext.Provider value={{ 

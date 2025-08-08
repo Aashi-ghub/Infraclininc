@@ -50,7 +50,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // Handle unauthorized
       localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      window.location.href = '/auth/login';
     }
     return Promise.reject(error);
   }
@@ -134,6 +134,9 @@ export const structureApi = {
   
   getById: (id: string) => 
     apiClient.get<ApiResponse<Structure>>(`/structures/${id}`),
+  
+  update: (id: string, data: Partial<CreateStructureInput>) =>
+    apiClient.put<ApiResponse<Structure>>(`/structures/${id}`, data),
 };
 
 export const substructureApi = {
@@ -208,4 +211,16 @@ export const contactApi = {
   
   delete: (id: string) => 
     apiClient.delete(`/contacts/${id}`),
+};
+
+// Borelog Images API
+export const borelogImagesApi = {
+  upload: (data: { borelog_id: string; image_url: string }) =>
+    apiClient.post<ApiResponse<any>>('/borelog-images', data),
+
+  getByBorelogId: (borelogId: string) =>
+    apiClient.get<ApiResponse<any>>(`/borelog-images/${borelogId}`),
+
+  delete: (imageId: string) =>
+    apiClient.delete<ApiResponse<any>>(`/borelog-images/${imageId}`),
 };

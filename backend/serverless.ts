@@ -24,7 +24,7 @@ const serverlessConfiguration: AWS = {
       PGUSER: process.env.PGUSER || '',
       PGPASSWORD: process.env.PGPASSWORD || '',
       // JWT Secret for authentication
-      JWT_SECRET: process.env.JWT_SECRET || 'development-secret-key',
+      JWT_SECRET: process.env.JWT_SECRET || '',
     },
     iam: {
       role: {
@@ -51,6 +51,18 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'post',
             path: '/auth/login',
+            cors: true
+          }
+        }
+      ]
+    },
+    register: {
+      handler: 'src/handlers/auth.register',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/auth/register',
             cors: true
           }
         }
@@ -397,6 +409,68 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
+    // User Management endpoints
+    createUser: {
+      handler: 'src/handlers/users.createUser',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/users',
+            cors: true
+          }
+        }
+      ]
+    },
+    listUsers: {
+      handler: 'src/handlers/users.listUsers',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/users',
+            cors: true
+          }
+        }
+      ]
+    },
+    getUserById: {
+      handler: 'src/handlers/users.getUserById',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/users/{user_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateUser: {
+      handler: 'src/handlers/users.updateUser',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/users/{user_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteUser: {
+      handler: 'src/handlers/users.deleteUser',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/users/{user_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    
     // Anomalies endpoints
     listAnomalies: {
       handler: 'src/handlers/anomalies.listAnomalies',
@@ -503,6 +577,44 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'delete',
             path: '/contacts/{contact_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Borelog Images endpoints
+    uploadBorelogImage: {
+      handler: 'src/handlers/borelogImages.uploadImage',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog-images',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogImages: {
+      handler: 'src/handlers/borelogImages.getImages',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-images/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteBorelogImage: {
+      handler: 'src/handlers/borelogImages.deleteImage',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/borelog-images/{image_id}',
             cors: true
           }
         }

@@ -11,8 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CoordinateMapPicker } from '@/components/CoordinateMapPicker';
+import { BorelogImageManager } from '@/components/BorelogImageManager';
 
 export function CreateBorelogForm() {
+  const [createdBorelogId, setCreatedBorelogId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -90,9 +92,12 @@ export function CreateBorelogForm() {
       const borelogId = response.data.data.borelog_id;
       console.log('Extracted borelog_id:', borelogId);
       
+      // Set the created borelog ID to show the image manager
+      setCreatedBorelogId(borelogId);
+      
       toast({
         title: 'Success',
-        description: 'Geological log created successfully',
+        description: 'Geological log created successfully. You can now add images.',
       });
       
       // Navigate to the correct URL with the borelog_id
@@ -575,6 +580,23 @@ export function CreateBorelogForm() {
             </Button>
           </form>
         </Form>
+
+        {/* Show image manager after borelog is created */}
+        {createdBorelogId && (
+          <div className="mt-8">
+            <h3 className="text-lg font-medium mb-4">Add Images</h3>
+            <BorelogImageManager
+              borelogId={createdBorelogId}
+              onImagesChange={() => {
+                // Optionally handle image changes
+                toast({
+                  title: 'Success',
+                  description: 'Images updated successfully',
+                });
+              }}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
