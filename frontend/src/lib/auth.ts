@@ -36,39 +36,46 @@ export const initializeAuth = () => {
     try {
       // First check localStorage
       const storedToken = localStorage.getItem('auth_token');
-      const storedEmail = localStorage.getItem('user_email');
       
       if (storedToken) {
+        // Set token state and axios header
         setToken(storedToken);
-        // Set axios default header
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
         
         try {
           // Try to validate token with backend
           const response = await apiClient.get('/auth/me');
-          setUser(response.data.data);
+          if (response.data?.data) {
+            setUser(response.data.data);
+          } else {
+            throw new Error('Invalid user data');
+          }
         } catch (error) {
-          console.warn('Token validation failed');
+          console.warn('Token validation failed:', error);
           
-          // Token invalid, clear it
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('user_email');
-          setToken(null);
-          setUser(null);
-          delete apiClient.defaults.headers.common['Authorization'];
+          // Only clear auth if it's a 401 error
+          if (error.response?.status === 401) {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            setToken(null);
+            setUser(null);
+            delete apiClient.defaults.headers.common['Authorization'];
+          } else {
+            // For other errors (network, etc.), keep the token but clear user
+            setUser(null);
+          }
         }
       } else {
         // No token found, user is not logged in
         setToken(null);
         setUser(null);
+        delete apiClient.defaults.headers.common['Authorization'];
       }
     } catch (error) {
       console.error('Error during auth initialization:', error);
-      // Ensure user is null if there's an error
-      setToken(null);
+      // Keep token but clear user on unexpected errors
       setUser(null);
     } finally {
-      // Always set isLoading to false when done
       setIsLoading(false);
     }
   };

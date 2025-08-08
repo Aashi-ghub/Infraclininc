@@ -47,9 +47,11 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Only handle 401s from non-auth endpoints
+    if (error.response?.status === 401 && !error.config.url?.includes('/auth/')) {
       // Handle unauthorized
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_email');
       window.location.href = '/auth/login';
     }
     return Promise.reject(error);

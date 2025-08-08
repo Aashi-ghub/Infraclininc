@@ -307,13 +307,17 @@ export const me = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyRe
     // Get JWT secret and verify token
     let decoded;
     try {
-      const JWT_SECRET = await getSecret('JWT_SECRET');
+      // Use the same JWT secret as token generation
+      const JWT_SECRET = process.env.NODE_ENV === 'production' 
+        ? await getSecret('JWT_SECRET')
+        : 'your-fixed-development-secret-key-make-it-long-and-secure-123';
       
       // Log token info (without exposing the actual token)
       logger.info('Token validation attempt:', { 
         tokenLength: token.length,
         hasJwtSecret: !!JWT_SECRET,
-        jwtSecretLength: JWT_SECRET?.length || 0
+        jwtSecretLength: JWT_SECRET?.length || 0,
+        isDevelopment: process.env.NODE_ENV !== 'production'
       });
       
       decoded = jwt.verify(token, JWT_SECRET) as { userId: string; email: string; role: UserRole };
