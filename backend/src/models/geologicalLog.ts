@@ -104,12 +104,10 @@ export async function insertGeologicalLog(data: GeologicalLogInput): Promise<Geo
   ];
 
   try {
-    logger.info('Executing SQL insert with values:', { values });
     const result = await query<GeologicalLog>(sql, values);
-    logger.info('Database insert result:', { result });
     return result[0];
   } catch (error) {
-    logger.error('Error inserting geological log', { error, sql, values });
+    logger.error('Error inserting geological log', { error });
     
     // If the error is related to the foreign key constraint for created_by_user_id
     const pgError = error as PostgresError;

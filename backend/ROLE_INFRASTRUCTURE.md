@@ -107,6 +107,11 @@ CREATE TABLE user_project_assignments (
 - **Endpoint**: `GET /substructures?project_id={project_id}&structure_id={structure_id}`
 - **Required Role**: Any authenticated user with project access
 
+#### Update Substructure Assignment
+- **Endpoint**: `PUT /substructures/{substructure_id}/assignment`
+- **Required Role**: Admin, Project Manager
+- **Description**: Updates the assignment of a geological log to a substructure. This is the only endpoint that should be used to manage substructure assignments. Do not attempt to update substructure_id through the geological log update endpoint.
+
 ### User Assignment (Admin Only)
 
 #### Assign Users to Project

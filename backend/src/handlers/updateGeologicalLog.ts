@@ -4,8 +4,18 @@ import { updateGeologicalLog } from '../models/geologicalLog';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
 
+// Helper function to validate date format (YYYY-MM-DD)
+const isValidDateFormat = (date: string) => {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date);
+};
+
 // Schema for update operation
+// Note: substructure_id is handled separately through a different endpoint
 const UpdateGeologicalLogSchema = z.object({
+  // Explicitly reject substructure_id as it should be handled by a separate endpoint
+  substructure_id: z.undefined({
+    invalid_type_error: "substructure_id cannot be updated through this endpoint. Please use the dedicated substructure assignment endpoint."
+  }).optional(),
   project_name: z.string().optional(),
   client_name: z.string().optional(),
   design_consultant: z.string().optional(),
@@ -18,8 +28,16 @@ const UpdateGeologicalLogSchema = z.object({
   msl: z.string().optional().nullable(),
   method_of_boring: z.string().optional(),
   diameter_of_hole: z.number().optional(),
-  commencement_date: z.string().optional(),
-  completion_date: z.string().optional(),
+  commencement_date: z.string()
+    .refine(val => !val || isValidDateFormat(val), {
+      message: "Commencement date must be in YYYY-MM-DD format"
+    })
+    .optional(),
+  completion_date: z.string()
+    .refine(val => !val || isValidDateFormat(val), {
+      message: "Completion date must be in YYYY-MM-DD format"
+    })
+    .optional(),
   standing_water_level: z.number().optional().nullable(),
   termination_depth: z.number().optional(),
   coordinate: z.object({
@@ -42,8 +60,8 @@ const UpdateGeologicalLogSchema = z.object({
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // Check if user has appropriate role (only Admin and Engineer can update logs)
-    const authError = checkRole(['Admin', 'Engineer'])(event);
+    // Check if user has appropriate role (Admin, Project Manager, and Site Engineer can update logs)
+    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
     if (authError) {
       return authError;
     }
@@ -67,6 +85,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     // Parse and validate input
     const body = JSON.parse(event.body || '{}');
+    
+    // Remove substructure_id if present as it's handled by a separate endpoint
+    if ('substructure_id' in body) {
+      delete body.substructure_id;
+      logger.warn('Ignoring substructure_id in update request as it should be handled by the dedicated endpoint');
+    }
+    
     const validationResult = validateInput(body, UpdateGeologicalLogSchema);
     
     if (!validationResult.success) {

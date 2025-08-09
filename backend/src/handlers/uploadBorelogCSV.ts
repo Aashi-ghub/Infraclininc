@@ -168,7 +168,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           } : undefined,
           type_of_core_barrel: csvData.type_of_core_barrel,
           bearing_of_hole: csvData.bearing_of_hole,
-          collar_elevation: csvData.collar_elevation ? parseFloat(csvData.collar_elevation) : undefined,
+          collar_elevation: csvData.collar_elevation,
+          // Store substructure_id for later assignment
+          _substructure_id: csvData.substructure_id, // Temporary field for processing
           logged_by: csvData.logged_by,
           checked_by: csvData.checked_by,
           // Add missing optional fields with default values
@@ -201,12 +203,31 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         logger.info('Validated data being sent to database:', JSON.stringify(validationResult.data, null, 2));
         const createdBorelog = await insertGeologicalLog(validationResult.data);
         logger.info(`Successfully created borelog with ID: ${createdBorelog.borelog_id}`, { createdBorelog });
+
+        // If substructure_id is provided, assign it
+        if (borelogData._substructure_id) {
+          try {
+            await query(
+              'INSERT INTO borelog_substructure_mapping (borelog_id, substructure_id) VALUES ($1, $2)',
+              [createdBorelog.borelog_id, borelogData._substructure_id]
+            );
+            logger.info(`Assigned substructure ${borelogData._substructure_id} to borelog ${createdBorelog.borelog_id}`);
+          } catch (subError) {
+            logger.warn(`Failed to assign substructure to borelog ${createdBorelog.borelog_id}:`, subError);
+            errors.push({
+              row: rowNumber,
+              borehole_number: csvData.borehole_number,
+              error: `Created borelog but failed to assign substructure: ${(subError as Error).message}`
+            });
+          }
+        }
         
         results.push({
           row: rowNumber,
           borehole_number: csvData.borehole_number,
           borelog_id: createdBorelog.borelog_id,
-          status: 'created'
+          status: 'created',
+          substructure_assigned: borelogData._substructure_id ? true : undefined
         });
 
       } catch (error) {
