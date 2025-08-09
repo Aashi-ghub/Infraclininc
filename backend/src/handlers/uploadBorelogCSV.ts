@@ -14,22 +14,36 @@ const BorelogCSVSchema = z.object({
   design_consultant: z.string().min(1, 'Design consultant is required'),
   job_code: z.string().min(1, 'Job code is required'),
   project_location: z.string().min(1, 'Project location is required'),
-  chainage_km: z.string().optional(),
+  chainage_km: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "Chainage KM must be a valid number"
+  }).optional(),
   area: z.string().min(1, 'Area is required'),
   borehole_location: z.string().min(1, 'Borehole location is required'),
   borehole_number: z.string().min(1, 'Borehole number is required'),
   msl: z.string().optional(),
   method_of_boring: z.string().min(1, 'Method of boring is required'),
-  diameter_of_hole: z.string().min(1, 'Diameter of hole is required'),
+  diameter_of_hole: z.string().refine(val => !isNaN(parseFloat(val)), {
+    message: "Diameter of hole must be a valid number"
+  }),
   commencement_date: z.string().min(1, 'Commencement date is required'),
   completion_date: z.string().min(1, 'Completion date is required'),
-  standing_water_level: z.string().optional(),
-  termination_depth: z.string().min(1, 'Termination depth is required'),
-  coordinate_lat: z.string().optional(),
-  coordinate_lng: z.string().optional(),
+  standing_water_level: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "Standing water level must be a valid number"
+  }).optional(),
+  termination_depth: z.string().refine(val => !isNaN(parseFloat(val)), {
+    message: "Termination depth must be a valid number"
+  }),
+  coordinate_lat: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "Coordinate latitude must be a valid number"
+  }).optional(),
+  coordinate_lng: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "Coordinate longitude must be a valid number"
+  }).optional(),
   type_of_core_barrel: z.string().optional(),
   bearing_of_hole: z.string().optional(),
-  collar_elevation: z.string().optional(),
+  collar_elevation: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "Collar elevation must be a valid number"
+  }).optional(),
   logged_by: z.string().min(1, 'Logged by is required'),
   checked_by: z.string().min(1, 'Checked by is required'),
   substructure_id: z.string().optional(), // Link to substructure
@@ -168,7 +182,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           } : undefined,
           type_of_core_barrel: csvData.type_of_core_barrel,
           bearing_of_hole: csvData.bearing_of_hole,
-          collar_elevation: csvData.collar_elevation,
+          collar_elevation: csvData.collar_elevation ? parseFloat(csvData.collar_elevation) : undefined,
           // Store substructure_id for later assignment
           _substructure_id: csvData.substructure_id, // Temporary field for processing
           logged_by: csvData.logged_by,

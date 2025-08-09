@@ -35,7 +35,7 @@ Your CSV file should have the following columns:
 | area | Yes | Area description | "Area A" |
 | borehole_location | Yes | Borehole location | "Borehole Location A" |
 | borehole_number | Yes | Borehole number | "BH001" |
-| msl | No | Mean Sea Level | "45.2m" |
+| msl | No | Mean Sea Level | "45.2" |
 | method_of_boring | Yes | Boring method | "Rotary Drilling" |
 | diameter_of_hole | Yes | Hole diameter in mm | 150 |
 | commencement_date | Yes | Start date (YYYY-MM-DD) | "2024-01-15" |
@@ -92,11 +92,23 @@ If there are errors, you'll see:
 
 ```csv
 project_name,client_name,design_consultant,job_code,project_location,chainage_km,area,borehole_location,borehole_number,msl,method_of_boring,diameter_of_hole,commencement_date,completion_date,standing_water_level,termination_depth,coordinate_lat,coordinate_lng,type_of_core_barrel,bearing_of_hole,collar_elevation,logged_by,checked_by,substructure_id
-"Project A","Client A","Consultant A","JOB001","Location A",10.5,"Area A","Borehole Location A","BH001","45.2m","Rotary Drilling",150,"2024-01-15","2024-01-16",12.5,30.5,1.2345,103.6789,"Core Barrel Type A","N45E",45.2,"John Doe","Jane Smith","550e8400-e29b-41d4-a716-446655440000"
-"Project A","Client A","Consultant A","JOB001","Location A",10.6,"Area A","Borehole Location B","BH002","45.3m","Rotary Drilling",150,"2024-01-17","2024-01-18",12.8,32.0,1.2346,103.6790,"Core Barrel Type A","N45E",45.3,"John Doe","Jane Smith","550e8400-e29b-41d4-a716-446655440001"
+"Project A","Client A","Consultant A","JOB001","Location A",10.5,"Area A","Borehole Location A","BH001","45.2","Rotary Drilling",150,"2024-01-15","2024-01-16",12.5,30.5,1.2345,103.6789,"Core Barrel Type A","N45E",45.2,"John Doe","Jane Smith","550e8400-e29b-41d4-a716-446655440000"
+"Project A","Client A","Consultant A","JOB001","Location A",10.6,"Area A","Borehole Location B","BH002","45.3","Rotary Drilling",150,"2024-01-17","2024-01-18",12.8,32.0,1.2346,103.6790,"Core Barrel Type A","N45E",45.3,"John Doe","Jane Smith","550e8400-e29b-41d4-a716-446655440001"
 ```
 
 ## Troubleshooting
+
+### Numeric Fields
+The following fields must contain valid numbers:
+- `chainage_km` (optional): Decimal number (e.g., 10.5)
+- `diameter_of_hole`: Decimal number in mm (e.g., 150)
+- `standing_water_level` (optional): Decimal number in meters (e.g., 12.5)
+- `termination_depth`: Decimal number in meters (e.g., 30.5)
+- `coordinate_lat` (optional): Decimal number for latitude (e.g., 1.2345)
+- `coordinate_lng` (optional): Decimal number for longitude (e.g., 103.6789)
+- `collar_elevation` (optional): Decimal number (e.g., 45.2)
+
+Do not include units (m, mm, etc.) in these fields - just the number.
 
 ### Common Issues
 1. **Missing required fields**: Ensure all required fields are filled
@@ -104,6 +116,7 @@ project_name,client_name,design_consultant,job_code,project_location,chainage_km
 3. **File too large**: Reduce file size or split into smaller files
 4. **Invalid coordinates**: Ensure coordinates are in decimal degrees format
 5. **Invalid substructure ID**: Verify the substructure exists and the ID is correct
+6. **Invalid numeric values**: Ensure numeric fields contain only numbers without units
 
 ### Getting Help
 If you encounter issues:
