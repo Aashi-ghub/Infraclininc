@@ -94,12 +94,12 @@ export function ProjectInfoSection({
         </div>
 
                  <div className="w-full overflow-x-auto">
-           <table className="w-full border-collapse border border-gray-300 text-xs project-info-table">
+           <table className="w-full border-collapse border border-black text-xs project-info-table">
              <tbody>
                {/* Row 1: Job Code */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Job Code</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Job Code</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="job_code"
@@ -118,8 +118,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Section Name</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Section Name</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="section_name"
@@ -138,8 +138,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Co-ordinate</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Co-ordinate</td>
+                  <td colSpan={2} className="border border-black px-1 py-1">
                     <div className="grid grid-cols-2 gap-0">
                       <div className="bg-orange-100 text-center text-xs py-1">E-</div>
                       <div className="bg-orange-100 text-center text-xs py-1">L-</div>
@@ -149,8 +149,8 @@ export function ProjectInfoSection({
 
                {/* Row 2: Chainage */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Chainage (Km)</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Chainage (Km)</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="chainage_km"
@@ -171,8 +171,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Location</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Location</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="location"
@@ -191,14 +191,14 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">No. of Permeabilty test (PT)</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1 bg-gray-200 text-center text-xs">0</td>
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Permeabilty test (PT)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 bg-gray-200 text-center text-xs">0</td>
                </tr>
 
                {/* Row 3: Borehole No. */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Borehole No.</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Borehole No.</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="borehole_id"
@@ -227,8 +227,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Commencement Date</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Commencement Date</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="commencement_date"
@@ -247,14 +247,14 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">No. of SP test (S) & VS test (VS)</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1 bg-orange-200 text-center text-xs">22 &nbsp;&nbsp;&amp;&nbsp;&nbsp; 0</td>
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of SP test (S) & VS test (VS)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">22 &nbsp;&nbsp;&amp;&nbsp;&nbsp; 0</td>
                </tr>
 
                {/* Row 4: Mean Sea Level */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Mean Sea Level (MSL)</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Mean Sea Level (MSL)</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="msl"
@@ -277,8 +277,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Completion Date</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Completion Date</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="completion_date"
@@ -297,14 +297,14 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">No. of Undisturbed Sample (U)</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1 bg-orange-200 text-center text-xs">5</td>
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Undisturbed Sample (U)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">5</td>
                </tr>
 
                {/* Row 5: Method of Boring */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Method of Boring / Drilling</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Method of Boring / Drilling</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="method_of_boring"
@@ -323,8 +323,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Standing Water Level</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Standing Water Level</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="standing_water_level"
@@ -347,14 +347,14 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">No. of Disturbed Sample (D)</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1 bg-orange-200 text-center text-xs">23 (D-1 &amp; S/D-22)</td>
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Disturbed Sample (D)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">23 (D-1 &amp; S/D-22)</td>
                </tr>
 
                {/* Row 6: Diameter of Hole */}
                <tr>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Diameter of Hole</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Diameter of Hole</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="diameter_of_hole"
@@ -373,8 +373,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">Termination Depth</td>
-                  <td className="border border-gray-300 px-1 py-1">
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Termination Depth</td>
+                  <td className="border border-black px-1 py-1">
                    <FormField
                      control={form.control}
                      name="termination_depth"
@@ -397,8 +397,8 @@ export function ProjectInfoSection({
                      )}
                    />
                  </td>
-                                   <td className="border border-gray-300 px-1 py-1 bg-gray-50 font-medium text-xs">No. of Water Sample (W)</td>
-                  <td colSpan={2} className="border border-gray-300 px-1 py-1 bg-gray-200 text-center text-xs">1</td>
+                                   <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Water Sample (W)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 bg-gray-200 text-center text-xs">1</td>
                </tr>
              </tbody>
            </table>

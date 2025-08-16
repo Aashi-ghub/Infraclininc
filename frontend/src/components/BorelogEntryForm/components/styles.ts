@@ -1,5 +1,15 @@
 // Add Excel-like table styles  
 export const excelTableStyles = `
+  /* Hide spinner buttons for number inputs */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
   .project-info-table {
     table-layout: auto;
     width: 100%;
@@ -8,11 +18,16 @@ export const excelTableStyles = `
   .project-info-table td {
     white-space: nowrap;
     padding: 2px 4px !important;
+    border-color: #000000 !important;
   }
   
   .project-info-table input,
   .project-info-table select {
     min-width: 100px;
+  }
+  
+  .project-info-table input[type="number"] {
+    text-align: center !important;
   }
   
   @media (max-width: 768px) {
@@ -27,7 +42,7 @@ export const excelTableStyles = `
   }
   .excel-table th,
   .excel-table td {
-    border: 1px solid #d1d5db;
+    border: 1px solid #000000;
     padding: 0 !important;
     margin: 0 !important;
     overflow: hidden;
@@ -81,12 +96,12 @@ export const excelTableStyles = `
     vertical-align: top !important;
   }
   .excel-table input[type="number"] {
-    text-align: right !important;
-    direction: rtl !important;
+    text-align: center !important;
+    direction: ltr !important;
   }
   .excel-table input[type="number"]:focus {
     direction: ltr !important;
-    text-align: right !important;
+    text-align: center !important;
   }
   .excel-table input.text-left,
   .excel-table textarea.text-left {
@@ -102,30 +117,54 @@ export const excelTableStyles = `
   .excel-table td:nth-child(18) input { text-align: left !important; direction: ltr !important; } /* Hole Diameter - left aligned */
   .excel-table td:nth-child(19) textarea { text-align: left !important; direction: ltr !important; } /* Remarks - left aligned */
   
-  /* Parent row styling */
+  /* Parent row styling with thicker borders to differentiate strata */
   .excel-table tr.parent-row {
-    background-color: #f3f4f6 !important;
-    border-bottom: 2px solid #d1d5db !important;
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #000000 !important; /* Normal border for parent rows */
   }
   .excel-table tr.parent-row td {
+    background-color: #ffffff !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid #000000 !important; /* Normal border for parent row cells */
+  }
+  
+  /* Last row of each stratum (parent + subdivisions) gets thicker border */
+  .excel-table tr.last-row-of-stratum {
+    border-bottom: 3px solid #000000 !important; /* Thicker border between different strata */
+  }
+  .excel-table tr.last-row-of-stratum td {
+    border-bottom: 3px solid #000000 !important; /* Thicker border for all cells in last row of stratum */
+  }
+  
+  /* Make table headers black and bold */
+  .excel-table th {
     background-color: #f3f4f6 !important;
-    font-weight: 500 !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
   }
   .excel-table tr.parent-row.collapsed + tr.subdivision {
     display: none !important;
   }
   
-  /* Subdivision styling */
+  /* Subdivision styling - keep normal borders */
   .excel-table tr.subdivision {
-    background-color: #fafafa !important;
+    background-color: #ffffff !important;
     height: 35px !important; /* Compact height */
+    border-bottom: 1px solid #000000 !important; /* Normal border for subdivisions */
+  }
+  .excel-table tr.subdivision td {
+    border-bottom: 1px solid #000000 !important; /* Normal border for subdivision cells */
   }
   
   /* Spanned cells in parent row */
   .excel-table tr.parent-row td[rowspan] {
     vertical-align: top !important;
     position: relative !important;
-    border-bottom: none !important;
+    border-bottom: 1px solid #000000 !important; /* Normal border for spanned cells */
+  }
+  /* Spanned cells in last row of stratum get thicker border */
+  .excel-table tr.last-row-of-stratum td[rowspan] {
+    border-bottom: 3px solid #000000 !important; /* Thicker border for spanned cells in last row of stratum */
   }
   .excel-table tr.parent-row td[rowspan] textarea,
   .excel-table tr.parent-row td[rowspan] input {
@@ -141,7 +180,7 @@ export const excelTableStyles = `
   
   /* Sample/Event fields in subdivision */
   .excel-table tr.subdivision td {
-    background-color: #fef9c3 !important;
+    background-color: #ffffff !important;
   }
   
   /* Test result fields */

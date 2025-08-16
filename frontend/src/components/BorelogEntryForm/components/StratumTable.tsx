@@ -141,81 +141,81 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
       <CardContent>
         <div className="overflow-x-auto -mx-2">
           <div className="sticky top-0 z-10 bg-white shadow-sm">
-            <table className="w-full border-collapse border border-gray-300 text-xs excel-table">
+            <table className="w-full border-collapse border border-black text-xs excel-table">
               <thead>
                 {/* Multi-row header matching Excel structure */}
                 <tr className="bg-gray-100 h-8">
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Description of Soil Stratum & Rock Methodology">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Description of Soil Stratum & Rock Methodology">
                     <div>Description of Soil Stratum & Rock Methodology</div>
                   </th>
-                  <th colSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Depth of Stratum (m)">
+                  <th colSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold" title="Depth of Stratum (m)">
                     <div>Depth of Stratum (m)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Thickness of Stratum (m)">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Thickness of Stratum (m)">
                     <div>Thickness of Stratum (m)</div>
                   </th>
-                  <th colSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Sample/Event Type and Depth">
+                  <th colSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold" title="Sample/Event Type and Depth">
                     <div>Sample / Event</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Run Length (m)">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Run Length (m)">
                     <div>Run Length (m)</div>
                   </th>
-                  <th colSpan={3} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Standard Penetration Test - Blows for every 15 cm Penetration">
+                  <th colSpan={3} className="border border-black px-1 py-0.5 text-xs font-semibold" title="Standard Penetration Test - Blows for every 15 cm Penetration">
                     <div>Standard Penetration Test (Blows for every 15 cm Penetration)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="N-Value IS-2131">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="N-Value IS-2131">
                     <div>N - Value<br />IS - 2131</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Total Core Length (cm)">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Total Core Length (cm)">
                     <div>Total Core<br />Length (cm)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Total Core Recovery %">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Total Core Recovery %">
                     <div>TCR (%)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Rock Quality Designation Length (cm)">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Rock Quality Designation Length (cm)">
                     <div>RQD Length<br />(cm)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Rock Quality Designation %">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Rock Quality Designation %">
                     <div>RQD (%)</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Colour of return water">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Colour of return water">
                     <div>Colour of<br />return water</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Water loss during drilling">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Water loss during drilling">
                     <div>Water loss</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Diameter of Bore hole">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Diameter of Bore hole">
                     <div>Diameter of<br />Bore hole</div>
                   </th>
-                  <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Additional remarks and observations">
+                  <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Additional remarks and observations">
                     <div>Remarks</div>
                   </th>
                   {canEdit && (
-                    <th rowSpan={2} className="border border-gray-300 px-1 py-0.5 text-xs font-semibold align-middle" title="Row actions">
+                    <th rowSpan={2} className="border border-black px-1 py-0.5 text-xs font-semibold align-middle" title="Row actions">
                       <div>Actions</div>
                     </th>
                   )}
                 </tr>
                 <tr className="bg-gray-100 h-8">
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Depth From (m)">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="Depth From (m)">
                     <div>From</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Depth To (m)">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="Depth To (m)">
                     <div>To</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Sample/Event Type">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="Sample/Event Type">
                     <div>Type</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="Sample Depth (m)">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="Sample Depth (m)">
                     <div>Depth (m)</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="SPT 1st 15cm blows">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="SPT 1st 15cm blows">
                     <div>15 cm</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="SPT 2nd 15cm blows">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="SPT 2nd 15cm blows">
                     <div>15 cm</div>
                   </th>
-                  <th className="border border-gray-300 px-1 py-0.5 text-xs font-semibold" title="SPT 3rd 15cm blows">
+                  <th className="border border-black px-1 py-0.5 text-xs font-semibold" title="SPT 3rd 15cm blows">
                     <div>15 cm</div>
                   </th>
                 </tr>
@@ -230,6 +230,26 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                   const isSubdivision = row.is_subdivision;
                   const parentRow = isSubdivision ? stratumRows.find(r => r.id === row.parent_id) : null;
                   
+                  // Determine if this is the last row of a stratum (parent + all its subdivisions)
+                  let isLastRowOfStratum = false;
+                  if (isSubdivision) {
+                    // For subdivisions, check if this is the last subdivision of its parent
+                    const parentId = row.parent_id;
+                    const subdivisionsOfParent = stratumRows.filter(r => r.parent_id === parentId);
+                    const isLastSubdivision = subdivisionsOfParent[subdivisionsOfParent.length - 1].id === row.id;
+                    isLastRowOfStratum = isLastSubdivision;
+                  } else {
+                    // For parent rows, check if this is the last row of the entire table or if the next row is a different parent
+                    if (index === stratumRows.length - 1) {
+                      isLastRowOfStratum = true;
+                    } else {
+                      const nextRow = stratumRows[index + 1];
+                      // If next row is a subdivision of this parent, it's not the last row of stratum
+                      // If next row is a different parent or no parent, it is the last row of stratum
+                      isLastRowOfStratum = !nextRow.is_subdivision || nextRow.parent_id !== row.id;
+                    }
+                  }
+                  
                   return (
                     <tr 
                       key={row.id} 
@@ -237,7 +257,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                         isSubdivision 
                           ? 'subdivision' 
                           : `parent-row ${row.is_collapsed ? 'collapsed' : ''}`
-                      }`}
+                      } ${isLastRowOfStratum ? 'last-row-of-stratum' : ''}`}
                     >
                       {/* Description */}
                       {!isSubdivision && (
