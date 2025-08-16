@@ -155,11 +155,16 @@ CREATE TABLE borehole (
   coordinate GEOGRAPHY(POINT),
   boring_method TEXT,
   hole_diameter NUMERIC,
+  description TEXT,
+  coordinates JSONB,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'abandoned')),
+  created_by_user_id UUID,
   created_at TIMESTAMP DEFAULT NOW(),
 
   FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE,
   FOREIGN KEY (structure_id) REFERENCES structure (structure_id) ON DELETE SET NULL,
-  FOREIGN KEY (substructure_id) REFERENCES sub_structures (substructure_id) ON DELETE SET NULL
+  FOREIGN KEY (substructure_id) REFERENCES sub_structures (substructure_id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by_user_id) REFERENCES users (user_id) ON DELETE SET NULL
 );
 
 CREATE TYPE borelog_type_enum AS ENUM (
@@ -515,3 +520,36 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
+
+-- Borelog Submissions Table for Version Control
+CREATE TABLE borelog_submissions (
+  submission_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL,
+  structure_id UUID NOT NULL,
+  borehole_id UUID NOT NULL,
+  version_number INTEGER NOT NULL,
+  edited_by UUID NOT NULL,
+  timestamp TIMESTAMPTZ DEFAULT NOW(),
+  form_data JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'approved', 'rejected')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  FOREIGN KEY (project_id) REFERENCES projects (project_id) ON DELETE CASCADE,
+  FOREIGN KEY (structure_id) REFERENCES structure (structure_id) ON DELETE CASCADE,
+  FOREIGN KEY (borehole_id) REFERENCES borehole (borehole_id) ON DELETE CASCADE,
+  FOREIGN KEY (edited_by) REFERENCES users (user_id) ON DELETE CASCADE,
+  
+  -- Ensure unique version numbers per borehole
+  UNIQUE (project_id, structure_id, borehole_id, version_number)
+);
+
+-- Indexes for better performance
+CREATE INDEX idx_borelog_submissions_project ON borelog_submissions (project_id);
+CREATE INDEX idx_borelog_submissions_borehole ON borelog_submissions (borehole_id);
+CREATE INDEX idx_borelog_submissions_version ON borelog_submissions (version_number);
+CREATE INDEX idx_borelog_submissions_status ON borelog_submissions (status);
+CREATE INDEX idx_borelog_submissions_edited_by ON borelog_submissions (edited_by);
+
+-- Add created_by_user_id to borelog_submissions
+ALTER TABLE borelog_submissions ADD COLUMN created_by_user_id UUID;
+ALTER TABLE borelog_submissions ADD CONSTRAINT fk_borelog_submissions_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(user_id) ON DELETE SET NULL;

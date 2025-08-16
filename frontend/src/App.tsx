@@ -24,6 +24,8 @@ import StructureListPage from "./pages/structures/list";
 import CreateStructurePage from "./pages/structures/create";
 import SubstructureListPage from "./pages/substructures/list";
 import CreateSubstructurePage from "./pages/substructures/create";
+import BorelogManagePage from "./pages/borelog/manage";
+import BorelogEntryPage from "./pages/borelog/entry";
 
 const queryClient = new QueryClient();
 
@@ -96,8 +98,13 @@ const App = () => (
                       </ProtectedRoute>
                     } />
                     <Route path="/borelog/manage" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
+                        <BorelogManagePage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/borelog/entry" element={
                       <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
-                        <ManageBorelogs />
+                        <BorelogEntryPage />
                       </ProtectedRoute>
                     } />
                     

@@ -15,7 +15,10 @@ import {
   LabTest,
   CreateLabTestInput,
   ApiResponse,
-  PaginatedResponse
+  PaginatedResponse,
+  BorelogSubmission,
+  Borehole,
+  CreateBoreholeInput
 } from './types';
 
 // Get API base URL from environment variables
@@ -225,4 +228,103 @@ export const borelogImagesApi = {
 
   delete: (imageId: string) =>
     apiClient.delete<ApiResponse<any>>(`/borelog-images/${imageId}`),
+};
+
+// Borelog Submission API
+export const borelogSubmissionApi = {
+  submit: async (data: Omit<BorelogSubmission, 'submission_id' | 'timestamp'>) => {
+    const response = await apiClient.post('/borelog/submit', data);
+    return response.data;
+  },
+
+  // Create new version instead of overwriting
+  createVersion: async (data: any) => {
+    const response = await apiClient.post('/borelog/create-version', data);
+    return response.data;
+  },
+
+  // Save draft version
+  saveDraft: async (data: any) => {
+    const response = await apiClient.post('/borelog/save-draft', data);
+    return response.data;
+  },
+
+  // Get version history for a borehole
+  getVersionHistory: async (boreholeId: string) => {
+    const response = await apiClient.get(`/borelog/versions/${boreholeId}`);
+    return response.data;
+  },
+
+  // Get specific version
+  getVersion: async (versionId: string) => {
+    const response = await apiClient.get(`/borelog/version/${versionId}`);
+    return response.data;
+  },
+
+  // Approve version
+  approveVersion: async (versionId: string, data: { approved_by: string; approval_comments: string }) => {
+    const response = await apiClient.post(`/borelog/version/${versionId}/approve`, data);
+    return response.data;
+  },
+
+  // Reject version
+  rejectVersion: async (versionId: string, data: { rejected_by: string; rejection_comments: string }) => {
+    const response = await apiClient.post(`/borelog/version/${versionId}/reject`, data);
+    return response.data;
+  },
+
+  getSubmissions: async (projectId: string, boreholeId: string) => {
+    const response = await apiClient.get(`/borelog/submissions/${projectId}/${boreholeId}`);
+    return response.data;
+  },
+
+  getSubmission: async (submissionId: string) => {
+    const response = await apiClient.get(`/borelog/submission/${submissionId}`);
+    return response.data;
+  },
+
+  updateSubmission: async (submissionId: string, data: Partial<BorelogSubmission>) => {
+    const response = await apiClient.put(`/borelog/submission/${submissionId}`, data);
+    return response.data;
+  }
+};
+
+// Projects API - alias to projectApi for consistency
+export const projectsApi = {
+  list: () => projectApi.list(),
+  getById: (id: string) => projectApi.getById(id),
+  create: (data: CreateProjectInput) => projectApi.create(data),
+};
+
+// Structures API - alias to structureApi for consistency
+export const structuresApi = {
+  list: (projectId: string) => structureApi.list(projectId),
+  create: (data: CreateStructureInput) => structureApi.create(data),
+  getById: (id: string) => structureApi.getById(id),
+  update: (id: string, data: Partial<CreateStructureInput>) => structureApi.update(id, data),
+  getByProject: (projectId: string) => structureApi.list(projectId),
+};
+
+// Boreholes API
+export const boreholesApi = {
+  list: () => 
+    apiClient.get<ApiResponse<Borehole[]>>('/boreholes'),
+  
+  getById: (id: string) => 
+    apiClient.get<ApiResponse<Borehole>>(`/boreholes/${id}`),
+  
+  getByProject: (projectId: string) => 
+    apiClient.get<ApiResponse<Borehole[]>>(`/boreholes/project/${projectId}`),
+  
+  getByProjectAndStructure: (projectId: string, structureId: string) => 
+    apiClient.get<ApiResponse<Borehole[]>>(`/boreholes/project/${projectId}/structure/${structureId}`),
+  
+  create: (data: CreateBoreholeInput) => 
+    apiClient.post<ApiResponse<Borehole>>('/boreholes', data),
+  
+  update: (id: string, data: Partial<CreateBoreholeInput>) => 
+    apiClient.put<ApiResponse<Borehole>>(`/boreholes/${id}`, data),
+  
+  delete: (id: string) => 
+    apiClient.delete<ApiResponse<null>>(`/boreholes/${id}`),
 };

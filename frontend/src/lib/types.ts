@@ -268,4 +268,113 @@ export interface CreateContactInput {
   organisation_id: string;
   name: string;
   role: ContactRole;
+}
+
+// Borelog Entry Form Types
+export type FieldType = 'manual' | 'calculated' | 'auto-filled';
+
+export interface BorelogField {
+  id: string;
+  name: string;
+  value: string | number | null;
+  fieldType: FieldType;
+  isRequired: boolean;
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+  };
+  calculation?: string; // Formula for calculated fields
+  dependencies?: string[]; // Field IDs this field depends on for calculation
+}
+
+export interface BorelogRow {
+  id: string;
+  fields: BorelogField[];
+  description?: string;
+  isSubdivision?: boolean;
+  parentRowId?: string;
+}
+
+export interface BorelogSubmission {
+  submission_id: string;
+  project_id: string;
+  structure_id: string;
+  borehole_id: string;
+  version_number: number;
+  edited_by: string;
+  timestamp: string;
+  form_data: {
+    rows: BorelogRow[];
+    metadata: {
+      project_name: string;
+      borehole_number: string;
+      commencement_date: string;
+      completion_date: string;
+      standing_water_level: number;
+      termination_depth: number;
+    };
+  };
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+}
+
+export interface BorelogFormState {
+  project_id: string;
+  structure_id: string;
+  borehole_id: string;
+  rows: BorelogRow[];
+  metadata: {
+    project_name: string;
+    borehole_number: string;
+    commencement_date: string;
+    completion_date: string;
+    standing_water_level: number;
+    termination_depth: number;
+  };
+  lastSaved: string;
+  version: number;
+} 
+
+// Borehole Types
+export interface Borehole {
+  borehole_id: string;
+  project_id: string;
+  structure_id?: string;
+  substructure_id?: string;
+  tunnel_no?: string;
+  location?: string;
+  chainage?: string;
+  borehole_number: string;
+  msl?: string;
+  coordinate?: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  coordinates?: {
+    latitude?: number;
+    longitude?: number;
+    elevation?: number;
+  };
+  boring_method?: string;
+  hole_diameter?: number;
+  created_at: string;
+  created_by_user_id?: string;
+}
+
+export interface CreateBoreholeInput {
+  project_id: string;
+  structure_id?: string;
+  substructure_id?: string;
+  tunnel_no?: string;
+  location?: string;
+  chainage?: string;
+  borehole_number: string;
+  msl?: string;
+  coordinate?: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+  boring_method?: string;
+  hole_diameter?: number;
+  created_by_user_id?: string;
 } 

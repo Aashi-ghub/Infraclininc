@@ -113,6 +113,46 @@ export const loginSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+// Borelog Submission Schema
+export const borelogSubmissionSchema = z.object({
+  project_id: z.string().uuid('Invalid project ID'),
+  structure_id: z.string().uuid('Invalid structure ID'),
+  borehole_id: z.string().uuid('Invalid borehole ID'),
+  version_number: z.number().min(1, 'Version number must be at least 1'),
+  edited_by: z.string().uuid('Invalid user ID'),
+  form_data: z.object({
+    rows: z.array(z.object({
+      id: z.string(),
+      fields: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        value: z.union([z.string(), z.number(), z.null()]),
+        fieldType: z.enum(['manual', 'calculated', 'auto-filled']),
+        isRequired: z.boolean(),
+        validation: z.object({
+          min: z.number().optional(),
+          max: z.number().optional(),
+          pattern: z.string().optional()
+        }).optional(),
+        calculation: z.string().optional(),
+        dependencies: z.array(z.string()).optional()
+      })),
+      description: z.string().optional(),
+      isSubdivision: z.boolean().optional(),
+      parentRowId: z.string().optional()
+    })),
+    metadata: z.object({
+      project_name: z.string().min(1, 'Project name is required'),
+      borehole_number: z.string().min(1, 'Borehole number is required'),
+      commencement_date: z.string().min(1, 'Commencement date is required'),
+      completion_date: z.string().min(1, 'Completion date is required'),
+      standing_water_level: z.number().optional(),
+      termination_depth: z.number().min(0, 'Termination depth must be positive')
+    })
+  }),
+  status: z.enum(['draft', 'submitted', 'approved', 'rejected'])
+});
+
 // Types derived from schemas
 export type GeologicalLogFormData = z.infer<typeof geologicalLogSchema>;
 export type BorelogDetailFormData = z.infer<typeof borelogDetailSchema>;
@@ -123,3 +163,4 @@ export type SubstructureFormData = z.infer<typeof substructureSchema>;
 export type UserAssignmentFormData = z.infer<typeof userAssignmentSchema>;
 export type UserFormData = z.infer<typeof userSchema>;
 export type LoginFormData = z.infer<typeof loginSchema>;
+export type BorelogSubmissionFormData = z.infer<typeof borelogSubmissionSchema>;

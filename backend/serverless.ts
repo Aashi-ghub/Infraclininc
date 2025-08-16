@@ -584,6 +584,130 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+
+    // Borelog submission endpoints
+    submitBorelog: {
+      handler: 'src/handlers/borelogSubmission.submitBorelog',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog/submit',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogSubmissions: {
+      handler: 'src/handlers/borelogSubmission.getBorelogSubmissions',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog/submissions/{projectId}/{boreholeId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogSubmission: {
+      handler: 'src/handlers/borelogSubmission.getBorelogSubmission',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog/submission/{submissionId}',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Borehole endpoints
+    listBoreholes: {
+      handler: 'src/handlers/boreholes.listBoreholes',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/boreholes',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBoreholeById: {
+      handler: 'src/handlers/boreholes.getBoreholeById',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/boreholes/{boreholeId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBoreholesByProject: {
+      handler: 'src/handlers/boreholes.getBoreholesByProject',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/boreholes/project/{projectId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBoreholesByProjectAndStructure: {
+      handler: 'src/handlers/boreholes.getBoreholesByProjectAndStructure',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/boreholes/project/{projectId}/structure/{structureId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    createBorehole: {
+      handler: 'src/handlers/boreholes.createBorehole',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/boreholes',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateBorehole: {
+      handler: 'src/handlers/boreholes.updateBorehole',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/boreholes/{boreholeId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteBorehole: {
+      handler: 'src/handlers/boreholes.deleteBorehole',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/boreholes/{boreholeId}',
+            cors: true
+          }
+        }
+      ]
+    },
   },
   package: {
     individually: true
