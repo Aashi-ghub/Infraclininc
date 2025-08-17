@@ -99,7 +99,7 @@ export function ProjectInfoSection({
                {/* Row 1: Job Code */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Job Code</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="job_code"
@@ -109,7 +109,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder=""
-                             className="border-0 bg-white p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -119,7 +119,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Section Name</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="section_name"
@@ -129,7 +129,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder="CNE-AGTL"
-                             className="border-0 bg-white p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -139,10 +139,10 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Co-ordinate</td>
-                  <td colSpan={2} className="border border-black px-1 py-1">
+                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input">
                     <div className="grid grid-cols-2 gap-0">
-                      <div className="bg-orange-100 text-center text-xs py-1">E-</div>
-                      <div className="bg-orange-100 text-center text-xs py-1">L-</div>
+                      <div className="text-center text-xs py-1">E-</div>
+                      <div className="text-center text-xs py-1">L-</div>
                     </div>
                   </td>
                </tr>
@@ -150,7 +150,7 @@ export function ProjectInfoSection({
                {/* Row 2: Chainage */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Chainage (Km)</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="chainage_km"
@@ -160,7 +160,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder=""
-                             className="border-0 bg-white p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
                              value={field.value || ''}
@@ -172,7 +172,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Location</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="location"
@@ -182,7 +182,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder="BR-365 (STEEL GIDER)"
-                             className="border-0 bg-gray-100 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -192,13 +192,13 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Permeabilty test (PT)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 bg-gray-200 text-center text-xs">0</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input text-center text-xs">0</td>
                </tr>
 
                {/* Row 3: Borehole No. */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Borehole No.</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="borehole_id"
@@ -210,7 +210,7 @@ export function ProjectInfoSection({
                            value={field.value}
                          >
                            <FormControl>
-                             <SelectTrigger className="border-0 bg-white p-1 text-xs h-6">
+                             <SelectTrigger className="border-0 p-1 text-xs h-6">
                                <SelectValue placeholder="" />
                              </SelectTrigger>
                            </FormControl>
@@ -228,7 +228,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Commencement Date</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 numeric-input">
                    <FormField
                      control={form.control}
                      name="commencement_date"
@@ -238,7 +238,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              type="date"
-                             className="border-0 bg-gray-100 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -248,13 +248,13 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of SP test (S) & VS test (VS)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">22 &nbsp;&nbsp;&amp;&nbsp;&nbsp; 0</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 calculated text-center text-xs">22 &nbsp;&nbsp;&amp;&nbsp;&nbsp; 0</td>
                </tr>
 
                {/* Row 4: Mean Sea Level */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Mean Sea Level (MSL)</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 linked-data">
                    <FormField
                      control={form.control}
                      name="msl"
@@ -266,7 +266,7 @@ export function ProjectInfoSection({
                              type="number"
                              step="0.01"
                              placeholder=""
-                             className="border-0 bg-white p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
                              value={field.value || ''}
@@ -278,7 +278,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Completion Date</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 numeric-input">
                    <FormField
                      control={form.control}
                      name="completion_date"
@@ -288,7 +288,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              type="date"
-                             className="border-0 bg-gray-100 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -298,13 +298,13 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Undisturbed Sample (U)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">5</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 calculated text-center text-xs">5</td>
                </tr>
 
                {/* Row 5: Method of Boring */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Method of Boring / Drilling</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 manual-text">
                    <FormField
                      control={form.control}
                      name="method_of_boring"
@@ -314,7 +314,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder="Rotary Drilling"
-                             className="border-0 bg-yellow-100 focus:bg-yellow-50 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -324,7 +324,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Standing Water Level</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 manual-text">
                    <FormField
                      control={form.control}
                      name="standing_water_level"
@@ -336,7 +336,7 @@ export function ProjectInfoSection({
                              type="number"
                              step="0.01"
                              placeholder="0.70 m BGL"
-                             className="border-0 bg-yellow-100 focus:bg-yellow-50 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
                              value={field.value || ''}
@@ -348,13 +348,13 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Disturbed Sample (D)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 bg-orange-200 text-center text-xs">23 (D-1 &amp; S/D-22)</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 calculated text-center text-xs">23 (D-1 &amp; S/D-22)</td>
                </tr>
 
                {/* Row 6: Diameter of Hole */}
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Diameter of Hole</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 manual-text">
                    <FormField
                      control={form.control}
                      name="diameter_of_hole"
@@ -364,7 +364,7 @@ export function ProjectInfoSection({
                            <Input
                              disabled={!canEdit}
                              placeholder="150 mm"
-                             className="border-0 bg-yellow-100 focus:bg-yellow-50 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                            />
                          </FormControl>
@@ -374,7 +374,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Termination Depth</td>
-                  <td className="border border-black px-1 py-1">
+                  <td className="border border-black px-1 py-1 calculated">
                    <FormField
                      control={form.control}
                      name="termination_depth"
@@ -386,7 +386,7 @@ export function ProjectInfoSection({
                              type="number"
                              step="0.01"
                              placeholder="40.45 m BGL"
-                             className="border-0 bg-orange-100 focus:bg-orange-50 p-1 text-xs h-6"
+                             className="border-0 p-1 text-xs h-6"
                              {...field}
                              onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
                              value={field.value || ''}
@@ -398,7 +398,7 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Water Sample (W)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 bg-gray-200 text-center text-xs">1</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input text-center text-xs">1</td>
                </tr>
              </tbody>
            </table>

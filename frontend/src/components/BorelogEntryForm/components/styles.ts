@@ -10,6 +10,7 @@ export const excelTableStyles = `
   input[type="number"] {
     -moz-appearance: textfield;
   }
+  
   .project-info-table {
     table-layout: auto;
     width: 100%;
@@ -26,6 +27,22 @@ export const excelTableStyles = `
     min-width: 100px;
   }
   
+  /* Color coding for project info table - using only specified colors */
+  .project-info-table .linked-data {
+    background-color: #FFC0CB !important; /* Pink for linked data/sources */
+  }
+  .project-info-table .linked-data input,
+  .project-info-table .linked-data select {
+    background-color: #FFC0CB !important;
+  }
+  
+  .project-info-table .final-output {
+    background-color: #90EE90 !important; /* Green for final output */
+  }
+  .project-info-table .final-output input {
+    background-color: #90EE90 !important;
+  }
+  
   .project-info-table input[type="number"] {
     text-align: center !important;
   }
@@ -35,11 +52,13 @@ export const excelTableStyles = `
       min-width: 800px;
     }
   }
+  
   .excel-table {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     min-width: 1400px;
     table-layout: fixed;
   }
+  
   .excel-table th,
   .excel-table td {
     border: 1px solid #000000;
@@ -47,6 +66,7 @@ export const excelTableStyles = `
     margin: 0 !important;
     overflow: hidden;
   }
+  
   /* Column widths - wider for better usability */
   .excel-table th:nth-child(1), .excel-table td:nth-child(1) { width: 180px; }  /* Description */
   .excel-table th:nth-child(2), .excel-table td:nth-child(2) { width: 65px; }   /* From - wider */
@@ -55,9 +75,9 @@ export const excelTableStyles = `
   .excel-table th:nth-child(5), .excel-table td:nth-child(5) { width: 70px; }   /* Type - wider */
   .excel-table th:nth-child(6), .excel-table td:nth-child(6) { width: 70px; }   /* Depth (m) - wider */
   .excel-table th:nth-child(7), .excel-table td:nth-child(7) { width: 80px; }   /* Run Length - wider */
-  .excel-table th:nth-child(8), .excel-table td:nth-child(8) { width: 55px; }   /* 15 cm 1 - wider */
-  .excel-table th:nth-child(9), .excel-table td:nth-child(9) { width: 55px; }   /* 15 cm 2 - wider */
-  .excel-table th:nth-child(10), .excel-table td:nth-child(10) { width: 55px; } /* 15 cm 3 - wider */
+  .excel-table th:nth-child(8), .excel-table td:nth-child(8) { width: 80px; }   /* 15 cm 1 - increased width to match sample columns */
+  .excel-table th:nth-child(9), .excel-table td:nth-child(9) { width: 80px; }   /* 15 cm 2 - increased width to match sample columns */
+  .excel-table th:nth-child(10), .excel-table td:nth-child(10) { width: 80px; } /* 15 cm 3 - increased width to match sample columns */
   .excel-table th:nth-child(11), .excel-table td:nth-child(11) { width: 65px; } /* N-Value - wider */
   .excel-table th:nth-child(12), .excel-table td:nth-child(12) { width: 75px; } /* Core Length - wider */
   .excel-table th:nth-child(13), .excel-table td:nth-child(13) { width: 60px; } /* TCR (%) - wider */
@@ -82,32 +102,165 @@ export const excelTableStyles = `
     line-height: 1.2 !important;
     box-shadow: none !important;
     display: block !important;
+    color: #000000 !important; /* Black text */
   }
+  
+  /* Placeholder styling */
+  .excel-table input::placeholder,
+  .excel-table textarea::placeholder {
+    color: #6B7280 !important; /* Darker grey placeholders for better visibility */
+    opacity: 1 !important;
+  }
+  
+  /* Specific placeholder styling for grey fields */
+  .excel-table .numeric-input input::placeholder {
+    color: #374151 !important; /* Even darker grey for numeric input fields */
+    opacity: 1 !important;
+  }
+  
   .excel-table input:focus,
   .excel-table textarea:focus {
     outline: 2px solid #3b82f6 !important;
     outline-offset: -2px !important;
     box-shadow: none !important;
   }
+  
   .excel-table textarea {
     resize: none !important;
     min-height: 40px !important;
-    max-height: 40px !important;
     vertical-align: top !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
   }
+  
   .excel-table input[type="number"] {
     text-align: center !important;
     direction: ltr !important;
   }
+  
   .excel-table input[type="number"]:focus {
     direction: ltr !important;
     text-align: center !important;
   }
+  
   .excel-table input.text-left,
   .excel-table textarea.text-left {
     text-align: left !important;
     direction: ltr !important;
   }
+  
+  /* Color coding based on legend */
+  
+  /* 🟨 Yellow - Manual Text */
+  .excel-table .manual-text {
+    background-color: #FFEB00 !important; /* Yellow for manual input */
+  }
+  .excel-table .manual-text input,
+  .excel-table .manual-text textarea {
+    background-color: #FFEB00 !important;
+  }
+  
+  /* 🟦 Grey - Numeric Input */
+  .excel-table .numeric-input {
+    background-color: #ADADAC !important; /* Grey for numeric input */
+  }
+  .excel-table .numeric-input input {
+    background-color: #ADADAC !important;
+  }
+  
+  /* 🟫 Brown - Calculated */
+  .excel-table .calculated {
+    background-color: #B55110 !important; /* Brown for calculated */
+  }
+  .excel-table .calculated input {
+    background-color: #B55110 !important;
+  }
+  
+  /* 🟩 Pink - Linked Data/Sources */
+  .excel-table .linked-data {
+    background-color: #FFC0CB !important; /* Pink for linked data/sources */
+  }
+  .excel-table .linked-data input,
+  .excel-table .linked-data select {
+    background-color: #FFC0CB !important;
+  }
+  
+  /* 🟩 Green - Final Output */
+  .excel-table .final-output {
+    background-color: #90EE90 !important; /* Green for final output */
+  }
+  .excel-table .final-output input {
+    background-color: #90EE90 !important;
+  }
+  
+  /* 🔴 Red - Hatch/Attachment */
+  .excel-table .hatch-attachment {
+    background-color: #FF6B6B !important; /* Red for hatch/attachment */
+  }
+  .excel-table .hatch-attachment input {
+    background-color: #FF6B6B !important;
+  }
+  
+  /* 🟧 Light Peach - From other source */
+  .excel-table .other-source {
+    background-color:rgb(250, 212, 218) !important; /* Light peach for other source */
+  }
+  .excel-table .other-source input {
+    background-color:rgb(243, 215, 219) !important;
+  }
+  
+  /* Project Info Table Color Styles */
+  .project-info-table .manual-text {
+    background-color: #FFEB00 !important; /* Yellow for manual input */
+  }
+  .project-info-table .manual-text input,
+  .project-info-table .manual-text select {
+    background-color: #FFEB00 !important;
+  }
+
+  .project-info-table .numeric-input {
+    background-color: #ADADAC !important; /* Grey for numeric input */
+  }
+  .project-info-table .numeric-input input {
+    background-color: #ADADAC !important;
+  }
+
+  .project-info-table .calculated {
+    background-color: #B55110 !important; /* Brown for calculated */
+  }
+  .project-info-table .calculated input {
+    background-color: #B55110 !important;
+  }
+
+  .project-info-table .linked-data {
+    background-color:rgb(249, 209, 216) !important; /* Pink for linked data/sources */
+  }
+  .project-info-table .linked-data input,
+  .project-info-table .linked-data select {
+    background-color:rgb(251, 210, 217) !important;
+  }
+
+  .project-info-table .final-output {
+    background-color: #90EE90 !important; /* Green for final output */
+  }
+  .project-info-table .final-output input {
+    background-color: #90EE90 !important;
+  }
+
+  .project-info-table .hatch-attachment {
+    background-color: #FF6B6B !important; /* Red for hatch/attachment */
+  }
+  .project-info-table .hatch-attachment input {
+    background-color: #FF6B6B !important;
+  }
+
+  .project-info-table .other-source {
+    background-color: #FFB6C1 !important; /* Light peach for other source */
+  }
+  .project-info-table .other-source input {
+    background-color: #FFB6C1 !important;
+  }
+  
   /* Specific field alignments to match screenshot exactly */
   .excel-table td:nth-child(1) input,
   .excel-table td:nth-child(1) textarea { text-align: left !important; direction: ltr !important; } /* Description - left aligned */
@@ -119,21 +272,19 @@ export const excelTableStyles = `
   
   /* Parent row styling with thicker borders to differentiate strata */
   .excel-table tr.parent-row {
-    background-color: #ffffff !important;
     border-bottom: 1px solid #000000 !important; /* Normal border for parent rows */
   }
   .excel-table tr.parent-row td {
-    background-color: #ffffff !important;
     font-weight: 600 !important;
     border-bottom: 1px solid #000000 !important; /* Normal border for parent row cells */
   }
   
-  /* Last row of each stratum (parent + subdivisions) gets thicker border */
+  /* Last row of each stratum (parent + subdivisions) gets normal border */
   .excel-table tr.last-row-of-stratum {
-    border-bottom: 3px solid #000000 !important; /* Thicker border between different strata */
+    border-bottom: 1px solid #000000 !important; /* Normal border between different strata */
   }
   .excel-table tr.last-row-of-stratum td {
-    border-bottom: 3px solid #000000 !important; /* Thicker border for all cells in last row of stratum */
+    border-bottom: 1px solid #000000 !important; /* Normal border for all cells in last row of stratum */
   }
   
   /* Make table headers black and bold */
@@ -148,8 +299,7 @@ export const excelTableStyles = `
   
   /* Subdivision styling - keep normal borders */
   .excel-table tr.subdivision {
-    background-color: #ffffff !important;
-    height: 35px !important; /* Compact height */
+    height: 40px !important; /* Consistent height with parent rows */
     border-bottom: 1px solid #000000 !important; /* Normal border for subdivisions */
   }
   .excel-table tr.subdivision td {
@@ -161,40 +311,34 @@ export const excelTableStyles = `
     vertical-align: top !important;
     position: relative !important;
     border-bottom: 1px solid #000000 !important; /* Normal border for spanned cells */
+    height: auto !important;
+    min-height: 40px !important;
+    background-color: inherit !important;
   }
-  /* Spanned cells in last row of stratum get thicker border */
+  /* Spanned cells in last row of stratum get normal border */
   .excel-table tr.last-row-of-stratum td[rowspan] {
-    border-bottom: 3px solid #000000 !important; /* Thicker border for spanned cells in last row of stratum */
+    border-bottom: 1px solid #000000 !important; /* Normal border for spanned cells in last row of stratum */
   }
   .excel-table tr.parent-row td[rowspan] textarea,
   .excel-table tr.parent-row td[rowspan] input {
     height: 100% !important;
+    min-height: 40px !important;
     resize: none !important;
-    overflow-y: hidden !important;
+    overflow-y: auto !important;
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    line-height: 1.2 !important;
+    font-size: 11px !important;
   }
   
-  /* Sample/Event fields in subdivision */
-  .excel-table tr.subdivision td {
-    background-color: #ffffff !important;
-  }
+
   
-  /* Test result fields */
-  .excel-table tr td:nth-child(7),
-  .excel-table tr td:nth-child(8),
-  .excel-table tr td:nth-child(9),
-  .excel-table tr td:nth-child(10),
-  .excel-table tr td:nth-child(11),
-  .excel-table tr td:nth-child(12),
-  .excel-table tr td:nth-child(13),
-  .excel-table tr td:nth-child(14),
-  .excel-table tr td:nth-child(15) {
-    background-color: #ffffff !important;
-  }
+
   
   /* Shared cells in parent row */
   .excel-table tr.subdivision td:empty {

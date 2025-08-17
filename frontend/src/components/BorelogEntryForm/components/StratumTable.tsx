@@ -261,19 +261,29 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                     >
                       {/* Description */}
                       {!isSubdivision && (
-                        <td rowSpan={rowSpan} className="border border-gray-300 relative">
+                        <td 
+                          rowSpan={rowSpan} 
+                          className="border border-gray-300 relative manual-text"
+                          style={{
+                            height: `${Math.max(40, rowSpan * 40)}px`
+                          }}
+                        >
                           <Textarea
                             disabled={!canEdit}
                             value={row.description}
                             onChange={(e) => updateStratumRow(index, 'description', e.target.value)}
                             className="text-left"
                             placeholder="Enter description"
+                            style={{
+                              height: `${Math.max(40, rowSpan * 40)}px`,
+                              minHeight: `${Math.max(40, rowSpan * 40)}px`
+                            }}
                           />
                         </td>
                       )}
                       
                       {/* Depth From */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -285,7 +295,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* Depth To */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -297,19 +307,18 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* Thickness */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 calculated">
                         <Input
                           disabled={true}
                           type="number"
                           step="0.01"
                           value={formatNumber(row.thickness)}
-                          className="bg-gray-100"
                           placeholder="0.00"
                         />
                       </td>
                       
                       {/* Sample Type */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 manual-text">
                         <Input
                           disabled={!canEdit}
                           value={row.sample_type}
@@ -320,7 +329,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* Sample Depth */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -332,7 +341,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* Run Length */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -344,7 +353,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* SPT 15cm 1 */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -355,7 +364,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* SPT 15cm 2 */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -366,7 +375,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* SPT 15cm 3 */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -377,18 +386,17 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* N-Value */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 calculated">
                         <Input
                           disabled={true}
                           type="number"
                           value={formatNumber(row.n_value)}
-                          className="bg-gray-100"
                           placeholder="0"
                         />
                       </td>
                       
                       {/* Total Core Length */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -400,19 +408,18 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* TCR % */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 calculated">
                         <Input
                           disabled={true}
                           type="number"
                           step="0.01"
                           value={formatNumber(row.tcr_percent)}
-                          className="bg-gray-100"
                           placeholder="0.00"
                         />
                       </td>
                       
                       {/* RQD Length */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 numeric-input">
                         <Input
                           disabled={!canEdit}
                           type="number"
@@ -424,65 +431,104 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* RQD % */}
-                      <td className="border border-gray-300">
+                      <td className="border border-gray-300 calculated">
                         <Input
                           disabled={true}
                           type="number"
                           step="0.01"
                           value={formatNumber(row.rqd_percent)}
-                          className="bg-gray-100"
                           placeholder="0.00"
                         />
                       </td>
                       
                       {/* Return Water Color */}
                       {!isSubdivision && (
-                        <td rowSpan={rowSpan} className="border border-gray-300">
-                          <Input
+                        <td 
+                          rowSpan={rowSpan} 
+                          className="border border-gray-300 relative manual-text"
+                          style={{
+                            height: `${Math.max(40, rowSpan * 40)}px`
+                          }}
+                        >
+                          <Textarea
                             disabled={!canEdit}
                             value={row.return_water_color}
                             onChange={(e) => updateStratumRow(index, 'return_water_color', e.target.value)}
                             className="text-left"
                             placeholder="Color"
+                            style={{
+                              height: `${Math.max(40, rowSpan * 40)}px`,
+                              minHeight: `${Math.max(40, rowSpan * 40)}px`
+                            }}
                           />
                         </td>
                       )}
                       
                       {/* Water Loss */}
                       {!isSubdivision && (
-                        <td rowSpan={rowSpan} className="border border-gray-300">
-                          <Input
+                        <td 
+                          rowSpan={rowSpan} 
+                          className="border border-gray-300 relative manual-text"
+                          style={{
+                            height: `${Math.max(40, rowSpan * 40)}px`
+                          }}
+                        >
+                          <Textarea
                             disabled={!canEdit}
                             value={row.water_loss}
                             onChange={(e) => updateStratumRow(index, 'water_loss', e.target.value)}
                             className="text-left"
                             placeholder="Loss"
+                            style={{
+                              height: `${Math.max(40, rowSpan * 40)}px`,
+                              minHeight: `${Math.max(40, rowSpan * 40)}px`
+                            }}
                           />
                         </td>
                       )}
                       
                       {/* Borehole Diameter */}
                       {!isSubdivision && (
-                        <td rowSpan={rowSpan} className="border border-gray-300">
-                          <Input
+                        <td 
+                          rowSpan={rowSpan} 
+                          className="border border-gray-300 relative numeric-input"
+                          style={{
+                            height: `${Math.max(40, rowSpan * 40)}px`
+                          }}
+                        >
+                          <Textarea
                             disabled={!canEdit}
                             value={row.borehole_diameter}
                             onChange={(e) => updateStratumRow(index, 'borehole_diameter', e.target.value)}
                             className="text-left"
                             placeholder="Diameter"
+                            style={{
+                              height: `${Math.max(40, rowSpan * 40)}px`,
+                              minHeight: `${Math.max(40, rowSpan * 40)}px`
+                            }}
                           />
                         </td>
                       )}
                       
                       {/* Remarks */}
                       {!isSubdivision && (
-                        <td rowSpan={rowSpan} className="border border-gray-300">
+                        <td 
+                          rowSpan={rowSpan} 
+                          className="border border-gray-300 manual-text"
+                          style={{
+                            height: `${Math.max(40, rowSpan * 40)}px`
+                          }}
+                        >
                           <Textarea
                             disabled={!canEdit}
                             value={row.remarks}
                             onChange={(e) => updateStratumRow(index, 'remarks', e.target.value)}
                             className="text-left"
                             placeholder="Remarks"
+                            style={{
+                              height: `${Math.max(40, rowSpan * 40)}px`,
+                              minHeight: `${Math.max(40, rowSpan * 40)}px`
+                            }}
                           />
                         </td>
                       )}
