@@ -8,11 +8,13 @@ export const generateId = (): string => {
 // Update test counts based on stratum rows
 export const updateTestCounts = (stratumRows: StratumRow[], setValue: (field: string, value: any) => void) => {
   const sptCount = stratumRows.filter(row => row.sample_type.includes('S')).length;
+  const vsCount = stratumRows.filter(row => row.sample_type.includes('VS')).length;
   const undisturbedCount = stratumRows.filter(row => row.sample_type.includes('U')).length;
   const disturbedCount = stratumRows.filter(row => row.sample_type.includes('D')).length;
   const waterCount = stratumRows.filter(row => row.sample_type.includes('W')).length;
   
-  setValue('spt_vs_tests_count', sptCount);
+  setValue('spt_tests_count', sptCount);
+  setValue('vs_tests_count', vsCount);
   setValue('undisturbed_samples_count', undisturbedCount);
   setValue('disturbed_samples_count', disturbedCount);
   setValue('water_samples_count', waterCount);

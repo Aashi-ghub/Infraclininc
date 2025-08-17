@@ -36,7 +36,8 @@ interface BorelogFormData {
   
   // Test Counts (calculated fields)
   permeability_tests_count: number;
-  spt_vs_tests_count: number;
+  spt_tests_count: number;
+  vs_tests_count: number;
   undisturbed_samples_count: number;
   disturbed_samples_count: number;
   water_samples_count: number;
@@ -144,7 +145,8 @@ const borelogFormSchema = z.object({
   standing_water_level: z.number().nullable().optional(),
   termination_depth: z.number().nullable().optional(),
   permeability_tests_count: z.number(),
-  spt_vs_tests_count: z.number(),
+  spt_tests_count: z.number(),
+  vs_tests_count: z.number(),
   undisturbed_samples_count: z.number(),
   disturbed_samples_count: z.number(),
   water_samples_count: z.number(),

@@ -139,12 +139,50 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Co-ordinate</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input">
-                    <div className="grid grid-cols-2 gap-0">
-                      <div className="text-center text-xs py-1">E-</div>
-                      <div className="text-center text-xs py-1">L-</div>
-                    </div>
-                  </td>
+                  <td className="border border-black px-1 py-1 linked-data">
+                   <div className="flex items-center">
+                     <span className="text-xs font-semibold mr-1">E-</span>
+                     <FormField
+                       control={form.control}
+                       name="coordinate_e"
+                       render={({ field }) => (
+                         <FormItem className="m-0 flex-1">
+                           <FormControl>
+                             <Input
+                               disabled={!canEdit}
+                               placeholder=""
+                               className="border-0 p-1 text-xs h-6"
+                               {...field}
+                             />
+                           </FormControl>
+                           <FormMessage />
+                         </FormItem>
+                       )}
+                     />
+                   </div>
+                 </td>
+                  <td className="border border-black px-1 py-1 linked-data">
+                   <div className="flex items-center">
+                     <span className="text-xs font-semibold mr-1">L-</span>
+                     <FormField
+                       control={form.control}
+                       name="coordinate_l"
+                       render={({ field }) => (
+                         <FormItem className="m-0 flex-1">
+                           <FormControl>
+                             <Input
+                               disabled={!canEdit}
+                               placeholder=""
+                               className="border-0 p-1 text-xs h-6"
+                               {...field}
+                             />
+                           </FormControl>
+                           <FormMessage />
+                         </FormItem>
+                       )}
+                     />
+                   </div>
+                 </td>
                </tr>
 
                {/* Row 2: Chainage */}
@@ -192,7 +230,29 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Permeabilty test (PT)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input text-center text-xs">0</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input">
+                   <FormField
+                     control={form.control}
+                     name="permeability_tests_count"
+                     render={({ field }) => (
+                       <FormItem className="m-0">
+                         <FormControl>
+                           <Input
+                             disabled={!canEdit}
+                             type="number"
+                             min="0"
+                             placeholder="0"
+                             className="border-0 p-1 text-xs h-6 text-center"
+                             {...field}
+                             onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                             value={field.value || ''}
+                           />
+                         </FormControl>
+                         <FormMessage />
+                       </FormItem>
+                     )}
+                   />
+                 </td>
                </tr>
 
                {/* Row 3: Borehole No. */}
@@ -248,7 +308,8 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of SP test (S) & VS test (VS)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 calculated text-center text-xs">22 &nbsp;&nbsp;&amp;&nbsp;&nbsp; 0</td>
+                  <td className="border border-black px-1 py-1 calculated text-center text-xs">{form.watch('spt_tests_count') || 0}</td>
+                  <td className="border border-black px-1 py-1 calculated text-center text-xs">{form.watch('vs_tests_count') || 0}</td>
                </tr>
 
                {/* Row 4: Mean Sea Level */}
@@ -398,7 +459,29 @@ export function ProjectInfoSection({
                    />
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Water Sample (W)</td>
-                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input text-center text-xs">1</td>
+                  <td colSpan={2} className="border border-black px-1 py-1 numeric-input">
+                   <FormField
+                     control={form.control}
+                     name="water_samples_count"
+                     render={({ field }) => (
+                       <FormItem className="m-0">
+                         <FormControl>
+                           <Input
+                             disabled={!canEdit}
+                             type="number"
+                             min="0"
+                             placeholder="0"
+                             className="border-0 p-1 text-xs h-6 text-center"
+                             {...field}
+                             onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                             value={field.value || ''}
+                           />
+                         </FormControl>
+                         <FormMessage />
+                       </FormItem>
+                     )}
+                   />
+                 </td>
                </tr>
              </tbody>
            </table>
