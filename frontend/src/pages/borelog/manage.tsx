@@ -269,9 +269,9 @@ export default function ManageBorelogs() {
               Upload CSV
             </Button>
             <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
-              <Link to="/geological-log/create">
+              <Link to="/borelog/entry">
                 <Plus className="h-4 w-4 mr-2" />
-                Create New Geological Log
+                Create New Borelog
               </Link>
             </Button>
           </div>
