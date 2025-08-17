@@ -19,7 +19,8 @@ interface BorelogFormData {
   // Project Information (Excel rows 3-8)
   project_id: string;
   structure_id: string;
-  borehole_id: string;
+  substructure_id: string; // Added for new API
+  borehole_id: string; // Keep for backward compatibility
   job_code: string;
   section_name: string;
   coordinate_e: string;
@@ -32,7 +33,7 @@ interface BorelogFormData {
   commencement_date: string;
   completion_date: string;
   standing_water_level?: number | null;
-  termination_depth?: number | null;
+  termination_depth?: number | null; // Calculated from stratum data
   
   // Test Counts (calculated fields)
   permeability_tests_count: number;
@@ -130,6 +131,7 @@ const stratumRowSchema = z.object({
 const borelogFormSchema = z.object({
   project_id: z.string().min(1, 'Project is required'),
   structure_id: z.string().min(1, 'Structure is required'),
+  substructure_id: z.string().min(1, 'Substructure is required'),
   borehole_id: z.string().min(1, 'Borehole is required'),
   job_code: z.string().min(1, 'Job code is required'),
   section_name: z.string().min(1, 'Section name is required'),
@@ -143,7 +145,7 @@ const borelogFormSchema = z.object({
   commencement_date: z.string().min(1, 'Commencement date is required'),
   completion_date: z.string().min(1, 'Completion date is required'),
   standing_water_level: z.number().nullable().optional(),
-  termination_depth: z.number().nullable().optional(),
+  termination_depth: z.number().nullable().optional(), // Calculated from stratum data
   permeability_tests_count: z.number(),
   spt_tests_count: z.number(),
   vs_tests_count: z.number(),

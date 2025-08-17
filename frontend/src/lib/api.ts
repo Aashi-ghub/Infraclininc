@@ -111,12 +111,44 @@ export const borelogApi = {
   list: () => geologicalLogApi.list(),
 };
 
+// Actual Borelog API for borelog management
+export const actualBorelogApi = {
+  getByProject: (projectId: string) => 
+    apiClient.get<ApiResponse<any>>(`/projects/${projectId}/borelogs`),
+  
+  getFormData: (params?: { project_id?: string; structure_id?: string }) => {
+    const queryParams = params ? new URLSearchParams(params).toString() : '';
+    return apiClient.get<ApiResponse<any>>(`/borelog-form-data${queryParams ? `?${queryParams}` : ''}`);
+  },
+};
+
 export const borelogDetailsApi = {
   create: (data: CreateBorelogDetailInput) => 
     apiClient.post<ApiResponse<BorelogDetail>>('/borelog-details', data),
   
   getByBorelogId: (borelogId: string) => 
     apiClient.get<ApiResponse<BorelogDetail[]>>(`/borelog-details/${borelogId}`),
+};
+
+// New borelog API endpoints
+export const borelogApiV2 = {
+  // Create new borelog details with version control
+  createDetails: (data: any) => 
+    apiClient.post<ApiResponse<any>>('/borelog-details', data),
+  
+  // Get borelog details with version history
+  getDetailsByBorelogId: (borelogId: string) => 
+    apiClient.get<ApiResponse<any>>(`/borelog-details/${borelogId}`),
+  
+  // Get all borelogs for a project with latest details
+  getByProject: (projectId: string) => 
+    apiClient.get<ApiResponse<any>>(`/projects/${projectId}/borelogs`),
+  
+  // Get form data (projects, structures, substructures)
+  getFormData: (params?: { project_id?: string; structure_id?: string }) => {
+    const queryParams = params ? new URLSearchParams(params).toString() : '';
+    return apiClient.get<ApiResponse<any>>(`/borelog-form-data${queryParams ? `?${queryParams}` : ''}`);
+  },
 };
 
 export const projectApi = {

@@ -27,10 +27,10 @@ export function ProjectInfoSection({
         <CardTitle>Project Information</CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Project and Structure Selection */}
+        {/* Project, Structure, and Substructure Selection */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Project Selection</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Project Selection */}
             <FormField
               control={form.control}
@@ -82,6 +82,36 @@ export function ProjectInfoSection({
                       {structures.map((structure) => (
                         <SelectItem key={structure.structure_id} value={structure.structure_id}>
                           {structure.description || structure.type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Substructure Selection */}
+            <FormField
+              control={form.control}
+              name="borehole_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">Substructure</FormLabel>
+                  <Select
+                    disabled={!canEdit || !form.watch('structure_id')}
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="bg-yellow-100 border-yellow-300 focus:border-yellow-500">
+                        <SelectValue placeholder="Select substructure" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {boreholes.map((borehole) => (
+                        <SelectItem key={borehole.borehole_id} value={borehole.borehole_id}>
+                          {borehole.borehole_number} - {borehole.location}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -259,33 +289,12 @@ export function ProjectInfoSection({
                <tr>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Borehole No.</td>
                   <td className="border border-black px-1 py-1 linked-data">
-                   <FormField
-                     control={form.control}
-                     name="borehole_id"
-                     render={({ field }) => (
-                       <FormItem className="m-0">
-                         <Select
-                           disabled={!canEdit || !form.watch('structure_id')}
-                           onValueChange={field.onChange}
-                           value={field.value}
-                         >
-                           <FormControl>
-                             <SelectTrigger className="border-0 p-1 text-xs h-6">
-                               <SelectValue placeholder="" />
-                             </SelectTrigger>
-                           </FormControl>
-                           <SelectContent>
-                             {boreholes.map((borehole) => (
-                               <SelectItem key={borehole.borehole_id} value={borehole.borehole_id}>
-                                 {borehole.borehole_number}
-                               </SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                         <FormMessage />
-                       </FormItem>
-                     )}
-                   />
+                   <div className="p-1 text-xs h-6 flex items-center">
+                     {form.watch('borehole_id') ? 
+                       boreholes.find(b => b.borehole_id === form.watch('borehole_id'))?.borehole_number || '' 
+                       : 'Select substructure above'
+                     }
+                   </div>
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Commencement Date</td>
                   <td className="border border-black px-1 py-1 numeric-input">
@@ -436,27 +445,20 @@ export function ProjectInfoSection({
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Termination Depth</td>
                   <td className="border border-black px-1 py-1 calculated">
-                   <FormField
-                     control={form.control}
-                     name="termination_depth"
-                     render={({ field }) => (
-                       <FormItem className="m-0">
-                         <FormControl>
-                           <Input
-                             disabled={!canEdit}
-                             type="number"
-                             step="0.01"
-                             placeholder="40.45 m BGL"
-                             className="border-0 p-1 text-xs h-6"
-                             {...field}
-                             onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                             value={field.value || ''}
-                           />
-                         </FormControl>
-                         <FormMessage />
-                       </FormItem>
-                     )}
-                   />
+                   <div className="p-1 text-xs h-6 flex items-center">
+                     {(() => {
+                       const stratumRows = form.watch('stratum_rows') || [];
+                       if (stratumRows.length === 0) {
+                         return '0.00 m BGL';
+                       }
+                       // Find the maximum depth_to value from all stratum rows
+                       const maxDepth = Math.max(...stratumRows
+                         .map(row => row.depth_to || 0)
+                         .filter(depth => depth > 0)
+                       );
+                       return maxDepth > 0 ? `${maxDepth.toFixed(2)} m BGL` : '0.00 m BGL';
+                     })()}
+                   </div>
                  </td>
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">No. of Water Sample (W)</td>
                   <td colSpan={2} className="border border-black px-1 py-1 numeric-input">

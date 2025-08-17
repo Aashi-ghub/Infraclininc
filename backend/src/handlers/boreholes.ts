@@ -57,12 +57,12 @@ export const listBoreholes = async (event: APIGatewayProxyEvent): Promise<APIGat
         b.status,
         b.created_at,
         b.updated_at,
-        p.project_name,
-        s.structure_name
+        p.name as project_name,
+        s.type as structure_name
       FROM borehole b
       JOIN projects p ON b.project_id = p.project_id
       JOIN structure s ON b.structure_id = s.structure_id
-      ORDER BY p.project_name, s.structure_name, b.borehole_number
+      ORDER BY p.name, s.type, b.borehole_number
     `;
 
     const result = await db.query(query);
@@ -138,8 +138,8 @@ export const getBoreholeById = async (event: APIGatewayProxyEvent): Promise<APIG
         b.status,
         b.created_at,
         b.updated_at,
-        p.project_name,
-        s.structure_name
+        p.name as project_name,
+        s.type as structure_name
       FROM borehole b
       JOIN projects p ON b.project_id = p.project_id
       JOIN structure s ON b.structure_id = s.structure_id
@@ -246,11 +246,11 @@ export const getBoreholesByProject = async (event: APIGatewayProxyEvent): Promis
         b.status,
         b.created_at,
         b.updated_at,
-        s.structure_name
+        s.type as structure_name
       FROM borehole b
       JOIN structure s ON b.structure_id = s.structure_id
       WHERE b.project_id = $1
-      ORDER BY s.structure_name, b.borehole_number
+      ORDER BY s.type, b.borehole_number
     `;
 
     const result = await db.query(query, [projectId]);
@@ -561,7 +561,7 @@ export const updateBorehole = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     // Check if borehole exists and user has access
     const boreholeQuery = `
-      SELECT b.*, p.project_name 
+      SELECT b.*, p.name as project_name 
       FROM borehole b
       JOIN projects p ON b.project_id = p.project_id
       WHERE b.borehole_id = $1

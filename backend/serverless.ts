@@ -179,7 +179,7 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
-    // Borelog Details endpoints
+    // Borelog Details endpoints (Updated with new handlers)
     createBorelogDetails: {
       handler: 'src/handlers/createBorelogDetails.handler',
       events: [
@@ -210,7 +210,7 @@ const serverlessConfiguration: AWS = {
         {
           http: {
             method: 'get',
-            path: '/geological-log/project/{project_id}',
+            path: '/projects/{project_id}/borelogs',
             cors: true
           }
         }
@@ -703,6 +703,18 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'delete',
             path: '/boreholes/{boreholeId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogFormData: {
+      handler: 'src/handlers/getBorelogFormData.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-form-data',
             cors: true
           }
         }

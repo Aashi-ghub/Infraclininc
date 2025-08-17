@@ -8,11 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { borelogApi, projectApi } from '@/lib/api';
-import { BorelogEditModal, type Borelog, type Substructure } from '@/components/BorelogEditModal';
+import { actualBorelogApi, projectApi } from '@/lib/api';
 import { Loader } from '@/components/Loader';
 import { Link } from 'react-router-dom';
-import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 import { useAuth } from '@/lib/auth';
 import { Project } from '@/lib/types';
 import { BorelogCSVUpload } from '@/components/BorelogCSVUpload';
@@ -20,9 +18,9 @@ import { BorelogCSVUpload } from '@/components/BorelogCSVUpload';
 export default function ManageBorelogs() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [borelogs, setBorelogs] = useState<Borelog[]>([]);
-  const [filteredBorelogs, setFilteredBorelogs] = useState<Borelog[]>([]);
-  const [substructures, setSubstructures] = useState<Substructure[]>([]);
+  const [borelogs, setBorelogs] = useState<any[]>([]);
+  const [filteredBorelogs, setFilteredBorelogs] = useState<any[]>([]);
+  const [substructures, setSubstructures] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSubstructures, setIsLoadingSubstructures] = useState(true);
@@ -77,26 +75,40 @@ export default function ManageBorelogs() {
 
       try {
         setIsLoading(true);
-        console.log('Loading geological logs for project:', selectedProject);
-        const response = await borelogApi.getByProject(selectedProject);
-        console.log('Geological logs response:', response);
+        // Find the project ID from the selected project name
+        const selectedProjectData = projects.find(p => p.name === selectedProject);
+        if (!selectedProjectData) {
+          console.error('Project not found:', selectedProject);
+          setBorelogs([]);
+          setFilteredBorelogs([]);
+          return;
+        }
+
+        console.log('Loading borelogs for project:', selectedProject, 'ID:', selectedProjectData.project_id);
+        const response = await actualBorelogApi.getByProject(selectedProjectData.project_id);
+        console.log('Borelogs response:', response);
         
-        if (response.data && Array.isArray(response.data.data)) {
-          setBorelogs(response.data.data);
-          setFilteredBorelogs(response.data.data);
-        } else if (response.data && Array.isArray(response.data)) {
-          setBorelogs(response.data);
-          setFilteredBorelogs(response.data);
+        if (response.data && response.data.data && response.data.data.borelogs) {
+          // Flatten the grouped borelogs structure
+          const flattenedBorelogs = response.data.data.borelogs.flatMap((group: any) => 
+            group.borelogs.map((borelog: any) => ({
+              ...borelog,
+              structure: group.structure,
+              substructure: group.substructure
+            }))
+          );
+          setBorelogs(flattenedBorelogs);
+          setFilteredBorelogs(flattenedBorelogs);
         } else {
           console.error('Unexpected response format:', response);
           setBorelogs([]);
           setFilteredBorelogs([]);
         }
       } catch (error) {
-        console.error('Failed to load geological logs:', error);
+        console.error('Failed to load borelogs:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load geological logs. Please try again.',
+          description: 'Failed to load borelogs. Please try again.',
           variant: 'destructive',
         });
         setBorelogs([]);
@@ -107,7 +119,7 @@ export default function ManageBorelogs() {
     };
 
     loadBorelogs();
-  }, [selectedProject, toast]);
+  }, [selectedProject, projects, toast]);
 
   // Load substructures
   useEffect(() => {
@@ -115,7 +127,7 @@ export default function ManageBorelogs() {
       try {
         setIsLoadingSubstructures(true);
         // Mock substructures data (replace with real API call)
-        const mockSubstructures: Substructure[] = [
+        const mockSubstructures: any[] = [
           { id: 'sub-1', name: 'Pier Foundation P1', type: 'Pier' },
           { id: 'sub-2', name: 'Abutment A1', type: 'Abutment' },
           { id: 'sub-3', name: 'Pier Foundation P2', type: 'Pier' },
@@ -143,16 +155,16 @@ export default function ManageBorelogs() {
 
     if (searchFilter.trim()) {
       filtered = filtered.filter(borelog =>
-        borelog.borehole_number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        borelog.borehole_location?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        (borelog.chainage_km !== undefined && borelog.chainage_km.toString().includes(searchFilter.toLowerCase()))
+        borelog.details?.number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        borelog.details?.coordinate?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        (borelog.details?.termination_depth !== undefined && borelog.details.termination_depth.toString().includes(searchFilter.toLowerCase()))
       );
     }
 
     setFilteredBorelogs(filtered);
   }, [borelogs, searchFilter]);
 
-  const handleBorelogUpdate = (updatedBorelog: Borelog) => {
+  const handleBorelogUpdate = (updatedBorelog: any) => {
     setBorelogs(prevBorelogs =>
       prevBorelogs.map(borelog =>
         borelog.borelog_id === updatedBorelog.borelog_id ? updatedBorelog : borelog
@@ -175,14 +187,24 @@ export default function ManageBorelogs() {
       const loadBorelogs = async () => {
         try {
           setIsLoading(true);
-          const response = await borelogApi.getByProject(selectedProject);
+          const selectedProjectData = projects.find(p => p.name === selectedProject);
+          if (!selectedProjectData) {
+            console.error('Project not found:', selectedProject);
+            return;
+          }
           
-          if (response.data && Array.isArray(response.data.data)) {
-            setBorelogs(response.data.data);
-            setFilteredBorelogs(response.data.data);
-          } else if (response.data && Array.isArray(response.data)) {
-            setBorelogs(response.data);
-            setFilteredBorelogs(response.data);
+          const response = await actualBorelogApi.getByProject(selectedProjectData.project_id);
+          
+          if (response.data && response.data.data && response.data.data.borelogs) {
+            const flattenedBorelogs = response.data.data.borelogs.flatMap((group: any) => 
+              group.borelogs.map((borelog: any) => ({
+                ...borelog,
+                structure: group.structure,
+                substructure: group.substructure
+              }))
+            );
+            setBorelogs(flattenedBorelogs);
+            setFilteredBorelogs(flattenedBorelogs);
           }
         } catch (error) {
           console.error('Failed to refresh borelogs:', error);
@@ -203,10 +225,8 @@ export default function ManageBorelogs() {
 
   const handleQuickAssign = async (borelogId: string, substructureId: string) => {
     try {
-      await borelogApi.update(borelogId, { 
-        substructure_id: substructureId === 'none' ? null : substructureId 
-      });
-      
+      // For now, we'll just update the local state since the actual borelog API doesn't have an update endpoint
+      // TODO: Implement proper borelog update API endpoint
       setBorelogs(prevBorelogs =>
         prevBorelogs.map(borelog =>
           borelog.borelog_id === borelogId 
@@ -235,9 +255,9 @@ export default function ManageBorelogs() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Manage Geological Logs</h1>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Manage Borelogs</h1>
             <p className="text-muted-foreground">
-              View and edit geological log details for your projects
+              View and manage borelog details for your projects
             </p>
           </div>
           <div className="flex gap-2">
@@ -291,7 +311,7 @@ export default function ManageBorelogs() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by borehole number, location, chainage..."
+                    placeholder="Search by borelog number, coordinates, depth..."
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
                     className="pl-10"
@@ -331,7 +351,7 @@ export default function ManageBorelogs() {
         {selectedProject !== 'all' && !isLoading && (
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">
-              Showing {filteredBorelogs.length} of {borelogs.length} geological logs
+              Showing {filteredBorelogs.length} of {borelogs.length} borelogs
               {searchFilter.trim() && ' (filtered)'}
             </p>
           </div>
@@ -345,21 +365,21 @@ export default function ManageBorelogs() {
                 <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Select a Project</h3>
                 <p className="text-muted-foreground">
-                  Choose a project from the dropdown above to view and manage its geological logs.
+                  Choose a project from the dropdown above to view and manage its borelogs.
                 </p>
               </div>
             ) : isLoading ? (
               <div className="p-8 text-center">
-                <Loader size="lg" text="Loading geological logs..." />
+                <Loader size="lg" text="Loading borelogs..." />
               </div>
             ) : filteredBorelogs.length === 0 ? (
               <div className="p-8 text-center">
                 <Drill className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No geological logs found</h3>
+                <h3 className="text-lg font-semibold mb-2">No borelogs found</h3>
                 <p className="text-muted-foreground mb-4">
                   {borelogs.length === 0 
-                    ? 'This project has no geological logs yet.'
-                    : 'No geological logs match your search criteria.'
+                    ? 'This project has no borelogs yet.'
+                    : 'No borelogs match your search criteria.'
                   }
                 </p>
                 <div className="flex gap-2">
@@ -371,9 +391,9 @@ export default function ManageBorelogs() {
                     Upload CSV
                   </Button>
                   <Button className="bg-gradient-to-r from-primary to-primary-glow" asChild>
-                    <Link to="/geological-log/create">
+                    <Link to="/borelog/entry">
                       <Plus className="h-4 w-4 mr-2" />
-                      Create First Geological Log
+                      Create First Borelog
                     </Link>
                   </Button>
                 </div>
@@ -383,56 +403,41 @@ export default function ManageBorelogs() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Borehole Number</TableHead>
-                      <TableHead>Location</TableHead>
+                      <TableHead>Borelog Number</TableHead>
+                      <TableHead>Structure/Substructure</TableHead>
                       <TableHead>Depth (m)</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Substructure</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Created By</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredBorelogs.map((borelog) => (
                       <TableRow key={borelog.borelog_id}>
-                        <TableCell className="font-medium">{borelog.borehole_number}</TableCell>
+                        <TableCell className="font-medium">{borelog.details?.number || 'N/A'}</TableCell>
                         <TableCell>
-                          <div className="flex items-start gap-1.5">
-                            <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                            <span>{borelog.borehole_location}</span>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1">
+                              <Building className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm">{borelog.structure?.type || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">{borelog.substructure?.type || 'N/A'}</span>
+                            </div>
                           </div>
-                          {borelog.chainage_km && (
-                            <span className="text-xs text-muted-foreground block mt-1">
-                              Chainage: {borelog.chainage_km} km
-                            </span>
-                          )}
                         </TableCell>
-                        <TableCell>{borelog.termination_depth} m</TableCell>
+                        <TableCell>{borelog.details?.termination_depth || 'N/A'} m</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            Completed
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            v{borelog.version_no || '1'}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {isLoadingSubstructures ? (
-                            <Loader size="sm" />
-                          ) : (
-                            <Select
-                              value={borelog.substructure_id || 'none'}
-                              onValueChange={(value) => handleQuickAssign(borelog.borelog_id, value === 'none' ? '' : value)}
-                            >
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Not assigned" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Not assigned</SelectItem>
-                                {substructures.map((sub) => (
-                                  <SelectItem key={sub.id} value={sub.id}>
-                                    {sub.name} ({sub.type})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">{borelog.created_by?.name || 'Unknown'}</span>
+                            <span className="text-xs text-muted-foreground">{borelog.created_by?.email || ''}</span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
@@ -441,20 +446,20 @@ export default function ManageBorelogs() {
                               size="sm"
                               asChild
                             >
-                              <Link to={`/geological-log/${borelog.borelog_id}`}>
+                              <Link to={`/borelog/${borelog.borelog_id}`}>
                                 View
                               </Link>
                             </Button>
-                            <BorelogEditModal
-                              borelog={borelog}
-                              substructures={substructures}
-                              onUpdate={handleBorelogUpdate}
-                            />
                             {(user?.role === 'Admin' || user?.role === 'Project Manager' || user?.role === 'Site Engineer') && (
-                              <DeleteBorelogButton 
-                                borelogId={borelog.borelog_id} 
-                                onSuccess={() => handleBorelogDelete(borelog.borelog_id)}
-                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                              >
+                                <Link to={`/borelog-details/create?borelog_id=${borelog.borelog_id}`}>
+                                  Edit Details
+                                </Link>
+                              </Button>
                             )}
                           </div>
                         </TableCell>
