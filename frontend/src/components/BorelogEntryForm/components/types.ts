@@ -78,7 +78,7 @@ interface StratumRow {
   
   // Sample/Event columns
   sample_type: string;
-  sample_depth?: number | null;
+  sample_depth?: string | null; // Can be single depth (e.g., "0.50") or range (e.g., "1.50-1.95")
   run_length?: number | null;
   
   // SPT columns
@@ -111,7 +111,7 @@ const stratumRowSchema = z.object({
   depth_to: z.number().nullable().optional(),
   thickness: z.number().nullable().optional(),
   sample_type: z.string(),
-  sample_depth: z.number().nullable().optional(),
+  sample_depth: z.string().nullable().optional(),
   run_length: z.number().nullable().optional(),
   spt_15cm_1: z.number().nullable().optional(),
   spt_15cm_2: z.number().nullable().optional(),

@@ -37,6 +37,22 @@ export const calculateDependentFields = (
     }
   }
 
+  // Calculate run length from sample event depth
+  if (field === 'sample_depth') {
+    const sampleDepth = value;
+    if (sampleDepth && typeof sampleDepth === 'string') {
+      const depthRange = parseDepthRange(sampleDepth);
+      if (depthRange) {
+        // If it's a range, calculate the difference
+        const [from, to] = depthRange;
+        updates.run_length = to - from;
+      } else {
+        // If it's a single depth, run length is not applicable
+        updates.run_length = null;
+      }
+    }
+  }
+
   // Calculate N-value when SPT values change
   if (field === 'spt_15cm_1' || field === 'spt_15cm_2' || field === 'spt_15cm_3') {
     const spt1 = field === 'spt_15cm_1' ? value : row.spt_15cm_1;
@@ -80,7 +96,7 @@ export const createStratumRow = (isSubdivision = false, parentId?: string): Stra
     depth_to: null,
     thickness: null,
     sample_type: '',
-    sample_depth: null,
+    sample_depth: '',
     run_length: null,
     spt_15cm_1: null,
     spt_15cm_2: null,
@@ -98,16 +114,38 @@ export const createStratumRow = (isSubdivision = false, parentId?: string): Stra
   };
 };
 
-// Format number for display
+// Format number for display with decimal support
 export const formatNumber = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return '';
-  return value.toString();
+  if (value === null || value === undefined) return '-';
+  // Format to show up to 2 decimal places, but don't show trailing zeros
+  return value.toFixed(2).replace(/\.?0+$/, '');
 };
 
-// Parse number from input
+// Parse number from input with decimal support
 export const parseNumber = (value: string): number | null => {
   if (!value || value.trim() === '') return null;
+  // Allow decimal numbers like 0.00, 0.50, etc.
   const parsed = parseFloat(value);
   return isNaN(parsed) ? null : parsed;
+};
+
+// Parse depth range from string (e.g., "1.50-1.95" returns [1.50, 1.95])
+export const parseDepthRange = (value: string): [number, number] | null => {
+  if (!value || value.trim() === '') return null;
+  
+  // Check if it's a range (contains "-")
+  if (value.includes('-')) {
+    const parts = value.split('-').map(s => s.trim());
+    if (parts.length === 2) {
+      const from = parseFloat(parts[0]);
+      const to = parseFloat(parts[1]);
+      if (!isNaN(from) && !isNaN(to)) {
+        return [from, to];
+      }
+    }
+  }
+  
+  // If it's a single number, return null (no range)
+  return null;
 };
 

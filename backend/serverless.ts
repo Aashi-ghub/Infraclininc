@@ -218,6 +218,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    getBorelogBySubstructureId: {
+      handler: 'src/handlers/getBorelogBySubstructureId.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog/substructure/{substructure_id}',
+            cors: true
+          }
+        }
+      ]
+    },
     getBorelogsByProject: {
       handler: 'src/handlers/getBorelogsByProject.handler',
       events: [

@@ -144,6 +144,10 @@ export const borelogApiV2 = {
   getDetailsByBorelogId: (borelogId: string) => 
     apiClient.get<ApiResponse<any>>(`/borelog-details/${borelogId}`),
   
+  // Get borelog by substructure_id with version history
+  getBySubstructureId: (substructureId: string) => 
+    apiClient.get<ApiResponse<any>>(`/borelog/substructure/${substructureId}`),
+  
   // Get all borelogs for a project with latest details
   getByProject: (projectId: string) => 
     apiClient.get<ApiResponse<any>>(`/projects/${projectId}/borelogs`),

@@ -288,6 +288,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                           disabled={!canEdit}
                           type="number"
                           step="0.01"
+                          min="0"
                           value={formatNumber(row.depth_from)}
                           onChange={(e) => updateStratumRow(index, 'depth_from', parseNumber(e.target.value))}
                           placeholder="0.00"
@@ -300,6 +301,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                           disabled={!canEdit}
                           type="number"
                           step="0.01"
+                          min="0"
                           value={formatNumber(row.depth_to)}
                           onChange={(e) => updateStratumRow(index, 'depth_to', parseNumber(e.target.value))}
                           placeholder="0.00"
@@ -329,26 +331,25 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                       </td>
                       
                       {/* Sample Depth */}
-                      <td className="border border-gray-300 numeric-input">
+                      <td className="border border-gray-300 manual-text">
                         <Input
                           disabled={!canEdit}
-                          type="number"
-                          step="0.01"
-                          value={formatNumber(row.sample_depth)}
-                          onChange={(e) => updateStratumRow(index, 'sample_depth', parseNumber(e.target.value))}
-                          placeholder="0.00"
+                          type="text"
+                          value={row.sample_depth || ''}
+                          onChange={(e) => updateStratumRow(index, 'sample_depth', e.target.value)}
+                          placeholder="0.50 or 1.50-1.95"
+                          title="Enter single depth (e.g., 0.50) or range (e.g., 1.50-1.95)"
                         />
                       </td>
                       
-                      {/* Run Length */}
-                      <td className="border border-gray-300 numeric-input">
+                      {/* Run Length - Calculated */}
+                      <td className="border border-gray-300 calculated">
                         <Input
-                          disabled={!canEdit}
-                          type="number"
-                          step="0.01"
+                          disabled={true}
+                          type="text"
                           value={formatNumber(row.run_length)}
-                          onChange={(e) => updateStratumRow(index, 'run_length', parseNumber(e.target.value))}
-                          placeholder="0.00"
+                          placeholder="-"
+                          title="Run length is calculated from sample event depth range"
                         />
                       </td>
                       
@@ -357,9 +358,11 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                         <Input
                           disabled={!canEdit}
                           type="number"
+                          step="0.01"
+                          min="0"
                           value={formatNumber(row.spt_15cm_1)}
                           onChange={(e) => updateStratumRow(index, 'spt_15cm_1', parseNumber(e.target.value))}
-                          placeholder="0"
+                          placeholder="0.00"
                         />
                       </td>
                       
@@ -368,9 +371,11 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                         <Input
                           disabled={!canEdit}
                           type="number"
+                          step="0.01"
+                          min="0"
                           value={formatNumber(row.spt_15cm_2)}
                           onChange={(e) => updateStratumRow(index, 'spt_15cm_2', parseNumber(e.target.value))}
-                          placeholder="0"
+                          placeholder="0.00"
                         />
                       </td>
                       
@@ -379,9 +384,11 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                         <Input
                           disabled={!canEdit}
                           type="number"
+                          step="0.01"
+                          min="0"
                           value={formatNumber(row.spt_15cm_3)}
                           onChange={(e) => updateStratumRow(index, 'spt_15cm_3', parseNumber(e.target.value))}
-                          placeholder="0"
+                          placeholder="0.00"
                         />
                       </td>
                       
@@ -390,8 +397,9 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                         <Input
                           disabled={true}
                           type="number"
+                          step="0.01"
                           value={formatNumber(row.n_value)}
-                          placeholder="0"
+                          placeholder="0.00"
                         />
                       </td>
                       
@@ -401,6 +409,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                           disabled={!canEdit}
                           type="number"
                           step="0.01"
+                          min="0"
                           value={formatNumber(row.total_core_length)}
                           onChange={(e) => updateStratumRow(index, 'total_core_length', parseNumber(e.target.value))}
                           placeholder="0.00"
@@ -424,6 +433,7 @@ export function StratumTable({ form, canEdit }: StratumTableProps) {
                           disabled={!canEdit}
                           type="number"
                           step="0.01"
+                          min="0"
                           value={formatNumber(row.rqd_length)}
                           onChange={(e) => updateStratumRow(index, 'rqd_length', parseNumber(e.target.value))}
                           placeholder="0.00"
