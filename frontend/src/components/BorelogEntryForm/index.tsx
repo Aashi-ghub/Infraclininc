@@ -225,17 +225,21 @@ export function BorelogEntryForm({
   // Auto-fill borehole data
   const autoFillBoreholeData = async (boreholeId: string) => {
     try {
-      const response = await boreholesApi.getById(boreholeId);
-      const borehole = response.data.data;
+      // Since boreholeId is actually substructure_id in the new system,
+      // we need to find the substructure data from the already loaded boreholes
+      const borehole = boreholes.find(b => b.borehole_id === boreholeId);
       
-      // Auto-fill form fields with borehole data (only available fields)
-      form.setValue('location', borehole.location || '');
-      form.setValue('msl', borehole.msl ? parseFloat(borehole.msl) : null);
-      form.setValue('method_of_boring', borehole.boring_method || '');
-      form.setValue('diameter_of_hole', borehole.hole_diameter?.toString() || '');
-      form.setValue('chainage_km', borehole.chainage ? parseFloat(borehole.chainage) : null);
+      if (borehole) {
+        // Auto-fill form fields with borehole data
+        form.setValue('location', borehole.location || '');
+        form.setValue('method_of_boring', borehole.boring_method || '');
+        form.setValue('diameter_of_hole', borehole.hole_diameter?.toString() || '');
+        form.setValue('msl', borehole.msl ? parseFloat(borehole.msl) : null);
+        form.setValue('chainage_km', borehole.chainage ? parseFloat(borehole.chainage) : null);
+      }
     } catch (error) {
       console.error('Error auto-filling borehole data:', error);
+      // Don't show error toast for auto-fill failures as they're not critical
     }
   };
 
@@ -394,12 +398,12 @@ export function BorelogEntryForm({
         images: ''
       };
       
-      // Submit the form using the new API
-      const response = await borelogApiV2.createDetails(submissionData);
+      // Submit the form using the new borelog API
+      const response = await borelogApiV2.create(submissionData);
       
       toast({
         title: 'Success',
-        description: `Borelog details created successfully! Version ${response.data.data.version_no}`,
+        description: `Borelog created successfully! Version ${response.data.data.version_no}`,
       });
       
       // Reload version history
@@ -425,41 +429,107 @@ export function BorelogEntryForm({
       setIsSaving(true);
       const formData = form.getValues();
       
-      // Use the new API to create a new borelog detail version
-      await borelogApiV2.createDetails({
-        project_id: formData.project_id,
-        structure_id: formData.structure_id,
+      // Calculate termination depth from stratum data
+      const terminationDepth = (() => {
+        const stratumRows = formData.stratum_rows || [];
+        if (stratumRows.length === 0) return 0;
+        const maxDepth = Math.max(...stratumRows
+          .map(row => row.depth_to || 0)
+          .filter(depth => depth > 0)
+        );
+        return maxDepth > 0 ? maxDepth : 0;
+      })();
+      
+      // Validate required fields before sending
+      if (!formData.substructure_id || !formData.project_id) {
+        toast({
+          title: 'Validation Error',
+          description: 'Please select a project and borehole before saving.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Debug: Log the form data to see what we're working with
+      console.log('Form data for validation:', {
         substructure_id: formData.substructure_id,
-        termination_depth: (() => {
-          const stratumRows = formData.stratum_rows || [];
-          if (stratumRows.length === 0) return 0;
-          const maxDepth = Math.max(...stratumRows
-            .map(row => row.depth_to || 0)
-            .filter(depth => depth > 0)
-          );
-          return maxDepth > 0 ? maxDepth : 0;
-        })(),
-        water_level: formData.standing_water_level,
-        stratum: formData.stratum_rows,
-        permeability_tests_count: formData.permeability_tests_count,
-        spt_tests_count: formData.spt_tests_count,
-        water_samples_count: formData.water_samples_count,
-        diameter_of_hole: formData.diameter_of_hole,
-        completion_date: formData.completion_date
+        project_id: formData.project_id,
+        borehole_id: formData.borehole_id
       });
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(formData.substructure_id)) {
+        toast({
+          title: 'Validation Error',
+          description: 'Invalid substructure ID format. Please select a valid borehole.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      if (!uuidRegex.test(formData.project_id)) {
+        toast({
+          title: 'Validation Error',
+          description: 'Invalid project ID format. Please select a valid project.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Map form data to borelog creation structure
+      const borelogData = {
+        substructure_id: formData.substructure_id,
+        project_id: formData.project_id,
+        type: 'Geotechnical' as const,
+        // Additional fields for borelog_details
+        number: formData.job_code || '',
+        msl: formData.msl?.toString() || '',
+        boring_method: formData.method_of_boring || '',
+        hole_diameter: formData.diameter_of_hole && !isNaN(parseFloat(formData.diameter_of_hole)) ? parseFloat(formData.diameter_of_hole) : undefined,
+        commencement_date: formData.commencement_date || '',
+        completion_date: formData.completion_date || '',
+        standing_water_level: formData.standing_water_level && !isNaN(Number(formData.standing_water_level)) ? Number(formData.standing_water_level) : undefined,
+        termination_depth: terminationDepth,
+        coordinate: formData.coordinate_e && formData.coordinate_l && !isNaN(parseFloat(formData.coordinate_l)) && !isNaN(parseFloat(formData.coordinate_e)) ? {
+          type: 'Point' as const,
+          coordinates: [parseFloat(formData.coordinate_e), parseFloat(formData.coordinate_l)] as [number, number] // [longitude, latitude]
+        } : undefined,
+        stratum_description: formData.stratum_rows?.[0]?.description || '',
+        stratum_depth_from: formData.stratum_rows?.[0]?.depth_from && !isNaN(Number(formData.stratum_rows[0].depth_from)) ? Number(formData.stratum_rows[0].depth_from) : undefined,
+        stratum_depth_to: formData.stratum_rows?.[0]?.depth_to && !isNaN(Number(formData.stratum_rows[0].depth_to)) ? Number(formData.stratum_rows[0].depth_to) : undefined,
+        stratum_thickness_m: formData.stratum_rows?.[0]?.thickness && !isNaN(Number(formData.stratum_rows[0].thickness)) ? Number(formData.stratum_rows[0].thickness) : undefined,
+        remarks: formData.stratum_rows?.[0]?.remarks || ''
+      };
+
+      // Debug: Log the data being sent
+      console.log('Sending borelog data:', borelogData);
+      
+      // Use the new borelog API to create a new borelog
+      const response = await borelogApiV2.create(borelogData);
       
       form.setValue('last_saved', new Date().toISOString());
       
       toast({
-        title: 'Version Created',
-        description: 'A new version has been created successfully.',
+        title: 'Borelog Created',
+        description: `A new borelog has been created successfully. Version ${response.data.data.version_no}`,
       });
       
     } catch (error: any) {
       console.error('Save error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      let errorMessage = 'Failed to create version.';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to create version.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

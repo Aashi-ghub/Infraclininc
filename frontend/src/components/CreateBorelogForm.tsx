@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
 import { geologicalLogSchema, GeologicalLogFormData } from '@/lib/zodSchemas';
-import { geologicalLogApi } from '@/lib/api';
+import { borelogApiV2 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -72,21 +72,41 @@ export function CreateBorelogForm() {
         return acc;
       }, {} as Record<string, any>);
       
-      // Ensure created_by_user_id is explicitly set to null
+      // Map the data to the new borelog API structure
       const submissionData = {
-        ...cleanData,
-        created_by_user_id: null
+        substructure_id: cleanData.borehole_number || '', // Use borehole_number as substructure_id for now
+        project_id: cleanData.project_name || '', // Use project_name as project_id for now
+        type: 'Geotechnical' as const,
+        number: cleanData.borehole_number,
+        msl: cleanData.msl,
+        boring_method: cleanData.method_of_boring,
+        hole_diameter: cleanData.diameter_of_hole,
+        commencement_date: cleanData.commencement_date,
+        completion_date: cleanData.completion_date,
+        standing_water_level: cleanData.standing_water_level,
+        termination_depth: cleanData.termination_depth,
+        coordinate: cleanData.coordinate,
+        permeability_test_count: cleanData.number_of_permeability_tests || '',
+        spt_vs_test_count: cleanData.number_of_spt_tests || '',
+        undisturbed_sample_count: cleanData.number_of_undisturbed_samples || '',
+        disturbed_sample_count: cleanData.number_of_disturbed_samples || '',
+        water_sample_count: cleanData.number_of_water_samples || '',
+        stratum_description: cleanData.lithology || '',
+        stratum_depth_from: cleanData.depth_of_stratum_from,
+        stratum_depth_to: cleanData.depth_of_stratum_to,
+        stratum_thickness_m: cleanData.thickness_of_stratum,
+        remarks: cleanData.remarks || ''
       };
       
       console.log('Submitting data:', submissionData);
       console.log('Auth token:', localStorage.getItem('auth_token'));
       console.log('API base URL:', import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/dev");
-      const response = await geologicalLogApi.create(submissionData);
+      const response = await borelogApiV2.create(submissionData);
       
       // Log the full response for debugging
       console.log('API Response:', response);
       console.log('Response data:', response.data);
-      console.log('Geological log data:', response.data.data);
+      console.log('Borelog data:', response.data.data);
       
       // Extract the borelog_id from the response
       const borelogId = response.data.data.borelog_id;
@@ -97,7 +117,7 @@ export function CreateBorelogForm() {
       
       toast({
         title: 'Success',
-        description: 'Geological log created successfully. You can now add images.',
+        description: 'Borelog created successfully. You can now add images.',
       });
       
       // Navigate to the correct URL with the borelog_id

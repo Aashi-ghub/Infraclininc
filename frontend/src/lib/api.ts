@@ -132,6 +132,10 @@ export const borelogDetailsApi = {
 
 // New borelog API endpoints
 export const borelogApiV2 = {
+  // Create new borelog (creates both boreloge and borelog_details)
+  create: (data: any) => 
+    apiClient.post<ApiResponse<any>>('/borelog', data),
+  
   // Create new borelog details with version control
   createDetails: (data: any) => 
     apiClient.post<ApiResponse<any>>('/borelog-details', data),

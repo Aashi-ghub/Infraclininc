@@ -179,6 +179,20 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
+    // Borelog endpoints
+    createBorelog: {
+      handler: 'src/handlers/createBorelog.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog',
+            cors: true
+          }
+        }
+      ]
+    },
+    
     // Borelog Details endpoints (Updated with new handlers)
     createBorelogDetails: {
       handler: 'src/handlers/createBorelogDetails.handler',
