@@ -50,13 +50,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Get borelog by substructure_id with latest details
+    // Get borelog by substructure_id with latest details (combine final and staging)
     const query = `
-      WITH latest_versions AS (
-        SELECT 
-          borelog_id,
-          MAX(version_no) as latest_version_no
-        FROM borelog_details
+      WITH combined AS (
+        SELECT borelog_id, version_no, created_at FROM borelog_details
+        UNION ALL
+        SELECT borelog_id, version_no, created_at FROM borelog_versions
+      ), latest_versions AS (
+        SELECT borelog_id, MAX(version_no) AS latest_version_no
+        FROM combined
         GROUP BY borelog_id
       )
       SELECT 
@@ -84,42 +86,42 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         bh.hole_diameter as borehole_hole_diameter,
         bh.description as borehole_description,
         bh.coordinates as borehole_coordinates_json,
-        -- Borelog details data
-        bd.version_no,
-        bd.number,
-        bd.msl,
-        bd.boring_method,
-        bd.hole_diameter,
-        bd.commencement_date,
-        bd.completion_date,
-        bd.standing_water_level,
-        bd.termination_depth,
-        bd.coordinate,
-        bd.permeability_test_count,
-        bd.spt_vs_test_count,
-        bd.undisturbed_sample_count,
-        bd.disturbed_sample_count,
-        bd.water_sample_count,
-        bd.stratum_description,
-        bd.stratum_depth_from,
-        bd.stratum_depth_to,
-        bd.stratum_thickness_m,
-        bd.sample_event_type,
-        bd.sample_event_depth_m,
-        bd.run_length_m,
-        bd.spt_blows_per_15cm,
-        bd.n_value_is_2131,
-        bd.total_core_length_cm,
-        bd.tcr_percent,
-        bd.rqd_length_cm,
-        bd.rqd_percent,
-        bd.return_water_colour,
-        bd.water_loss,
-        bd.borehole_diameter,
-        bd.remarks,
-        bd.images,
-        bd.created_at as details_created_at,
-        COALESCE(bd.created_by_user_id, b.created_by_user_id) as details_created_by,
+        -- Borelog details data (prefer final, fallback to staging)
+        COALESCE(bd.version_no, bv.version_no) AS version_no,
+        COALESCE(bd.number, bv.number) AS number,
+        COALESCE(bd.msl, bv.msl) AS msl,
+        COALESCE(bd.boring_method, bv.boring_method) AS boring_method,
+        COALESCE(bd.hole_diameter, bv.hole_diameter) AS hole_diameter,
+        COALESCE(bd.commencement_date, bv.commencement_date) AS commencement_date,
+        COALESCE(bd.completion_date, bv.completion_date) AS completion_date,
+        COALESCE(bd.standing_water_level, bv.standing_water_level) AS standing_water_level,
+        COALESCE(bd.termination_depth, bv.termination_depth) AS termination_depth,
+        COALESCE(bd.coordinate, bv.coordinate) AS coordinate,
+        COALESCE(bd.permeability_test_count, bv.permeability_test_count) AS permeability_test_count,
+        COALESCE(bd.spt_vs_test_count, bv.spt_vs_test_count) AS spt_vs_test_count,
+        COALESCE(bd.undisturbed_sample_count, bv.undisturbed_sample_count) AS undisturbed_sample_count,
+        COALESCE(bd.disturbed_sample_count, bv.disturbed_sample_count) AS disturbed_sample_count,
+        COALESCE(bd.water_sample_count, bv.water_sample_count) AS water_sample_count,
+        COALESCE(bd.stratum_description, bv.stratum_description) AS stratum_description,
+        COALESCE(bd.stratum_depth_from, bv.stratum_depth_from) AS stratum_depth_from,
+        COALESCE(bd.stratum_depth_to, bv.stratum_depth_to) AS stratum_depth_to,
+        COALESCE(bd.stratum_thickness_m, bv.stratum_thickness_m) AS stratum_thickness_m,
+        COALESCE(bd.sample_event_type, bv.sample_event_type) AS sample_event_type,
+        COALESCE(bd.sample_event_depth_m, bv.sample_event_depth_m) AS sample_event_depth_m,
+        COALESCE(bd.run_length_m, bv.run_length_m) AS run_length_m,
+        COALESCE(bd.spt_blows_per_15cm, bv.spt_blows_per_15cm) AS spt_blows_per_15cm,
+        COALESCE(bd.n_value_is_2131, bv.n_value_is_2131) AS n_value_is_2131,
+        COALESCE(bd.total_core_length_cm, bv.total_core_length_cm) AS total_core_length_cm,
+        COALESCE(bd.tcr_percent, bv.tcr_percent) AS tcr_percent,
+        COALESCE(bd.rqd_length_cm, bv.rqd_length_cm) AS rqd_length_cm,
+        COALESCE(bd.rqd_percent, bv.rqd_percent) AS rqd_percent,
+        COALESCE(bd.return_water_colour, bv.return_water_colour) AS return_water_colour,
+        COALESCE(bd.water_loss, bv.water_loss) AS water_loss,
+        COALESCE(bd.borehole_diameter, bv.borehole_diameter) AS borehole_diameter,
+        COALESCE(bd.remarks, bv.remarks) AS remarks,
+        COALESCE(bd.images, NULL) AS images,
+        COALESCE(bd.created_at, bv.created_at) as details_created_at,
+        COALESCE(bd.created_by_user_id, bv.created_by_user_id, b.created_by_user_id) as details_created_by,
         u.name as created_by_name,
         u.email as created_by_email
       FROM boreloge b
@@ -127,9 +129,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       JOIN structure s ON ss.structure_id = s.structure_id
       JOIN projects p ON b.project_id = p.project_id
       LEFT JOIN borehole bh ON bh.substructure_id = b.substructure_id
-      JOIN latest_versions lv ON b.borelog_id = lv.borelog_id
-      JOIN borelog_details bd ON b.borelog_id = bd.borelog_id AND bd.version_no = lv.latest_version_no
-      LEFT JOIN users u ON COALESCE(bd.created_by_user_id, b.created_by_user_id) = u.user_id
+      LEFT JOIN latest_versions lv ON b.borelog_id = lv.borelog_id
+      LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id AND bd.version_no = lv.latest_version_no
+      LEFT JOIN borelog_versions bv ON b.borelog_id = bv.borelog_id AND bv.version_no = lv.latest_version_no
+      LEFT JOIN users u ON COALESCE(bd.created_by_user_id, bv.created_by_user_id, b.created_by_user_id) = u.user_id
       WHERE b.substructure_id = $1
     `;
 
@@ -165,50 +168,71 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Get version history for this borelog
+    // Get version history for this borelog (merge final and staging)
     const versionHistoryQuery = `
       SELECT 
-        bd.version_no,
-        bd.created_at,
-        bd.created_by_user_id,
+        v.version_no,
+        v.created_at,
+        v.created_by_user_id,
         u.name as created_by_name,
         u.email as created_by_email,
-        bd.number,
-        bd.msl,
-        bd.boring_method,
-        bd.hole_diameter,
-        bd.commencement_date,
-        bd.completion_date,
-        bd.standing_water_level,
-        bd.termination_depth,
-        bd.coordinate,
-        bd.permeability_test_count,
-        bd.spt_vs_test_count,
-        bd.undisturbed_sample_count,
-        bd.disturbed_sample_count,
-        bd.water_sample_count,
-        bd.stratum_description,
-        bd.stratum_depth_from,
-        bd.stratum_depth_to,
-        bd.stratum_thickness_m,
-        bd.sample_event_type,
-        bd.sample_event_depth_m,
-        bd.run_length_m,
-        bd.spt_blows_per_15cm,
-        bd.n_value_is_2131,
-        bd.total_core_length_cm,
-        bd.tcr_percent,
-        bd.rqd_length_cm,
-        bd.rqd_percent,
-        bd.return_water_colour,
-        bd.water_loss,
-        bd.borehole_diameter,
-        bd.remarks,
-        bd.images
-      FROM borelog_details bd
-      LEFT JOIN users u ON bd.created_by_user_id = u.user_id
-      WHERE bd.borelog_id = $1
-      ORDER BY bd.version_no DESC
+        v.number,
+        v.msl,
+        v.boring_method,
+        v.hole_diameter,
+        v.commencement_date,
+        v.completion_date,
+        v.standing_water_level,
+        v.termination_depth,
+        v.coordinate,
+        v.permeability_test_count,
+        v.spt_vs_test_count,
+        v.undisturbed_sample_count,
+        v.disturbed_sample_count,
+        v.water_sample_count,
+        v.stratum_description,
+        v.stratum_depth_from,
+        v.stratum_depth_to,
+        v.stratum_thickness_m,
+        v.sample_event_type,
+        v.sample_event_depth_m,
+        v.run_length_m,
+        v.spt_blows_per_15cm,
+        v.n_value_is_2131,
+        v.total_core_length_cm,
+        v.tcr_percent,
+        v.rqd_length_cm,
+        v.rqd_percent,
+        v.return_water_colour,
+        v.water_loss,
+        v.borehole_diameter,
+        v.remarks,
+        v.images
+      FROM (
+        SELECT 
+          borelog_id, version_no, created_at, created_by_user_id,
+          number, msl, boring_method, hole_diameter, commencement_date, completion_date,
+          standing_water_level, termination_depth, coordinate,
+          permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
+          stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
+          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
+          total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
+          borehole_diameter, remarks, images
+        FROM borelog_details WHERE borelog_id = $1
+        UNION ALL
+        SELECT 
+          borelog_id, version_no, created_at, created_by_user_id,
+          number, msl, boring_method, hole_diameter, commencement_date, completion_date,
+          standing_water_level, termination_depth, coordinate,
+          permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
+          stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
+          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
+          total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
+          borehole_diameter, remarks, NULL as images
+        FROM borelog_versions WHERE borelog_id = $1
+      ) v
+      LEFT JOIN users u ON v.created_by_user_id = u.user_id
+      ORDER BY v.version_no DESC
     `;
 
     const versionHistory = await db.query(versionHistoryQuery, [borelog[0].borelog_id]);

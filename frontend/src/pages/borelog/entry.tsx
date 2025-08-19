@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
-import { projectsApi, structuresApi, boreholesApi } from '@/lib/api';
+import { projectsApi, structuresApi, substructureApi } from '@/lib/api';
 import { BorelogEntryForm } from '@/components/BorelogEntryForm';
-import { Project, Structure, Borehole } from '@/lib/types';
+import { Project, Structure, Substructure } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader } from '@/components/Loader';
@@ -18,14 +18,14 @@ export default function BorelogEntryPage() {
   
   const [projects, setProjects] = useState<Project[]>([]);
   const [structures, setStructures] = useState<Structure[]>([]);
-  const [boreholes, setBoreholes] = useState<Borehole[]>([]);
+  const [substructures, setSubstructures] = useState<Substructure[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedStructureId, setSelectedStructureId] = useState<string>('');
-  const [selectedBoreholeId, setSelectedBoreholeId] = useState<string>('');
+  const [selectedSubstructureId, setSelectedSubstructureId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStructures, setIsLoadingStructures] = useState(false);
-  const [isLoadingBoreholes, setIsLoadingBoreholes] = useState(false);
+  const [isLoadingSubstructures, setIsLoadingSubstructures] = useState(false);
 
   // Load projects on mount
   useEffect(() => {
@@ -38,19 +38,19 @@ export default function BorelogEntryPage() {
       loadStructures(selectedProjectId);
     } else {
       setStructures([]);
-      setBoreholes([]);
+      setSubstructures([]);
       setSelectedStructureId('');
-      setSelectedBoreholeId('');
+      setSelectedSubstructureId('');
     }
   }, [selectedProjectId]);
 
-  // Load boreholes when structure changes
+  // Load substructures when structure changes
   useEffect(() => {
     if (selectedProjectId && selectedStructureId) {
-      loadBoreholes(selectedProjectId, selectedStructureId);
+      loadSubstructures(selectedProjectId, selectedStructureId);
     } else {
-      setBoreholes([]);
-      setSelectedBoreholeId('');
+      setSubstructures([]);
+      setSelectedSubstructureId('');
     }
   }, [selectedProjectId, selectedStructureId]);
 
@@ -110,36 +110,36 @@ export default function BorelogEntryPage() {
     }
   };
 
-  const loadBoreholes = async (projectId: string, structureId: string) => {
-    setIsLoadingBoreholes(true);
+  const loadSubstructures = async (projectId: string, structureId: string) => {
+    setIsLoadingSubstructures(true);
     try {
-      const response = await boreholesApi.getByProjectAndStructure(projectId, structureId);
-      setBoreholes(response.data || []);
+      const response = await substructureApi.list(projectId, structureId);
+      setSubstructures(response.data.data || []);
     } catch (error: any) {
-      console.error('Failed to load boreholes:', error);
+      console.error('Failed to load substructures:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load boreholes for this structure.',
+        description: 'Failed to load substructures for this structure.',
         variant: 'destructive',
       });
     } finally {
-      setIsLoadingBoreholes(false);
+      setIsLoadingSubstructures(false);
     }
   };
 
   const handleProjectChange = (projectId: string) => {
     setSelectedProjectId(projectId);
     setSelectedStructureId('');
-    setSelectedBoreholeId('');
+    setSelectedSubstructureId('');
   };
 
   const handleStructureChange = (structureId: string) => {
     setSelectedStructureId(structureId);
-    setSelectedBoreholeId('');
+    setSelectedSubstructureId('');
   };
 
-  const handleBoreholeChange = (boreholeId: string) => {
-    setSelectedBoreholeId(boreholeId);
+  const handleSubstructureChange = (substructureId: string) => {
+    setSelectedSubstructureId(substructureId);
   };
 
   // Check if user has appropriate role
@@ -173,19 +173,7 @@ export default function BorelogEntryPage() {
 
   return (
     <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Borelog Entry</h1>
-          <p className="text-gray-600 mt-1">
-            Create and submit borelog entries following the specimen field log format
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => navigate('/borelog/manage')}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Borelog Management
-        </Button>
-      </div>
+      {/* Heading area intentionally left empty (back button removed) */}
 
       {/* Loading States */}
       {isLoadingProjects && (
@@ -210,12 +198,12 @@ export default function BorelogEntryPage() {
         </Card>
       )}
 
-      {isLoadingBoreholes && selectedStructureId && (
+      {isLoadingSubstructures && selectedStructureId && (
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="flex items-center justify-center">
               <Loader />
-              <span className="ml-2">Loading boreholes...</span>
+              <span className="ml-2">Loading substructures...</span>
             </div>
           </CardContent>
         </Card>
@@ -257,18 +245,18 @@ export default function BorelogEntryPage() {
         </Card>
       )}
 
-      {/* No Boreholes Available */}
-      {selectedStructureId && !isLoadingBoreholes && boreholes.length === 0 && (
+      {/* No Substructures Available */}
+      {selectedStructureId && !isLoadingSubstructures && substructures.length === 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
               <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">No Boreholes Available</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">No Substructures Available</h2>
               <p className="text-gray-600 mb-4">
-                This structure doesn't have any boreholes defined yet.
+                This structure doesn't have any substructures defined yet.
               </p>
-              <Button onClick={() => navigate('/boreholes/create')}>
-                Create Borehole
+              <Button onClick={() => navigate('/substructures/create')}>
+                Create Substructure
               </Button>
             </div>
           </CardContent>
@@ -283,13 +271,13 @@ export default function BorelogEntryPage() {
           <BorelogEntryForm
             projectId={selectedProjectId}
             structureId={selectedStructureId}
-            boreholeId={selectedBoreholeId}
+            substructureId={selectedSubstructureId}
             projects={projects}
             structures={structures}
-            boreholes={boreholes}
+            substructures={substructures}
             onProjectChange={handleProjectChange}
             onStructureChange={handleStructureChange}
-            onBoreholeChange={handleBoreholeChange}
+            onSubstructureChange={handleSubstructureChange}
           />
         </RoleBasedComponent>
       )}

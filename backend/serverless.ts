@@ -13,6 +13,10 @@ const serverlessConfiguration: AWS = {
     runtime: 'nodejs18.x',
     region: 'us-east-1',
     stage: '${opt:stage, "dev"}',
+    // Increase default timeout for all Lambdas (in seconds)
+    timeout: 30,
+    // Optionally increase memory for heavy handlers
+    memorySize: 512,
     environment: {
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
       NODE_OPTIONS: '--enable-source-maps',
@@ -220,11 +224,27 @@ const serverlessConfiguration: AWS = {
     },
     getBorelogBySubstructureId: {
       handler: 'src/handlers/getBorelogBySubstructureId.handler',
+      // Explicitly set higher timeout for complex aggregation
+      timeout: 30,
       events: [
         {
           http: {
             method: 'get',
             path: '/borelog/substructure/{substructure_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    createBorelogVersion: {
+      handler: 'src/handlers/createBorelogVersion.handler',
+      // Explicitly set higher timeout for version writes
+      timeout: 30,
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog/version',
             cors: true
           }
         }
@@ -741,6 +761,30 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'get',
             path: '/borelog-form-data',
+            cors: true
+          }
+        }
+      ]
+    },
+    saveStratumData: {
+      handler: 'src/handlers/saveStratumData.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/stratum-data',
+            cors: true
+          }
+        }
+      ]
+    },
+    getStratumData: {
+      handler: 'src/handlers/getStratumData.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/stratum-data',
             cors: true
           }
         }

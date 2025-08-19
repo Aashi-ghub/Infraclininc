@@ -4,12 +4,13 @@
     "@shadcn/ui": "^0.0.4",
     "@types/leaflet": "^1.9.20",
     "@types/react-datepicker": "^6.2.0",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "date-fns": "^4.1.0",
     "leaflet": "^1.9.4",
     "react-hook-form": "^7.60.0",
     "react-leaflet": "^5.0.0",
     "sonner": "^2.0.6",
+    "uuid": "^11.1.0",
     "zod": "^4.0.5"
   }
 }

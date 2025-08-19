@@ -50,13 +50,14 @@ interface Version {
   };
 }
 
-interface VersionHistoryProps {
+export interface VersionHistoryProps {
   versions: Version[];
   canApprove: boolean;
   form: UseFormReturn<BorelogFormData>;
   onLoadVersion: (version: Version) => void;
   onApproveVersion: (versionNo: number) => void;
   onRejectVersion: (versionNo: number) => void;
+  activeVersionNo: number | null;
 }
 
 export function VersionHistory({
@@ -65,7 +66,8 @@ export function VersionHistory({
   form,
   onLoadVersion,
   onApproveVersion,
-  onRejectVersion
+  onRejectVersion,
+  activeVersionNo
 }: VersionHistoryProps) {
   if (versions.length === 0) {
     return (
@@ -97,7 +99,7 @@ export function VersionHistory({
                   <Badge variant="outline">
                     Created
                   </Badge>
-                  {version.version_no === 1 && (
+                  {version.version_no === (versions[0]?.version_no ?? version.version_no) && (
                     <Badge variant="default">
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Latest
@@ -119,12 +121,12 @@ export function VersionHistory({
                   variant="outline"
                   size="sm"
                   onClick={() => onLoadVersion(version)}
-                  disabled={version.version_no === form.watch('version_number')}
+                  disabled={activeVersionNo !== null ? version.version_no === activeVersionNo : version.version_no === form.watch('version_number')}
                 >
                   <Eye className="h-4 w-4 mr-1" />
-                  {version.version_no === form.watch('version_number') ? 'Current' : 'Load'}
+                  {(activeVersionNo !== null ? version.version_no === activeVersionNo : version.version_no === form.watch('version_number')) ? 'Current' : 'Load'}
                 </Button>
-                {canApprove && version.version_no === 1 && (
+                {canApprove && version.version_no === (versions[0]?.version_no ?? version.version_no) && (
                   <div className="flex space-x-1">
                     <Button
                       type="button"

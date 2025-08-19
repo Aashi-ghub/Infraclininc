@@ -95,35 +95,72 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const { is_approved, remarks } = validation.data;
 
-    // Update the borelog approval status
-    const updateQuery = `
-      UPDATE geological_log 
-      SET 
-        is_approved = $1,
-        approved_by = $2,
-        approved_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END,
-        updated_at = NOW()
-      WHERE borelog_id = $3
-      RETURNING *
-    `;
+    // If approving, publish the specified version from borelog_versions into borelog_details
+    // Expect version_no in body when approving
+    let updatedBorelog: any = null;
+    if (is_approved) {
+      const versionNoRaw = (requestBody as any).version_no;
+      if (typeof versionNoRaw !== 'number') {
+        const response = createResponse(400, {
+          success: false,
+          message: 'Missing version_no for approval',
+          error: 'version_no must be provided when approving'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
 
-    const updatedRows = await db.query(updateQuery, [
-      is_approved,
-      payload.userId,
-      borelogId
-    ]);
+      // In a transaction: copy from borelog_versions -> borelog_details and mark version approved
+      const publishResult = await db.transaction(async (client) => {
+        // Get the version from staging
+        const selectSql = `
+          SELECT * FROM borelog_versions WHERE borelog_id = $1 AND version_no = $2
+        `;
+        const selectRes = await client.query(selectSql, [borelogId, versionNoRaw]);
+        if (selectRes.rows.length === 0) {
+          throw new Error('Requested version not found');
+        }
+        const v = selectRes.rows[0];
 
-    if (updatedRows.length === 0) {
-      const response = createResponse(404, {
-        success: false,
-        message: 'Borelog not found',
-        error: 'Failed to update borelog'
+        // Insert into final table
+        const insertSql = `
+          INSERT INTO borelog_details (
+            borelog_id, version_no, number, msl, boring_method, hole_diameter,
+            commencement_date, completion_date, standing_water_level, termination_depth, coordinate,
+            permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
+            stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
+            sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
+            total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
+            borehole_diameter, remarks, created_by_user_id
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+            $12,$13,$14,$15,$16,$17,$18,$19,$20,
+            $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
+            $32,$33,$34
+          ) ON CONFLICT (borelog_id, version_no) DO NOTHING RETURNING *;
+        `;
+        const insertRes = await client.query(insertSql, [
+          v.borelog_id, v.version_no, v.number, v.msl, v.boring_method, v.hole_diameter,
+          v.commencement_date, v.completion_date, v.standing_water_level, v.termination_depth, v.coordinate,
+          v.permeability_test_count, v.spt_vs_test_count, v.undisturbed_sample_count, v.disturbed_sample_count, v.water_sample_count,
+          v.stratum_description, v.stratum_depth_from, v.stratum_depth_to, v.stratum_thickness_m,
+          v.sample_event_type, v.sample_event_depth_m, v.run_length_m, v.spt_blows_per_15cm, v.n_value_is_2131,
+          v.total_core_length_cm, v.tcr_percent, v.rqd_length_cm, v.rqd_percent, v.return_water_colour, v.water_loss,
+          v.borehole_diameter, v.remarks, v.created_by_user_id
+        ]);
+
+        // Mark version as approved
+        const updateStageSql = `
+          UPDATE borelog_versions SET status = 'approved', approved_by = $3, approved_at = NOW()
+          WHERE borelog_id = $1 AND version_no = $2
+        `;
+        await client.query(updateStageSql, [v.borelog_id, v.version_no, payload.userId]);
+
+        return insertRes.rows[0] || v;
       });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
 
-    const updatedBorelog = updatedRows[0];
+      updatedBorelog = publishResult;
+    }
 
     // Log the approval action
     logger.info(`Borelog ${borelogId} ${is_approved ? 'approved' : 'rejected'} by user ${payload.userId}`, {
@@ -136,12 +173,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const response = createResponse(200, {
       success: true,
       message: `Borelog ${is_approved ? 'approved' : 'rejected'} successfully`,
-      data: {
-        borelog_id: updatedBorelog.borelog_id,
-        is_approved: updatedBorelog.is_approved,
-        approved_by: updatedBorelog.approved_by,
-        approved_at: updatedBorelog.approved_at,
-        updated_at: updatedBorelog.updated_at
+      data: is_approved ? {
+        borelog_id: borelogId,
+        version_no: (requestBody as any).version_no,
+        approved_by: payload.userId
+      } : {
+        borelog_id: borelogId,
+        approved_by: payload.userId
       }
     });
 

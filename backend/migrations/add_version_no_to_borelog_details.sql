@@ -16,3 +16,5 @@ ALTER TABLE borelog_details ALTER COLUMN version_no SET NOT NULL;
 -- Add unique constraint to ensure no duplicate versions for the same borelog
 ALTER TABLE borelog_details ADD CONSTRAINT unique_borelog_version 
   UNIQUE (borelog_id, version_no);
+
+

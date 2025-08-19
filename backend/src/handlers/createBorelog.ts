@@ -130,34 +130,41 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    // Use transaction to create both boreloge and borelog_details
+    // Use transaction to create or reuse boreloge and then create initial staged version
     const result = await db.transaction(async (client) => {
-      // 1. Create boreloge record
-      const borelogeInsertQuery = `
-        INSERT INTO boreloge (
-          borelog_id,
-          substructure_id,
-          project_id,
-          type,
-          created_by_user_id
-        ) VALUES (
-          gen_random_uuid(),
-          $1, $2, $3, $4
-        ) RETURNING borelog_id;
+      // 1. Reuse existing borelog for substructure or create a new one
+      const existingQuery = `
+        SELECT borelog_id FROM boreloge WHERE substructure_id = $1
       `;
+      const existingRes = await client.query(existingQuery, [borelogData.substructure_id]);
+      let borelogId: string;
+      if (existingRes.rows.length > 0) {
+        borelogId = existingRes.rows[0].borelog_id;
+      } else {
+        const borelogeInsertQuery = `
+          INSERT INTO boreloge (
+            borelog_id,
+            substructure_id,
+            project_id,
+            type,
+            created_by_user_id
+          ) VALUES (
+            gen_random_uuid(),
+            $1, $2, $3, $4
+          ) RETURNING borelog_id;
+        `;
+        const borelogeResult = await client.query(borelogeInsertQuery, [
+          borelogData.substructure_id,
+          borelogData.project_id,
+          borelogData.type,
+          payload.userId
+        ]);
+        borelogId = borelogeResult.rows[0].borelog_id;
+      }
 
-      const borelogeResult = await client.query(borelogeInsertQuery, [
-        borelogData.substructure_id,
-        borelogData.project_id,
-        borelogData.type,
-        payload.userId
-      ]);
-
-      const borelogId = borelogeResult.rows[0].borelog_id;
-
-      // 2. Create borelog_details record
+      // 2. Create initial version in staging table
       const borelogDetailsInsertQuery = `
-        INSERT INTO borelog_details (
+        INSERT INTO borelog_versions (
           borelog_id,
           version_no,
           number,
@@ -191,49 +198,50 @@ export const handler = async (event: APIGatewayProxyEvent) => {
           water_loss,
           borehole_diameter,
           remarks,
-          created_by_user_id
+          created_by_user_id,
+          status
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
           $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
           $22, $23, $24, $25, $26, $27, $28, $29, $30, $31,
-          $32, $33, $34
+          $32, $33, $34, 'submitted'
         ) RETURNING *;
       `;
 
       const borelogDetailsValues = [
         borelogId,
-        1, // version_no - start with version 1
-        borelogData.number,
-        borelogData.msl,
-        borelogData.boring_method,
-        borelogData.hole_diameter,
-        borelogData.commencement_date,
-        borelogData.completion_date,
-        borelogData.standing_water_level,
-        borelogData.termination_depth,
+        1,
+        borelogData.number || null,
+        borelogData.msl || null,
+        borelogData.boring_method || null,
+        borelogData.hole_diameter || null,
+        borelogData.commencement_date || null,
+        borelogData.completion_date || null,
+        borelogData.standing_water_level || null,
+        borelogData.termination_depth || null,
         borelogData.coordinate ? `POINT(${borelogData.coordinate.coordinates[0]} ${borelogData.coordinate.coordinates[1]})` : null,
-        borelogData.permeability_test_count,
-        borelogData.spt_vs_test_count,
-        borelogData.undisturbed_sample_count,
-        borelogData.disturbed_sample_count,
-        borelogData.water_sample_count,
-        borelogData.stratum_description,
-        borelogData.stratum_depth_from,
-        borelogData.stratum_depth_to,
-        borelogData.stratum_thickness_m,
-        borelogData.sample_event_type,
-        borelogData.sample_event_depth_m,
-        borelogData.run_length_m,
-        borelogData.spt_blows_per_15cm,
-        borelogData.n_value_is_2131,
-        borelogData.total_core_length_cm,
-        borelogData.tcr_percent,
-        borelogData.rqd_length_cm,
-        borelogData.rqd_percent,
-        borelogData.return_water_colour,
-        borelogData.water_loss,
-        borelogData.borehole_diameter,
-        borelogData.remarks,
+        borelogData.permeability_test_count || null,
+        borelogData.spt_vs_test_count || null,
+        borelogData.undisturbed_sample_count || null,
+        borelogData.disturbed_sample_count || null,
+        borelogData.water_sample_count || null,
+        borelogData.stratum_description || null,
+        borelogData.stratum_depth_from || null,
+        borelogData.stratum_depth_to || null,
+        borelogData.stratum_thickness_m || null,
+        borelogData.sample_event_type || null,
+        borelogData.sample_event_depth_m || null,
+        borelogData.run_length_m || null,
+        borelogData.spt_blows_per_15cm || null,
+        borelogData.n_value_is_2131 || null,
+        borelogData.total_core_length_cm || null,
+        borelogData.tcr_percent || null,
+        borelogData.rqd_length_cm || null,
+        borelogData.rqd_percent || null,
+        borelogData.return_water_colour || null,
+        borelogData.water_loss || null,
+        borelogData.borehole_diameter || null,
+        borelogData.remarks || null,
         payload.userId
       ];
 

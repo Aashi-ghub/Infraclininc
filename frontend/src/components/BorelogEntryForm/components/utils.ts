@@ -7,11 +7,21 @@ export const generateId = (): string => {
 
 // Update test counts based on stratum rows
 export const updateTestCounts = (stratumRows: StratumRow[], setValue: (field: string, value: any) => void) => {
-  const sptCount = stratumRows.filter(row => row.sample_type.includes('S')).length;
-  const vsCount = stratumRows.filter(row => row.sample_type.includes('VS')).length;
-  const undisturbedCount = stratumRows.filter(row => row.sample_type.includes('U')).length;
-  const disturbedCount = stratumRows.filter(row => row.sample_type.includes('D')).length;
-  const waterCount = stratumRows.filter(row => row.sample_type.includes('W')).length;
+  let sptCount = 0;
+  let vsCount = 0;
+  let undisturbedCount = 0;
+  let disturbedCount = 0;
+  let waterCount = 0;
+  
+  stratumRows.forEach(row => {
+    row.samples.forEach(sample => {
+      if (sample.sample_type.includes('S')) sptCount++;
+      if (sample.sample_type.includes('VS')) vsCount++;
+      if (sample.sample_type.includes('U')) undisturbedCount++;
+      if (sample.sample_type.includes('D')) disturbedCount++;
+      if (sample.sample_type.includes('W')) waterCount++;
+    });
+  });
   
   setValue('spt_tests_count', sptCount);
   setValue('vs_tests_count', vsCount);
@@ -85,32 +95,18 @@ export const calculateDependentFields = (
 };
 
 // Create a new stratum row
-export const createStratumRow = (isSubdivision = false, parentId?: string): StratumRow => {
+export const createStratumRow = (): StratumRow => {
   return {
     id: generateId(),
-    parent_id: parentId || null,
-    is_subdivision: isSubdivision,
-    subdivision_number: isSubdivision ? 1 : null,
     description: '',
     depth_from: null,
     depth_to: null,
     thickness: null,
-    sample_type: '',
-    sample_depth: '',
-    run_length: null,
-    spt_15cm_1: null,
-    spt_15cm_2: null,
-    spt_15cm_3: null,
-    n_value: null,
-    total_core_length: null,
-    tcr_percent: null,
-    rqd_length: null,
-    rqd_percent: null,
     return_water_color: '',
     water_loss: '',
     borehole_diameter: '',
     remarks: '',
-    is_collapsed: false
+    samples: []
   };
 };
 

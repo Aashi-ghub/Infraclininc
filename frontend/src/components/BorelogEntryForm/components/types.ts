@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { 
   Project,
   Structure,
+  Substructure,
   Borehole,
   User as BaseUser
 } from '@/lib/types';
@@ -17,10 +18,12 @@ interface User extends BaseUser {
 // Form data structure matching Excel layout
 interface BorelogFormData {
   // Project Information (Excel rows 3-8)
+  borelog_id?: string;
   project_id: string;
   structure_id: string;
   substructure_id: string; // Added for new API
   borehole_id: string; // Keep for backward compatibility
+  borehole_number?: string; // Display-only borehole number
   job_code: string;
   section_name: string;
   coordinate_e: string;
@@ -48,6 +51,7 @@ interface BorelogFormData {
   
   // Metadata
   version_number: number;
+  current_version_no?: number; // tracks which version is currently loaded in the form
   status: 'draft' | 'submitted' | 'approved' | 'rejected';
   
   // Optional fields for form state
@@ -62,77 +66,83 @@ interface BorelogFormData {
 interface StratumRow {
   id: string;
   
-  // Parent-child relationship
-  parent_id?: string | null; // null for main stratum rows, parent's id for subdivisions
-  is_subdivision: boolean;  // true for subdivision rows, false for main stratum rows
-  subdivision_number?: number | null; // null for main rows, 1,2,3... for subdivisions
-  is_collapsed?: boolean; // true if parent row's subdivisions are hidden
-  
-  // Main description
+  // Basic stratum information
   description: string;
-  
-  // Depth columns
   depth_from?: number | null;
   depth_to?: number | null;
   thickness?: number | null; // calculated: depth_to - depth_from
   
-  // Sample/Event columns
-  sample_type: string;
-  sample_depth?: string | null; // Can be single depth (e.g., "0.50") or range (e.g., "1.50-1.95")
-  run_length?: number | null;
+  // Water and remarks (shared across all sample points in this layer)
+  return_water_color?: string;
+  water_loss?: string;
+  borehole_diameter?: string;
+  remarks?: string;
   
-  // SPT columns
+  // Sample points (subdivisions)
+  samples: SamplePoint[];
+}
+
+interface SamplePoint {
+  id: string;
+  sample_type: string;
+  depth_mode: 'single' | 'range';
+  depth_single?: number | null;
+  depth_from?: number | null;
+  depth_to?: number | null;
+  run_length?: number | null; // calculated: depth_to - depth_from
+  
+  // SPT values
   spt_15cm_1?: number | null;
   spt_15cm_2?: number | null;
   spt_15cm_3?: number | null;
   n_value?: number | null; // calculated: sum of SPT values
   
-  // Core columns
-  total_core_length?: number | null;
+  // Core data
+  total_core_length_cm?: number | null;
   tcr_percent?: number | null; // calculated: (total_core_length / run_length) * 100
   rqd_length?: number | null;
   rqd_percent?: number | null; // calculated: (rqd_length / run_length) * 100
-  
-  // Other columns
-  return_water_color?: string;
-  water_loss?: string;
-  borehole_diameter?: string;
-  remarks?: string;
 }
 
 // Validation schema
-const stratumRowSchema = z.object({
+const samplePointSchema = z.object({
   id: z.string(),
-  parent_id: z.string().nullable().optional(),
-  is_subdivision: z.boolean(),
-  subdivision_number: z.number().nullable().optional(),
-  description: z.string(),
+  sample_type: z.string(),
+  depth_mode: z.enum(['single', 'range']),
+  depth_single: z.number().nullable().optional(),
   depth_from: z.number().nullable().optional(),
   depth_to: z.number().nullable().optional(),
-  thickness: z.number().nullable().optional(),
-  sample_type: z.string(),
-  sample_depth: z.string().nullable().optional(),
   run_length: z.number().nullable().optional(),
   spt_15cm_1: z.number().nullable().optional(),
   spt_15cm_2: z.number().nullable().optional(),
   spt_15cm_3: z.number().nullable().optional(),
   n_value: z.number().nullable().optional(),
-  total_core_length: z.number().nullable().optional(),
+  total_core_length_cm: z.number().nullable().optional(),
   tcr_percent: z.number().nullable().optional(),
   rqd_length: z.number().nullable().optional(),
   rqd_percent: z.number().nullable().optional(),
+});
+
+const stratumRowSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  depth_from: z.number().nullable().optional(),
+  depth_to: z.number().nullable().optional(),
+  thickness: z.number().nullable().optional(),
   return_water_color: z.string().optional(),
   water_loss: z.string().optional(),
   borehole_diameter: z.string().optional(),
   remarks: z.string().optional(),
-  is_collapsed: z.boolean().optional(),
+  samples: z.array(samplePointSchema),
 });
 
 const borelogFormSchema = z.object({
+  borelog_id: z.string().optional(),
   project_id: z.string().min(1, 'Project is required'),
   structure_id: z.string().min(1, 'Structure is required'),
   substructure_id: z.string().min(1, 'Substructure is required'),
   borehole_id: z.string().min(1, 'Borehole is required'),
+  borehole_number: z.string().optional(),
   job_code: z.string().min(1, 'Job code is required'),
   section_name: z.string().min(1, 'Section name is required'),
   coordinate_e: z.string().min(1, 'Easting coordinate is required'),
@@ -154,6 +164,7 @@ const borelogFormSchema = z.object({
   water_samples_count: z.number(),
   stratum_rows: z.array(stratumRowSchema),
   version_number: z.number(),
+  current_version_no: z.number().optional(),
   status: z.enum(['draft', 'submitted', 'approved', 'rejected']),
   edited_by: z.string().optional(),
   editor_name: z.string().optional(),
@@ -166,22 +177,26 @@ const borelogFormSchema = z.object({
 interface BorelogEntryFormProps {
   projectId?: string;
   structureId?: string;
+  substructureId?: string;
   boreholeId?: string;
   borelogId?: string; // For editing existing borelog
 }
 
 export type {
   Structure,
+  Substructure,
   User,
   UserRole,
   BorelogFormData,
   StratumRow,
+  SamplePoint,
   BorelogEntryFormProps,
   Project,
   Borehole
 };
 
 export {
+  samplePointSchema,
   stratumRowSchema,
   borelogFormSchema
 };

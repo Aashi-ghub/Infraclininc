@@ -19,3 +19,5 @@ END$$;
 
 -- Add index for better performance
 CREATE INDEX IF NOT EXISTS idx_borelog_details_created_by ON borelog_details (created_by_user_id);
+
+

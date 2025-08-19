@@ -4,13 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BorelogFormData, Structure, Project, Borehole } from './types';
+import { BorelogFormData, Structure, Project, Substructure } from './types';
 
 interface ProjectInfoSectionProps {
   form: UseFormReturn<BorelogFormData>;
   projects: Project[];
   structures: Structure[];
-  boreholes: Borehole[];
+  substructures: Substructure[];
   canEdit: boolean;
 }
 
@@ -18,7 +18,7 @@ export function ProjectInfoSection({
   form,
   projects,
   structures,
-  boreholes,
+  substructures,
   canEdit
 }: ProjectInfoSectionProps) {
   return (
@@ -94,7 +94,7 @@ export function ProjectInfoSection({
             {/* Substructure Selection */}
             <FormField
               control={form.control}
-              name="borehole_id"
+              name="substructure_id"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">Substructure</FormLabel>
@@ -109,9 +109,9 @@ export function ProjectInfoSection({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {boreholes.map((borehole) => (
-                        <SelectItem key={borehole.borehole_id} value={borehole.borehole_id}>
-                          {borehole.borehole_number} - {borehole.location}
+                      {substructures.map((substructure) => (
+                        <SelectItem key={substructure.substructure_id} value={substructure.substructure_id}>
+                          {substructure.description || substructure.type}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -291,8 +291,8 @@ export function ProjectInfoSection({
                                    <td className="border border-black px-1 py-1 bg-gray-50 font-semibold text-xs text-black">Borehole No.</td>
                   <td className="border border-black px-1 py-1 linked-data">
                    <div className="p-1 text-xs h-6 flex items-center">
-                     {form.watch('borehole_id') ? 
-                       boreholes.find(b => b.borehole_id === form.watch('borehole_id'))?.borehole_number || '' 
+                     {form.watch('substructure_id') ? 
+                       substructures.find(s => s.substructure_id === form.watch('substructure_id'))?.description || '' 
                        : 'Select substructure above'
                      }
                    </div>

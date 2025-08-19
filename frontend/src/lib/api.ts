@@ -88,7 +88,7 @@ export const geologicalLogApi = {
     apiClient.get<ApiResponse<GeologicalLog[]>>('/geological-log'),
   
   // New approval and CSV upload endpoints
-  approve: (id: string, data: { is_approved: boolean; remarks?: string }) => 
+  approve: (id: string, data: { is_approved: boolean; version_no?: number; remarks?: string }) => 
     apiClient.post<ApiResponse<GeologicalLog>>(`/borelog/${id}/approve`, data),
   
   uploadCSV: (data: { csvData: string; projectId: string }) => 
@@ -140,6 +140,10 @@ export const borelogApiV2 = {
   createDetails: (data: any) => 
     apiClient.post<ApiResponse<any>>('/borelog-details', data),
   
+  // Create new version of existing borelog
+  createVersion: (data: any) => 
+    apiClient.post<ApiResponse<any>>('/borelog/version', data),
+  
   // Get borelog details with version history
   getDetailsByBorelogId: (borelogId: string) => 
     apiClient.get<ApiResponse<any>>(`/borelog-details/${borelogId}`),
@@ -157,6 +161,21 @@ export const borelogApiV2 = {
     const queryParams = params ? new URLSearchParams(params).toString() : '';
     return apiClient.get<ApiResponse<any>>(`/borelog-form-data${queryParams ? `?${queryParams}` : ''}`);
   },
+
+  // Approve version
+  approve: (borelogId: string, data: { version_no: number; approved_by: string; approval_comments: string }) => 
+    apiClient.post<ApiResponse<any>>(`/borelog/${borelogId}/approve`, data),
+
+  // Reject version
+  reject: (borelogId: string, data: { version_no: number; rejected_by: string; rejection_comments: string }) => 
+    apiClient.post<ApiResponse<any>>(`/borelog/${borelogId}/reject`, data),
+    
+  // Stratum data endpoints
+  saveStratumData: (data: { borelog_id: string; version_no: number; layers: any[]; user_id: string }) => 
+    apiClient.post<ApiResponse<any>>('/stratum-data', data),
+    
+  getStratumData: (borelogId: string, versionNo: number) => 
+    apiClient.get<ApiResponse<any>>(`/stratum-data?borelog_id=${borelogId}&version_no=${versionNo}`),
 };
 
 export const projectApi = {
