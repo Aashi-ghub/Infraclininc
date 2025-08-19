@@ -8,6 +8,7 @@ let pool: Pool | null = null;
 
 // Schema for stratum layer data
 const StratumLayerSchema = z.object({
+  id: z.string().optional(),
   description: z.string().optional(),
   depth_from_m: z.number().nullable().optional(),
   depth_to_m: z.number().nullable().optional(),
@@ -17,6 +18,7 @@ const StratumLayerSchema = z.object({
   borehole_diameter: z.number().nullable().optional(),
   remarks: z.string().optional(),
   samples: z.array(z.object({
+    id: z.string().optional(),
     sample_type: z.string().optional(),
     depth_mode: z.enum(['single', 'range']).optional(),
     depth_single_m: z.number().nullable().optional(),
@@ -75,7 +77,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const layer = layers[layerIndex];
         const layerOrder = layerIndex + 1;
         logger.info(`Processing layer ${layerOrder}/${layers.length}`, {
-          layer_id: layer.id,
           sample_count: layer.samples?.length || 0
         });
 

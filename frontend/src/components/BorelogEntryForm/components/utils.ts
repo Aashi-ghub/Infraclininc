@@ -112,7 +112,7 @@ export const createStratumRow = (): StratumRow => {
 
 // Format number for display with decimal support
 export const formatNumber = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return '-';
+  if (value === null || value === undefined) return '';
   // Format to show up to 2 decimal places, but don't show trailing zeros
   return value.toFixed(2).replace(/\.?0+$/, '');
 };

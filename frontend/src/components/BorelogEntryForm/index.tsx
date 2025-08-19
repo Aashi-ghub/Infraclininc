@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm, FormProvider, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +53,7 @@ export function BorelogEntryForm({
   const [activeVersionNo, setActiveVersionNo] = useState<number | null>(null);
   const [originalValues, setOriginalValues] = useState<any>(null);
   const [modifiedFields, setModifiedFields] = useState<Set<string>>(new Set());
+  const isApplyingRef = useRef(false);
 
   // Check if user has editing permissions
   const canEdit = typedUser?.role === 'Admin' || typedUser?.role === 'Project Manager' || typedUser?.role === 'Site Engineer';
@@ -143,6 +144,7 @@ export function BorelogEntryForm({
   // Watch project changes
   const watchedProjectId = form.watch('project_id');
   useEffect(() => {
+    if (isApplyingRef.current) return;
     if (watchedProjectId) {
       loadStructures(watchedProjectId);
       form.setValue('structure_id', '');
@@ -154,6 +156,7 @@ export function BorelogEntryForm({
   // Watch structure changes
   const watchedStructureId = form.watch('structure_id');
   useEffect(() => {
+    if (isApplyingRef.current) return;
     if (watchedStructureId && watchedProjectId) {
       loadSubstructures(watchedProjectId, watchedStructureId);
       form.setValue('substructure_id', '');
@@ -243,6 +246,8 @@ export function BorelogEntryForm({
       return;
     }
     
+    isApplyingRef.current = true;
+    try {
     const current = form.getValues();
     const next: any = { ...current };
 
@@ -261,8 +266,12 @@ export function BorelogEntryForm({
         return;
       }
       try {
+        if (value === '-') {
+          next[field] = '' as any;
+          return;
+        }
         const ymd = new Date(value).toISOString().slice(0, 10);
-      next[field] = ymd as any;
+        next[field] = ymd as any;
       } catch (e) {
         console.error(`Error parsing date for ${field}:`, e);
         next[field] = '' as any;
@@ -273,7 +282,7 @@ export function BorelogEntryForm({
     if (details.number !== undefined) next.borehole_number = String(details.number || '');
     if (details.job_code !== undefined) next.job_code = String(details.job_code || '');
     if (details.location !== undefined) next.location = String(details.location || '');
-    if (details.chainage_km !== undefined) next.chainage_km = details.chainage_km;
+    if (details.chainage_km !== undefined) next.chainage_km = toNumber(details.chainage_km);
     if (details.msl !== undefined) next.msl = toNumber(details.msl);
     if (details.boring_method !== undefined) next.method_of_boring = String(details.boring_method || '');
     if (details.hole_diameter !== undefined) next.diameter_of_hole = String(details.hole_diameter || '');
@@ -310,20 +319,41 @@ export function BorelogEntryForm({
         easting = String(coord[0] ?? '');
         northing = String(coord[1] ?? '');
       } else if (typeof coord === 'object' && coord !== null) {
-        easting = coord.e ?? coord.E ?? coord.easting ?? coord.coordinates?.[0] ?? null;
-        northing = coord.l ?? coord.L ?? coord.northing ?? coord.coordinates?.[1] ?? null;
-        if (easting !== null) easting = String(easting);
-        if (northing !== null) northing = String(northing);
+        // Handle GeoJSON format and other object formats
+        if (coord.type === 'Point' && Array.isArray(coord.coordinates)) {
+          easting = String(coord.coordinates[0] ?? '');
+          northing = String(coord.coordinates[1] ?? '');
+        } else {
+          easting = coord.e ?? coord.E ?? coord.easting ?? coord.coordinates?.[0] ?? null;
+          northing = coord.l ?? coord.L ?? coord.northing ?? coord.coordinates?.[1] ?? null;
+          if (easting !== null) easting = String(easting);
+          if (northing !== null) northing = String(northing);
+        }
       } else if (typeof coord === 'string') {
+        // Try to parse as JSON first
         try {
           const parsed = JSON.parse(coord);
-          easting = parsed.e ?? parsed.E ?? parsed.coordinates?.[0] ?? parsed[0] ?? null;
-          northing = parsed.l ?? parsed.L ?? parsed.coordinates?.[1] ?? parsed[1] ?? null;
+          if (parsed.type === 'Point' && Array.isArray(parsed.coordinates)) {
+            easting = String(parsed.coordinates[0] ?? '');
+            northing = String(parsed.coordinates[1] ?? '');
+          } else {
+            easting = parsed.e ?? parsed.E ?? parsed.coordinates?.[0] ?? parsed[0] ?? null;
+            northing = parsed.l ?? parsed.L ?? parsed.coordinates?.[1] ?? parsed[1] ?? null;
+          }
         } catch (e) {
-          const parts = coord.split(/[;,\s]+/).filter(Boolean);
-          if (parts.length >= 2) {
-            easting = parts[0];
-            northing = parts[1];
+          // Try to parse as string format "POINT(x y)" or "x,y" or "x y"
+          if (coord.startsWith('POINT')) {
+            const match = coord.match(/POINT\s*\(\s*(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s*\)/i);
+            if (match) {
+              easting = match[1];
+              northing = match[2];
+            }
+          } else {
+            const parts = coord.split(/[;,\s]+/).filter(Boolean);
+            if (parts.length >= 2) {
+              easting = parts[0];
+              northing = parts[1];
+            }
           }
         }
       }
@@ -334,8 +364,9 @@ export function BorelogEntryForm({
       console.log('Extracted coordinates:', { easting, northing });
     }
     
-    // Apply all the collected values to the form
+    // Apply all the collected values to the form, but avoid changing selection fields here
     Object.entries(next).forEach(([field, value]) => {
+      if (field === 'project_id' || field === 'structure_id' || field === 'substructure_id') return;
       form.setValue(field as any, value);
     });
 
@@ -449,34 +480,43 @@ export function BorelogEntryForm({
         console.log('Stratum response:', stratumResponse.data);
         if (stratumResponse.data?.data?.layers?.length > 0) {
           console.log('Found stratum data from relational tables:', stratumResponse.data.data.layers);
-          next.stratum_rows = stratumResponse.data.data.layers.map((layer: any) => ({
-            id: layer.id,
-            description: layer.description || '',
-            depth_from: toNumber(layer.depth_from_m),
-            depth_to: toNumber(layer.depth_to_m),
-            thickness: toNumber(layer.thickness_m),
-            return_water_color: layer.return_water_colour || '',
-            water_loss: layer.water_loss || '',
-            borehole_diameter: layer.borehole_diameter != null ? String(layer.borehole_diameter) : '',
-            remarks: layer.remarks || '',
-            samples: layer.samples.map((sample: any) => ({
-              id: sample.id,
-              sample_type: sample.sample_type || '',
-              depth_mode: sample.depth_mode || 'single',
-              depth_single: toNumber(sample.depth_single_m),
-              depth_from: toNumber(sample.depth_from_m),
-              depth_to: toNumber(sample.depth_to_m),
-              run_length: toNumber(sample.run_length_m),
-              spt_15cm_1: toNumber(sample.spt_15cm_1),
-              spt_15cm_2: toNumber(sample.spt_15cm_2),
-              spt_15cm_3: toNumber(sample.spt_15cm_3),
-              n_value: toNumber(sample.n_value),
-              total_core_length_cm: toNumber(sample.total_core_length_cm),
-              tcr_percent: toNumber(sample.tcr_percent),
-              rqd_length: toNumber(sample.rqd_length_cm),
-              rqd_percent: toNumber(sample.rqd_percent),
-            }))
-          }));
+          
+          // Ensure each layer has samples array initialized
+          const layers = stratumResponse.data.data.layers.map((layer: any) => {
+            const samples = Array.isArray(layer.samples) ? layer.samples : [];
+            
+            return {
+              id: layer.id,
+              description: layer.description || '',
+              depth_from: toNumber(layer.depth_from_m),
+              depth_to: toNumber(layer.depth_to_m),
+              thickness: toNumber(layer.thickness_m),
+              return_water_color: layer.return_water_colour || '',
+              water_loss: layer.water_loss || '',
+              borehole_diameter: layer.borehole_diameter != null ? String(layer.borehole_diameter) : '',
+              remarks: layer.remarks || '',
+              samples: samples.map((sample: any) => ({
+                id: sample.id,
+                sample_type: sample.sample_type || '',
+                depth_mode: sample.depth_mode || 'single',
+                depth_single: toNumber(sample.depth_single_m),
+                depth_from: toNumber(sample.depth_from_m),
+                depth_to: toNumber(sample.depth_to_m),
+                run_length: toNumber(sample.run_length_m),
+                spt_15cm_1: toNumber(sample.spt_15cm_1),
+                spt_15cm_2: toNumber(sample.spt_15cm_2),
+                spt_15cm_3: toNumber(sample.spt_15cm_3),
+                n_value: toNumber(sample.n_value),
+                total_core_length_cm: toNumber(sample.total_core_length_cm),
+                tcr_percent: toNumber(sample.tcr_percent),
+                rqd_length: toNumber(sample.rqd_length_cm),
+                rqd_percent: toNumber(sample.rqd_percent),
+              }))
+            };
+          });
+          
+          console.log('Processed stratum layers:', layers);
+          next.stratum_rows = layers;
         }
       } catch (error) {
         console.warn('Failed to load stratum data from relational tables:', error);
@@ -499,9 +539,15 @@ export function BorelogEntryForm({
     }
     
     // Restore structure and substructure selections
-    form.setValue('project_id', currentProjectId);
-    form.setValue('structure_id', currentStructureId);
-    form.setValue('substructure_id', currentSubstructureId);
+    form.setValue('project_id', currentProjectId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
+    form.setValue('structure_id', currentStructureId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
+    form.setValue('substructure_id', currentSubstructureId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
+    } finally {
+      // Allow effects to resume after a tick
+      setTimeout(() => {
+        isApplyingRef.current = false;
+      }, 0);
+    }
   };
 
   // Create new borelog
@@ -586,8 +632,8 @@ export function BorelogEntryForm({
         // Set version number and IDs
         form.setValue('version_number', latestVersion.version_no + 1);
         setActiveVersionNo(latestVersion.version_no);
-          form.setValue('borelog_id', borelogData.borelog_id as any);
-          setBorelogType(borelogData.borelog_type);
+        form.setValue('borelog_id', borelogData.borelog_id as any);
+        setBorelogType(borelogData.borelog_type);
 
         // Map version details - combine nested details with structure data
         const details = {
@@ -596,13 +642,13 @@ export function BorelogEntryForm({
           borehole_number: borelogData.structure?.borehole_number,
           chainage: borelogData.structure?.chainage,
           msl: borelogData.structure?.borehole_msl,
-          boring_method: borelogData.structure?.borehole_boring_method,
-          hole_diameter: borelogData.structure?.borehole_hole_diameter,
-          coordinate: borelogData.structure?.borehole_coordinate,
+          boring_method: borelogData.structure?.borehole_boring_method || latestVersion.details?.boring_method,
+          hole_diameter: borelogData.structure?.borehole_hole_diameter || latestVersion.details?.hole_diameter,
+          coordinate: borelogData.structure?.borehole_coordinate || latestVersion.details?.coordinate,
           // Include latest version fields that might not be in structure
-          job_code: latestVersion.job_code,
-          location: latestVersion.location,
-          chainage_km: latestVersion.chainage_km,
+          job_code: latestVersion.job_code || latestVersion.details?.job_code,
+          location: latestVersion.location || latestVersion.details?.location,
+          chainage_km: latestVersion.chainage_km || latestVersion.details?.chainage_km,
           // Critical fields for loading stratum data
           borelog_id: borelogData.borelog_id,
           version_no: latestVersion.version_no,
@@ -647,9 +693,22 @@ export function BorelogEntryForm({
   const loadVersion = async (version: any) => {
     try {
       console.log('Loading version:', version);
-      // Use the details directly - they're already at the correct level
-      const details = version.details;
-      console.log('Version details:', details);
+      
+      // Add the job_code, location, and chainage_km from the version object itself
+      const details = {
+        ...version.details,
+        job_code: version.job_code || version.details?.job_code,
+        location: version.location || version.details?.location,
+        chainage_km: version.chainage_km || version.details?.chainage_km,
+        boring_method: version.boring_method || version.details?.boring_method,
+        hole_diameter: version.hole_diameter || version.details?.hole_diameter,
+        coordinate: version.coordinate || version.details?.coordinate,
+        // Critical identifiers for loading relational stratum data
+        borelog_id: form.getValues('borelog_id'),
+        version_no: version.version_no
+      };
+      
+      console.log('Enhanced version details:', details);
       
       // Store original values before applying new ones
       const originalFormValues = form.getValues();
