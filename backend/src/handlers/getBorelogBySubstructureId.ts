@@ -184,7 +184,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         v.completion_date,
         v.standing_water_level,
         v.termination_depth,
-        v.coordinate,
+        ST_AsGeoJSON(v.coordinate) AS coordinate,
         v.permeability_test_count,
         v.spt_vs_test_count,
         v.undisturbed_sample_count,

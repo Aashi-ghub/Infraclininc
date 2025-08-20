@@ -613,11 +613,21 @@ export function BorelogEntryForm({
         // Handle coordinates
         if (borehole.borehole_coordinate) {
           try {
-            const coord = typeof borehole.borehole_coordinate === 'string' 
+            const coord = typeof borehole.borehole_coordinate === 'string'
               ? JSON.parse(borehole.borehole_coordinate)
               : borehole.borehole_coordinate;
-            form.setValue('coordinate_e', coord.e || coord.E || coord[0] || '');
-            form.setValue('coordinate_l', coord.l || coord.L || coord[1] || '');
+
+            if (coord && typeof coord === 'object' && coord.type === 'Point' && Array.isArray((coord as any).coordinates)) {
+              const coords = (coord as any).coordinates;
+              form.setValue('coordinate_e', coords[0] != null ? String(coords[0]) : '');
+              form.setValue('coordinate_l', coords[1] != null ? String(coords[1]) : '');
+            } else if (Array.isArray(coord) && coord.length >= 2) {
+              form.setValue('coordinate_e', coord[0] != null ? String(coord[0]) : '');
+              form.setValue('coordinate_l', coord[1] != null ? String(coord[1]) : '');
+            } else if (coord && typeof coord === 'object') {
+              form.setValue('coordinate_e', (coord as any).e ?? (coord as any).E ?? '');
+              form.setValue('coordinate_l', (coord as any).l ?? (coord as any).L ?? '');
+            }
           } catch (e) {
             console.warn('Failed to parse coordinates:', e);
           }
@@ -641,10 +651,10 @@ export function BorelogEntryForm({
           // Include structure data in details for consistent mapping
           borehole_number: borelogData.structure?.borehole_number,
           chainage: borelogData.structure?.chainage,
-          msl: borelogData.structure?.borehole_msl,
-          boring_method: borelogData.structure?.borehole_boring_method || latestVersion.details?.boring_method,
-          hole_diameter: borelogData.structure?.borehole_hole_diameter || latestVersion.details?.hole_diameter,
-          coordinate: borelogData.structure?.borehole_coordinate || latestVersion.details?.coordinate,
+          msl: (borelogData.structure?.borehole_msl ?? latestVersion.details?.msl),
+          boring_method: (borelogData.structure?.borehole_boring_method ?? latestVersion.details?.boring_method),
+          hole_diameter: (borelogData.structure?.borehole_hole_diameter ?? latestVersion.details?.hole_diameter),
+          coordinate: (borelogData.structure?.borehole_coordinate ?? latestVersion.details?.coordinate),
           // Include latest version fields that might not be in structure
           job_code: latestVersion.job_code || latestVersion.details?.job_code,
           location: latestVersion.location || latestVersion.details?.location,

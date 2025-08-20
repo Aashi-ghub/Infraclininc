@@ -10,3 +10,5 @@ ALTER COLUMN rqd_percent TYPE DECIMAL(10,2);
 
 COMMIT;
 
+
+
