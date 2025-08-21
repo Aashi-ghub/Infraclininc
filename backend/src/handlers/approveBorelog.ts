@@ -2,13 +2,22 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
-import { getGeologicalLogById } from '../models/geologicalLog';
 import { z } from 'zod';
 import * as db from '../db';
 
-const ApproveBorelogSchema = z.object({
+// Support both legacy and V2 payloads
+// Legacy: { is_approved: boolean; remarks?: string; version_no?: number }
+// V2 (frontend): { version_no: number; approved_by?: string; approval_comments?: string }
+const ApproveBorelogSchemaV1 = z.object({
   is_approved: z.boolean(),
-  remarks: z.string().optional()
+  remarks: z.string().optional(),
+  version_no: z.number().optional()
+});
+
+const ApproveBorelogSchemaV2 = z.object({
+  version_no: z.number(),
+  approved_by: z.string().optional(),
+  approval_comments: z.string().optional()
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -46,24 +55,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Check if borelog exists
-    const existingBorelog = await getGeologicalLogById(borelogId);
-    if (!existingBorelog) {
+    // Check if borelog exists in the new boreloge table (source of truth for versions)
+    const existsSql = `SELECT 1 FROM boreloge WHERE borelog_id = $1`;
+    const existsRes = await db.query(existsSql, [borelogId]);
+    if (existsRes.length === 0) {
       const response = createResponse(404, {
         success: false,
         message: 'Borelog not found',
-        error: 'Borelog with the specified ID does not exist'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
-
-    // Check if already approved
-    if (existingBorelog.is_approved) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Borelog already approved',
-        error: 'Cannot modify approval status of already approved borelog'
+        error: 'Borelog with the specified ID does not exist in boreloge'
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -81,25 +80,32 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const requestBody = JSON.parse(event.body);
-    const validation = ApproveBorelogSchema.safeParse(requestBody);
-    
-    if (!validation.success) {
+    const parsedV1 = ApproveBorelogSchemaV1.safeParse(requestBody);
+    const parsedV2 = ApproveBorelogSchemaV2.safeParse(requestBody);
+
+    if (!parsedV1.success && !parsedV2.success) {
       const response = createResponse(400, {
         success: false,
         message: 'Validation error',
-        error: validation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ')
+        error: [
+          ...parsedV1.success ? [] : parsedV1.error.errors.map(err => `v1:${err.path.join('.')}: ${err.message}`),
+          ...parsedV2.success ? [] : parsedV2.error.errors.map(err => `v2:${err.path.join('.')}: ${err.message}`)
+        ].join(', ')
       });
       logResponse(response, Date.now() - startTime);
       return response;
     }
 
-    const { is_approved, remarks } = validation.data;
+    const is_approved = parsedV2.success ? true : parsedV1.data.is_approved;
+    const remarks = parsedV2.success ? parsedV2.data.approval_comments : parsedV1.data.remarks;
+    const versionNoRaw = parsedV2.success 
+      ? parsedV2.data.version_no 
+      : (typeof parsedV1.data.version_no === 'number' ? parsedV1.data.version_no : (requestBody as any).version_no);
 
     // If approving, publish the specified version from borelog_versions into borelog_details
     // Expect version_no in body when approving
     let updatedBorelog: any = null;
     if (is_approved) {
-      const versionNoRaw = (requestBody as any).version_no;
       if (typeof versionNoRaw !== 'number') {
         const response = createResponse(400, {
           success: false,
@@ -110,6 +116,49 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return response;
       }
 
+      // Prevent duplicate approvals
+      const alreadyApproved = await db.query(
+        `SELECT 1 FROM borelog_details WHERE borelog_id = $1 AND version_no = $2`,
+        [borelogId, versionNoRaw]
+      );
+      if (alreadyApproved.length > 0) {
+        const response = createResponse(400, {
+          success: false,
+          message: 'Version already approved',
+          error: `Borelog ${borelogId} version ${versionNoRaw} is already approved`
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+
+      // Compatibility check: if schema has legacy PK (borelog_id only), block multiple approvals gracefully
+      const pkCols = await db.query(
+        `SELECT kcu.column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         WHERE tc.table_name = 'borelog_details' AND tc.table_schema = 'public' AND tc.constraint_type = 'PRIMARY KEY'
+         ORDER BY kcu.ordinal_position`
+      );
+      const pkColumnNames = pkCols.map((r: any) => r.column_name);
+      const isLegacyPk = pkColumnNames.length === 1 && pkColumnNames[0] === 'borelog_id';
+      if (isLegacyPk) {
+        const anyFinal = await db.query(
+          `SELECT 1 FROM borelog_details WHERE borelog_id = $1 LIMIT 1`,
+          [borelogId]
+        );
+        if (anyFinal.length > 0) {
+          // If a different version already exists in final and DB has legacy PK, inserting any new version will violate PK
+          const response = createResponse(409, {
+            success: false,
+            message: 'A final version already exists for this borelog',
+            error: 'To allow multiple approved versions, run migration change_borelog_details_pk_to_composite.sql'
+          });
+          logResponse(response, Date.now() - startTime);
+          return response;
+        }
+      }
+
       // In a transaction: copy from borelog_versions -> borelog_details and mark version approved
       const publishResult = await db.transaction(async (client) => {
         // Get the version from staging
@@ -118,7 +167,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         `;
         const selectRes = await client.query(selectSql, [borelogId, versionNoRaw]);
         if (selectRes.rows.length === 0) {
-          throw new Error('Requested version not found');
+          const err = new Error('Requested version not found');
+          (err as any).statusCode = 404;
+          throw err;
         }
         const v = selectRes.rows[0];
 
@@ -137,7 +188,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             $12,$13,$14,$15,$16,$17,$18,$19,$20,
             $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,
             $32,$33,$34
-          ) ON CONFLICT (borelog_id, version_no) DO NOTHING RETURNING *;
+          ) ON CONFLICT ON CONSTRAINT borelog_details_pkey DO NOTHING RETURNING *;
         `;
         const insertRes = await client.query(insertSql, [
           v.borelog_id, v.version_no, v.number, v.msl, v.boring_method, v.hole_diameter,
@@ -175,7 +226,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       message: `Borelog ${is_approved ? 'approved' : 'rejected'} successfully`,
       data: is_approved ? {
         borelog_id: borelogId,
-        version_no: (requestBody as any).version_no,
+        version_no: versionNoRaw,
         approved_by: payload.userId
       } : {
         borelog_id: borelogId,
@@ -188,11 +239,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   } catch (error) {
     logger.error('Error approving borelog:', error);
-    
-    const response = createResponse(500, {
+
+    const status = (error as any).statusCode || 500;
+    const message = status === 404 ? 'Version not found for this borelog' : 'Internal server error';
+    const errDetail = (error as Error).message || 'Failed to approve borelog';
+
+    const response = createResponse(status, {
       success: false,
-      message: 'Internal server error',
-      error: 'Failed to approve borelog'
+      message,
+      error: errDetail
     });
 
     logResponse(response, Date.now() - startTime);

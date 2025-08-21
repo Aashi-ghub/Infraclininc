@@ -773,9 +773,14 @@ export function BorelogEntryForm({
       
     } catch (error) {
       console.error('Error approving version:', error);
+      const err: any = error;
+      const serverMsg = err?.response?.data?.message;
+      const serverErr = err?.response?.data?.error;
+      const httpStatus = err?.response?.status;
+      const description = serverMsg || serverErr || err?.message || 'Failed to approve version.';
       toast({
         title: 'Error',
-        description: 'Failed to approve version.',
+        description: `${description}${httpStatus ? ` (HTTP ${httpStatus})` : ''}`,
         variant: 'destructive',
       });
     }

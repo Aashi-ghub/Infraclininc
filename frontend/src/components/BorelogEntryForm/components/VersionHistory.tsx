@@ -9,6 +9,7 @@ import { BorelogFormData } from './types';
 interface Version {
   version_no: number;
   created_at: string;
+  status?: string;
   created_by: {
     user_id: string;
     name: string;
@@ -96,9 +97,11 @@ export function VersionHistory({
                   <Badge variant="outline">
                     Version {version.version_no}
                   </Badge>
-                  <Badge variant="outline">
-                    Created
-                  </Badge>
+                  {version.status && (
+                    <Badge variant={version.status === 'approved' ? 'default' : 'outline'}>
+                      {version.status}
+                    </Badge>
+                  )}
                   {version.version_no === (versions[0]?.version_no ?? version.version_no) && (
                     <Badge variant="default">
                       <CheckCircle className="h-3 w-3 mr-1" />
@@ -126,7 +129,7 @@ export function VersionHistory({
                   <Eye className="h-4 w-4 mr-1" />
                   {(activeVersionNo !== null ? version.version_no === activeVersionNo : version.version_no === form.watch('version_number')) ? 'Current' : 'Load'}
                 </Button>
-                {canApprove && version.version_no === (versions[0]?.version_no ?? version.version_no) && (
+                {canApprove && version.version_no === (versions[0]?.version_no ?? version.version_no) && version.status !== 'approved' && (
                   <div className="flex space-x-1">
                     <Button
                       type="button"

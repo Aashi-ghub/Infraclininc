@@ -168,14 +168,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Get version history for this borelog (merge final and staging)
+    // Get version history for this borelog (merge final and staging) and deduplicate by version_no, preferring final records
     const versionHistoryQuery = `
-      SELECT 
+      SELECT DISTINCT ON (v.version_no)
         v.version_no,
         v.created_at,
         v.created_by_user_id,
         u.name as created_by_name,
         u.email as created_by_email,
+        v.status,
         v.number,
         v.msl,
         v.boring_method,
@@ -221,7 +222,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
           sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
           total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
-          borehole_diameter, remarks, images
+          borehole_diameter, remarks, images,
+          1 as preference,
+          'approved'::text as status
         FROM borelog_details WHERE borelog_id = $1
         UNION ALL
         SELECT 
@@ -233,11 +236,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
           sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
           total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
-          borehole_diameter, remarks, NULL as images
+          borehole_diameter, remarks, NULL as images,
+          2 as preference,
+          COALESCE(status, 'submitted')::text as status
         FROM borelog_versions WHERE borelog_id = $1
       ) v
       LEFT JOIN users u ON v.created_by_user_id = u.user_id
-      ORDER BY v.version_no DESC
+      ORDER BY v.version_no DESC, v.preference ASC, v.created_at DESC
     `;
 
     const versionHistory = await db.query(versionHistoryQuery, [borelog[0].borelog_id]);
@@ -246,6 +251,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const formattedVersionHistory = versionHistory.map(version => ({
       version_no: version.version_no,
       created_at: version.created_at,
+      status: version.status,
       created_by: {
         user_id: version.created_by_user_id,
         name: version.created_by_name,
