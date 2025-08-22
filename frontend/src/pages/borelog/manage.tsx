@@ -92,16 +92,15 @@ export default function ManageBorelogs() {
         console.log('Borelogs response:', response);
         
         if (response.data && response.data.data && response.data.data.borelogs) {
-          // Flatten the grouped borelogs structure
-          const flattenedBorelogs = response.data.data.borelogs.flatMap((group: any) => 
-            group.borelogs.map((borelog: any) => ({
-              ...borelog,
-              structure: group.structure,
-              substructure: group.substructure
-            }))
-          );
-          setBorelogs(flattenedBorelogs);
-          setFilteredBorelogs(flattenedBorelogs);
+          // Handle the new flat array format
+          const borelogs = response.data.data.borelogs;
+          setBorelogs(borelogs);
+          setFilteredBorelogs(borelogs);
+        } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          // Handle the old flat array format (fallback)
+          const borelogs = response.data.data;
+          setBorelogs(borelogs);
+          setFilteredBorelogs(borelogs);
         } else {
           console.error('Unexpected response format:', response);
           setBorelogs([]);
@@ -199,15 +198,9 @@ export default function ManageBorelogs() {
           const response = await actualBorelogApi.getByProject(selectedProjectData.project_id);
           
           if (response.data && response.data.data && response.data.data.borelogs) {
-            const flattenedBorelogs = response.data.data.borelogs.flatMap((group: any) => 
-              group.borelogs.map((borelog: any) => ({
-                ...borelog,
-                structure: group.structure,
-                substructure: group.substructure
-              }))
-            );
-            setBorelogs(flattenedBorelogs);
-            setFilteredBorelogs(flattenedBorelogs);
+            const borelogs = response.data.data.borelogs;
+            setBorelogs(borelogs);
+            setFilteredBorelogs(borelogs);
           }
         } catch (error) {
           console.error('Failed to refresh borelogs:', error);

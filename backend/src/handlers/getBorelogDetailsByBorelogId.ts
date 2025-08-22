@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
 import { validate as validateUUID } from 'uuid';
+import { checkBorelogAssignment } from '../utils/projectAccess';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
@@ -11,14 +12,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer'])(event);
-    if (authError) {
+    const authError = await checkRole(['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer'])(event);
+    if (authError !== null) {
       return authError;
     }
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = validateToken(authHeader!);
+    const payload = await validateToken(authHeader!);
     if (!payload) {
       const response = createResponse(401, {
         success: false,
@@ -48,6 +49,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
       logResponse(response, Date.now() - startTime);
       return response;
+    }
+
+    // For Site Engineers, check if they are assigned to this borelog
+    if (payload.role === 'Site Engineer') {
+      const isAssigned = await checkBorelogAssignment(payload.userId, borelogId);
+      
+      if (!isAssigned) {
+        const response = createResponse(403, {
+          success: false,
+          message: 'Access denied: Borelog not assigned to you',
+          error: 'You can only access borelog details for borelogs that are assigned to you'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
     }
 
     // Get borelog details with version history
@@ -86,26 +102,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       });
       logResponse(response, Date.now() - startTime);
       return response;
-    }
-
-    // Check project access for Site Engineers
-    if (payload.role === 'Site Engineer') {
-      const projectId = borelogDetails[0].project_id;
-      const projectAccessQuery = `
-        SELECT 1 FROM user_project_assignments 
-        WHERE project_id = $1 AND $2 = ANY(assignee)
-      `;
-      const projectAccess = await db.query(projectAccessQuery, [projectId, payload.userId]);
-      
-      if (projectAccess.length === 0) {
-        const response = createResponse(403, {
-          success: false,
-          message: 'Access denied: User not assigned to this project',
-          error: 'Insufficient permissions'
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
     }
 
     // Group by version for better organization

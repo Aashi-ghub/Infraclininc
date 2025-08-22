@@ -8,12 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader } from '@/components/Loader';
 import { ProtectedRoute } from '@/lib/authComponents';
+import { useAuth } from '@/lib/auth';
 
 export default function BorelogListPage() {
   const [borelogs, setBorelogs] = useState<GeologicalLog[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { projectId } = useParams<{ projectId?: string }>();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchBorelogs = async () => {
@@ -44,6 +46,8 @@ export default function BorelogListPage() {
     fetchBorelogs();
   }, [projectId, toast]);
 
+  const isSiteEngineer = user?.role === 'Site Engineer';
+
   return (
     <ProtectedRoute>
       <div className="container mx-auto py-8">
@@ -51,10 +55,13 @@ export default function BorelogListPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>
               {projectId ? 'Project Borelogs' : 'All Geological Logs'}
+              {isSiteEngineer && ' (My Assignments)'}
             </CardTitle>
-            <Button asChild>
-              <Link to="/geological-log/create">Create New Log</Link>
-            </Button>
+            {!isSiteEngineer && (
+              <Button asChild>
+                <Link to="/geological-log/create">Create New Log</Link>
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -63,10 +70,23 @@ export default function BorelogListPage() {
               </div>
             ) : borelogs.length === 0 ? (
               <div className="text-center p-8">
-                <p className="text-muted-foreground">No geological logs found.</p>
-                <Button asChild className="mt-4">
-                  <Link to="/geological-log/create">Create your first log</Link>
-                </Button>
+                {isSiteEngineer ? (
+                  <>
+                    <p className="text-muted-foreground mb-4">
+                      You don't have any borelog assignments yet.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Contact your Project Manager to get assigned to borelogs.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">No geological logs found.</p>
+                    <Button asChild className="mt-4">
+                      <Link to="/geological-log/create">Create your first log</Link>
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

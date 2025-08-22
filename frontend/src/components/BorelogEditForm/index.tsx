@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { borelogApiV2, geologicalLogApi } from '@/lib/api';
+import { borelogApiV2 } from '@/lib/api';
 
 // Import components
 import { CompanyHeader } from '../BorelogEntryForm/components/CompanyHeader';
@@ -140,6 +140,9 @@ export function BorelogEditForm({
       
       // Get borelog details by ID (this includes scalar stratum fields)
       let borelogData = null;
+      let dataSource = '';
+      
+      // Get borelog details by ID (this includes scalar stratum fields)
       try {
         const response = await borelogApiV2.getDetailsByBorelogId(borelogId);
         console.log('Borelog details response:', response.data);
@@ -150,13 +153,15 @@ export function BorelogEditForm({
           keys: response.data.data ? Object.keys(response.data.data) : []
         });
         borelogData = response.data.data;
+        dataSource = 'borelogApiV2';
       } catch (error) {
-        console.warn('Failed to get borelog details by ID, trying geological log API:', error);
-        // Fallback to geological log API
-        const geoResponse = await geologicalLogApi.getById(borelogId);
-        console.log('Geological log response:', geoResponse.data);
-        borelogData = geoResponse.data.data;
+        console.error('Failed to get borelog details by ID:', error);
+        throw new Error('Failed to load borelog data');
       }
+      
+      console.log('Data source used:', dataSource);
+      console.log('Final borelogData:', borelogData);
+      console.log('User role:', typedUser?.role);
       
       if (!borelogData) {
         throw new Error('Borelog not found');
@@ -166,7 +171,14 @@ export function BorelogEditForm({
       
       // Set basic borelog info from the first version
       if (Array.isArray(borelogData) && borelogData.length > 0) {
+        // Handle borelog details array structure
         const firstVersion = borelogData[0];
+        console.log('Setting form values from borelog details array:', {
+          project_id: firstVersion.project_id,
+          structure_type: firstVersion.structure_type,
+          substructure_type: firstVersion.substructure_type,
+          borelog_type: firstVersion.borelog_type
+        });
         form.setValue('project_id', firstVersion.project_id || '');
         form.setValue('structure_id', firstVersion.structure_type || '');
         form.setValue('substructure_id', firstVersion.substructure_type || '');
@@ -175,6 +187,12 @@ export function BorelogEditForm({
       } else if (borelogData.version_history && Array.isArray(borelogData.version_history) && borelogData.version_history.length > 0) {
         // Handle case where data is an object with version_history array
         const firstVersion = borelogData.version_history[0];
+        console.log('Setting form values from version history:', {
+          project_id: borelogData.project?.project_id,
+          structure_type: borelogData.structure?.structure_type,
+          substructure_type: borelogData.structure?.substructure_type,
+          borelog_type: borelogData.borelog_type
+        });
         form.setValue('project_id', borelogData.project?.project_id || '');
         form.setValue('structure_id', borelogData.structure?.structure_type || '');
         form.setValue('substructure_id', borelogData.structure?.substructure_type || '');
@@ -254,9 +272,13 @@ export function BorelogEditForm({
     try {
       console.log('Loading version data:', version);
       
-      // Ensure version has the necessary fields for stratum data loading
+      // Extract the details object from the version
+      const details = version.details || version;
+      console.log('Extracted details:', details);
+      
+      // Ensure details has the necessary fields for stratum data loading
       const detailsWithIds = {
-        ...version,
+        ...details,
         borelog_id: borelogId,
         version_no: version.version_no || 1
       };
@@ -351,6 +373,8 @@ export function BorelogEditForm({
        if (details.job_code === undefined && details.number !== undefined) {
          next.job_code = String(details.number || '');
        }
+
+       
 
       // Coordinates mapping
       if (details.coordinate !== undefined && details.coordinate !== null) {
@@ -624,6 +648,15 @@ export function BorelogEditForm({
       
       console.log('Form values after reset:', form.getValues());
       console.log('Stratum rows after reset:', form.getValues('stratum_rows'));
+      console.log('Key form values after reset:', {
+        job_code: form.getValues('job_code'),
+        section_name: form.getValues('section_name'),
+        location: form.getValues('location'),
+        borehole_number: form.getValues('borehole_number'),
+        project_id: form.getValues('project_id'),
+        structure_id: form.getValues('structure_id'),
+        substructure_id: form.getValues('substructure_id')
+      });
       
       // Test setting a simple value to see if the form is working
       setTimeout(() => {
@@ -631,6 +664,15 @@ export function BorelogEditForm({
         console.log('Borehole number:', form.getValues('borehole_number'));
         console.log('Method of boring:', form.getValues('method_of_boring'));
         console.log('Stratum rows after timeout:', form.getValues('stratum_rows'));
+        console.log('Key form values after timeout:', {
+          job_code: form.getValues('job_code'),
+          section_name: form.getValues('section_name'),
+          location: form.getValues('location'),
+          borehole_number: form.getValues('borehole_number'),
+          project_id: form.getValues('project_id'),
+          structure_id: form.getValues('structure_id'),
+          substructure_id: form.getValues('substructure_id')
+        });
       }, 100);
       
     } finally {

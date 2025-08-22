@@ -28,30 +28,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Get projects based on user role and assignments
-    let projectsQuery: string;
-    let projectsParams: any[] = [];
+    // Get all projects (Site Engineers can see all projects, but will only access assigned borelogs)
+    const projectsQuery = `
+      SELECT project_id, name, location, created_at
+      FROM projects
+      ORDER BY name
+    `;
 
-    if (payload.role === 'Site Engineer') {
-      // Site Engineers can only see assigned projects
-      projectsQuery = `
-        SELECT DISTINCT p.project_id, p.name, p.location, p.created_at
-        FROM projects p
-        JOIN user_project_assignments upa ON p.project_id = upa.project_id
-        WHERE $1 = ANY(upa.assignee)
-        ORDER BY p.name
-      `;
-      projectsParams = [payload.userId];
-    } else {
-      // Admin, Project Manager, etc. can see all projects
-      projectsQuery = `
-        SELECT project_id, name, location, created_at
-        FROM projects
-        ORDER BY name
-      `;
-    }
-
-    const projects = await db.query(projectsQuery, projectsParams);
+    const projects = await db.query(projectsQuery);
 
     // Get structures for all projects (or filter by project_id if provided)
     const projectId = event.queryStringParameters?.project_id;
@@ -60,99 +44,58 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     if (projectId) {
       structuresQuery = `
-        SELECT s.structure_id, s.type, s.description, s.project_id, s.created_at
+        SELECT s.structure_id, s.type, s.description, s.project_id
         FROM structure s
         WHERE s.project_id = $1
-        ORDER BY s.type, s.description
+        ORDER BY s.type
       `;
       structuresParams = [projectId];
     } else {
       structuresQuery = `
-        SELECT s.structure_id, s.type, s.description, s.project_id, s.created_at
+        SELECT s.structure_id, s.type, s.description, s.project_id
         FROM structure s
-        ORDER BY s.project_id, s.type, s.description
+        ORDER BY s.project_id, s.type
       `;
     }
 
     const structures = await db.query(structuresQuery, structuresParams);
 
-    // Get substructures (filter by structure_id if provided)
+    // Get substructures for all structures (or filter by structure_id if provided)
     const structureId = event.queryStringParameters?.structure_id;
     let substructuresQuery: string;
     let substructuresParams: any[] = [];
 
     if (structureId) {
       substructuresQuery = `
-        SELECT ss.substructure_id, ss.type, ss.remark, ss.structure_id, ss.project_id, ss.created_at
+        SELECT ss.substructure_id, ss.type, ss.remark, ss.structure_id
         FROM sub_structures ss
         WHERE ss.structure_id = $1
         ORDER BY ss.type
       `;
       substructuresParams = [structureId];
-    } else if (projectId) {
-      substructuresQuery = `
-        SELECT ss.substructure_id, ss.type, ss.remark, ss.structure_id, ss.project_id, ss.created_at
-        FROM sub_structures ss
-        WHERE ss.project_id = $1
-        ORDER BY ss.structure_id, ss.type
-      `;
-      substructuresParams = [projectId];
     } else {
       substructuresQuery = `
-        SELECT ss.substructure_id, ss.type, ss.remark, ss.structure_id, ss.project_id, ss.created_at
+        SELECT ss.substructure_id, ss.type, ss.remark, ss.structure_id
         FROM sub_structures ss
-        ORDER BY ss.project_id, ss.structure_id, ss.type
+        ORDER BY ss.structure_id, ss.type
       `;
     }
 
     const substructures = await db.query(substructuresQuery, substructuresParams);
 
-    // Group structures by project
-    const structuresByProject = structures.reduce((acc, structure) => {
-      if (!acc[structure.project_id]) {
-        acc[structure.project_id] = [];
-      }
-      acc[structure.project_id].push({
-        structure_id: structure.structure_id,
-        type: structure.type,
-        description: structure.description,
-        created_at: structure.created_at
-      });
-      return acc;
-    }, {} as Record<string, any[]>);
-
-    // Group substructures by structure
-    const substructuresByStructure = substructures.reduce((acc, substructure) => {
-      if (!acc[substructure.structure_id]) {
-        acc[substructure.structure_id] = [];
-      }
-      acc[substructure.structure_id].push({
-        substructure_id: substructure.substructure_id,
-        type: substructure.type,
-        remark: substructure.remark,
-        project_id: substructure.project_id,
-        created_at: substructure.created_at
-      });
-      return acc;
-    }, {} as Record<string, any[]>);
-
     const response = createResponse(200, {
       success: true,
       message: 'Form data retrieved successfully',
       data: {
-        projects: projects.map(p => ({
-          project_id: p.project_id,
-          name: p.name,
-          location: p.location,
-          created_at: p.created_at
-        })),
-        structures_by_project: structuresByProject,
-        substructures_by_structure: substructuresByStructure
+        projects,
+        structures,
+        substructures
       }
     });
 
     logResponse(response, Date.now() - startTime);
     return response;
+
   } catch (error) {
     logger.error('Error retrieving form data:', error);
     

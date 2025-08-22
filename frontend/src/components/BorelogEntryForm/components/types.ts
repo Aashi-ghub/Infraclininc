@@ -98,7 +98,7 @@ interface SamplePoint {
   n_value?: number | null; // calculated: sum of SPT values
   
   // Core data
-  total_core_length_cm?: number | null;
+  total_core_length?: number | null;
   tcr_percent?: number | null; // calculated: (total_core_length / run_length) * 100
   rqd_length?: number | null;
   rqd_percent?: number | null; // calculated: (rqd_length / run_length) * 100
@@ -117,7 +117,7 @@ const samplePointSchema = z.object({
   spt_15cm_2: z.number().nullable().optional(),
   spt_15cm_3: z.number().nullable().optional(),
   n_value: z.number().nullable().optional(),
-  total_core_length_cm: z.number().nullable().optional(),
+  total_core_length: z.number().nullable().optional(),
   tcr_percent: z.number().nullable().optional(),
   rqd_length: z.number().nullable().optional(),
   rqd_percent: z.number().nullable().optional(),

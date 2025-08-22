@@ -4,6 +4,8 @@ import { getAllSubstructureAssignments } from '../models/substructureAssignment'
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { checkRole, validateToken } from '../utils/validateInput';
+import { getAssignedBorelogsForSiteEngineer } from '../utils/projectAccess';
+import * as db from '../db';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
@@ -45,43 +47,56 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     const decodedProjectName = decodeURIComponent(project_name);
     logger.info(`Searching for geological logs with project name: "${decodedProjectName}"`);
     
-    // Get geological logs and substructure assignments
-    const [geologicalLogs, substructureAssignments] = await Promise.all([
-      getGeologicalLogsByProjectName(decodedProjectName),
-      getAllSubstructureAssignments()
-    ]);
+    let geologicalLogs;
+    
+    // For Site Engineers, only show assigned geological logs
+    if (payload.role === 'Site Engineer') {
+      const assignedBorelogIds = await getAssignedBorelogsForSiteEngineer(payload.userId);
+      
+      if (assignedBorelogIds.length === 0) {
+        // No assignments, return empty list
+        geologicalLogs = [];
+      } else {
+        // Get geological logs for assigned borelogs only, filtered by project name
+        const query = `
+          SELECT gl.* 
+          FROM geological_logs gl
+          JOIN boreloge b ON gl.borelog_id = b.borelog_id
+          JOIN projects p ON b.project_id = p.project_id
+          WHERE gl.borelog_id = ANY($1) AND p.name = $2
+          ORDER BY gl.created_at DESC
+        `;
+        geologicalLogs = await db.query(query, [assignedBorelogIds, decodedProjectName]);
+      }
+    } else {
+      // For other roles, get all geological logs for the project
+      geologicalLogs = await getGeologicalLogsByProjectName(decodedProjectName);
+    }
+    
+    // Get substructure assignments
+    const substructureAssignments = await getAllSubstructureAssignments();
 
-    logger.info(`Found ${geologicalLogs.length} geological logs for project: "${decodedProjectName}"`);
-    logger.info(`Found ${substructureAssignments.length} substructure assignments`);
-
-    // Create a map of borelog_id to substructure_id
-    const substructureMap = new Map();
-    substructureAssignments.forEach(assignment => {
-      substructureMap.set(assignment.borelog_id, assignment.substructure_id);
-    });
-
-    // Add substructure_id to each geological log
-    const logsWithSubstructures = geologicalLogs.map(log => ({
-      ...log,
-      substructure_id: substructureMap.get(log.borelog_id) || null
-    }));
+    logger.info(`Found ${geologicalLogs.length} geological logs and ${substructureAssignments.length} substructure assignments`);
 
     const response = createResponse(200, {
       success: true,
-      message: 'Geological logs retrieved successfully',
-      data: logsWithSubstructures
+      message: 'Geological logs and substructure assignments retrieved successfully',
+      data: {
+        geologicalLogs,
+        substructureAssignments
+      }
     });
 
     logResponse(response, Date.now() - startTime);
     return response;
 
   } catch (error) {
-    logger.error('Error retrieving geological logs by project name with substructures', { error });
+    logger.error('Error retrieving geological logs by project name with substructures:', error);
     
     const response = createResponse(500, {
       success: false,
       message: 'Internal server error',
-      error: 'Failed to retrieve geological logs'
+      error: 'Failed to retrieve geological logs and substructure assignments'
     });
 
     logResponse(response, Date.now() - startTime);

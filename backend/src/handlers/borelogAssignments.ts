@@ -494,3 +494,53 @@ export const deleteAssignment = async (event: APIGatewayProxyEvent): Promise<API
     return response;
   }
 };
+
+// Get borelog assignments for the current user (site engineer)
+export const getMyAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Site Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Get assignments for the current user
+    const assignments = await getBorelogAssignmentsBySiteEngineer(payload.userId);
+
+    const response = createResponse(200, {
+      success: true,
+      message: 'My assignments retrieved successfully',
+      data: assignments
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  } catch (error: any) {
+    logger.error('Error getting my borelog assignments:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error.message || 'Failed to get my assignments'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};

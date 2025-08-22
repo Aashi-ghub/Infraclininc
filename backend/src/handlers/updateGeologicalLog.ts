@@ -1,7 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { validateInput, checkRole } from '../utils/validateInput';
 import { updateGeologicalLog } from '../models/geologicalLog';
-import { logger } from '../utils/logger';
+import { validateInput, checkRole, validateToken } from '../utils/validateInput';
+import { logger, logRequest, logResponse } from '../utils/logger';
+import { createResponse } from '../types/common';
+import { checkBorelogAssignment } from '../utils/projectAccess';
 import { z } from 'zod';
 
 // Helper function to validate date format (YYYY-MM-DD)
@@ -59,28 +61,55 @@ const UpdateGeologicalLogSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
   try {
     // Check if user has appropriate role (Admin, Project Manager, and Site Engineer can update logs)
-    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
-    if (authError) {
+    const authError = await checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
+    if (authError !== null) {
       return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
     }
 
     // Get borelog_id from path parameters
     const borelog_id = event.pathParameters?.borelog_id;
     
     if (!borelog_id) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true,
-        },
-        body: JSON.stringify({
-          message: 'Missing borelog_id parameter',
-          status: 'error'
-        })
-      };
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing borelog_id parameter',
+        error: 'borelog_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // For Site Engineers, check if they are assigned to this borelog
+    if (payload.role === 'Site Engineer') {
+      const isAssigned = await checkBorelogAssignment(payload.userId, borelog_id);
+      
+      if (!isAssigned) {
+        const response = createResponse(403, {
+          success: false,
+          message: 'Access denied: Borelog not assigned to you',
+          error: 'You can only update geological logs that are assigned to you'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
     }
 
     // Parse and validate input
@@ -95,61 +124,50 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const validationResult = validateInput(body, UpdateGeologicalLogSchema);
     
     if (!validationResult.success) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true,
-        },
-        body: JSON.stringify({
-          message: 'Validation error',
-          errors: validationResult.errors,
-          status: 'error'
-        })
-      };
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation error',
+        errors: validationResult.errors,
+        status: 'error'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
     }
 
     // Update geological log
     const result = await updateGeologicalLog(borelog_id, body);
     
     if (!result) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Credentials': true,
-        },
-        body: JSON.stringify({
-          message: 'Geological log not found',
-          status: 'error'
-        })
-      };
+      const response = createResponse(404, {
+        success: false,
+        message: 'Geological log not found',
+        error: `No geological log found with ID: ${borelog_id}`,
+        status: 'error'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
     }
     
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Credentials': true,
-      },
-      body: JSON.stringify({
-        message: 'Geological log updated successfully',
-        data: result,
-        status: 'success'
-      })
-    };
+    const response = createResponse(200, {
+      success: true,
+      message: 'Geological log updated successfully',
+      data: result,
+      status: 'success'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
   } catch (error) {
     logger.error('Error updating geological log:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Credentials': true,
-      },
-      body: JSON.stringify({
-        message: 'Internal server error',
-        status: 'error'
-      })
-    };
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to update geological log',
+      status: 'error'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
   }
 }; 
