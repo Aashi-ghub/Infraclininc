@@ -455,6 +455,92 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
+    // Borelog Assignment endpoints
+    createBorelogAssignment: {
+      handler: 'src/handlers/borelogAssignments.createAssignment',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/borelog-assignments',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateBorelogAssignment: {
+      handler: 'src/handlers/borelogAssignments.updateAssignment',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/borelog-assignments/{assignmentId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogAssignmentsByBorelogId: {
+      handler: 'src/handlers/borelogAssignments.getAssignmentsByBorelogId',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-assignments/borelog/{borelogId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogAssignmentsByStructureId: {
+      handler: 'src/handlers/borelogAssignments.getAssignmentsByStructureId',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-assignments/structure/{structureId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getBorelogAssignmentsBySiteEngineer: {
+      handler: 'src/handlers/borelogAssignments.getAssignmentsBySiteEngineer',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-assignments/site-engineer/{siteEngineerId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getActiveBorelogAssignments: {
+      handler: 'src/handlers/borelogAssignments.getActiveAssignments',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog-assignments/active',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteBorelogAssignment: {
+      handler: 'src/handlers/borelogAssignments.deleteAssignment',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/borelog-assignments/{assignmentId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    
     // User Management endpoints
     listUsers: {
       handler: 'src/handlers/users.listUsers',
@@ -785,6 +871,116 @@ const serverlessConfiguration: AWS = {
           http: {
             method: 'get',
             path: '/stratum-data',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Workflow endpoints
+    submitForReview: {
+      handler: 'src/handlers/workflowActions.submitForReview',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/workflow/{borelog_id}/submit',
+            cors: true
+          }
+        }
+      ]
+    },
+    reviewBorelog: {
+      handler: 'src/handlers/workflowActions.reviewBorelog',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/workflow/{borelog_id}/review',
+            cors: true
+          }
+        }
+      ]
+    },
+    assignLabTests: {
+      handler: 'src/handlers/workflowActions.assignLabTests',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/workflow/lab-assignments',
+            cors: true
+          }
+        }
+      ]
+    },
+    submitLabTestResults: {
+      handler: 'src/handlers/workflowActions.submitLabTestResults',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/workflow/lab-results',
+            cors: true
+          }
+        }
+      ]
+    },
+    getWorkflowStatus: {
+      handler: 'src/handlers/workflowActions.getWorkflowStatus',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/workflow/{borelog_id}/status',
+            cors: true
+          }
+        }
+      ]
+    },
+    getPendingReviews: {
+      handler: 'src/handlers/workflowDashboard.getPendingReviews',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/workflow/pending-reviews',
+            cors: true
+          }
+        }
+      ]
+    },
+    getLabAssignments: {
+      handler: 'src/handlers/workflowDashboard.getLabAssignments',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/workflow/lab-assignments',
+            cors: true
+          }
+        }
+      ]
+    },
+    getWorkflowStatistics: {
+      handler: 'src/handlers/workflowDashboard.getWorkflowStatistics',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/workflow/statistics',
+            cors: true
+          }
+        }
+      ]
+    },
+    getSubmittedBorelogs: {
+      handler: 'src/handlers/workflowDashboard.getSubmittedBorelogs',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/workflow/submitted-borelogs',
             cors: true
           }
         }

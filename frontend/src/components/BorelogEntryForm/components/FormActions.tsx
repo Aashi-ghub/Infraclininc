@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Save, Send, History } from 'lucide-react';
+import { WorkflowActions } from '../../WorkflowActions';
 
 interface FormActionsProps {
   isSubmitting: boolean;
@@ -11,6 +12,12 @@ interface FormActionsProps {
   onSave: () => void;
   onShowVersionHistory: () => void;
   showVersionHistory: boolean;
+  borelogId?: string;
+  projectName?: string;
+  boreholeNumber?: string;
+  currentStatus?: string;
+  versionNumber?: number;
+  onActionComplete?: () => void;
 }
 
 export function FormActions({
@@ -20,7 +27,13 @@ export function FormActions({
   canApprove,
   onSave,
   onShowVersionHistory,
-  showVersionHistory
+  showVersionHistory,
+  borelogId,
+  projectName,
+  boreholeNumber,
+  currentStatus,
+  versionNumber,
+  onActionComplete
 }: FormActionsProps) {
   return (
     <div className="flex items-center justify-between">
@@ -51,6 +64,18 @@ export function FormActions({
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? 'Saving...' : 'Save Draft'}
           </Button>
+        )}
+        
+        {/* Workflow Actions */}
+        {borelogId && projectName && boreholeNumber && currentStatus && versionNumber && (
+          <WorkflowActions
+            borelogId={borelogId}
+            projectName={projectName}
+            boreholeNumber={boreholeNumber}
+            currentStatus={currentStatus}
+            versionNumber={versionNumber}
+            onActionComplete={onActionComplete}
+          />
         )}
         
         <Button

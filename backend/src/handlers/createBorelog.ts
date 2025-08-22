@@ -17,8 +17,8 @@ const CreateBorelogSchema = z.object({
   hole_diameter: z.number().optional(),
   commencement_date: z.string().optional(),
   completion_date: z.string().optional(),
-  standing_water_level: z.number().optional(),
-  termination_depth: z.number().optional(),
+  standing_water_level: z.number().nullable().optional(),
+  termination_depth: z.number().nullable().optional(),
   coordinate: z.object({
     type: z.literal('Point'),
     coordinates: z.tuple([z.number(), z.number()])

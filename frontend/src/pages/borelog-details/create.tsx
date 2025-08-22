@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { borelogDetailsApi, geologicalLogApi } from '@/lib/api';
 import { borelogDetailSchema, type BorelogDetailFormData } from '@/lib/zodSchemas';
@@ -14,6 +14,7 @@ import { Loader } from '@/components/Loader';
 import { useEffect } from 'react';
 import { GeologicalLog } from '@/lib/types';
 import { CoordinateMapPicker } from '@/components/CoordinateMapPicker';
+import { BorelogEditForm } from '@/components/BorelogEditForm';
 
 export default function CreateBorelogDetailPage() {
   const [searchParams] = useSearchParams();
@@ -23,6 +24,18 @@ export default function CreateBorelogDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [geologicalLog, setGeologicalLog] = useState<GeologicalLog | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Get borelog_id from URL params or search params
+  const { id } = useParams<{ id: string }>();
+  const finalBorelogId = id || borelog_id;
+
+  console.log('Routing debug:', { id, borelog_id, finalBorelogId });
+
+  // If borelog_id is provided, render the edit form
+  if (finalBorelogId) {
+    console.log('Rendering BorelogEditForm with ID:', finalBorelogId);
+    return <BorelogEditForm borelogId={finalBorelogId} onClose={() => navigate('/borelog/manage')} />;
+  }
 
   const form = useForm<BorelogDetailFormData>({
     resolver: zodResolver(borelogDetailSchema),

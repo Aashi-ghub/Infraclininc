@@ -146,8 +146,8 @@ export const borelogSubmissionSchema = z.object({
       borehole_number: z.string().min(1, 'Borehole number is required'),
       commencement_date: z.string().min(1, 'Commencement date is required'),
       completion_date: z.string().min(1, 'Completion date is required'),
-      standing_water_level: z.number().optional(),
-      termination_depth: z.number().min(0, 'Termination depth must be positive')
+      standing_water_level: z.number().nullable().optional(),
+      termination_depth: z.number().nullable().optional()
     })
   }),
   status: z.enum(['draft', 'submitted', 'approved', 'rejected'])

@@ -145,8 +145,8 @@ export const BorelogDetailsSchema = z.object({
   hole_diameter: z.number(),
   commencement_date: z.string().transform((str) => new Date(str)),
   completion_date: z.string().transform((str) => new Date(str)),
-  standing_water_level: z.number().optional(),
-  termination_depth: z.number(),
+  standing_water_level: z.number().nullable().optional(),
+  termination_depth: z.number().nullable().optional(),
   coordinate: z.object({
     type: z.literal('Point'),
     coordinates: z.tuple([

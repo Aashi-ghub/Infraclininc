@@ -56,6 +56,11 @@ export function Navbar() {
                   Create Log
                 </Link>
               )}
+              {(user.role === "Admin" || user.role === "Project Manager" || user.role === "Site Engineer" || user.role === "Approval Engineer" || user.role === "Lab Engineer") && (
+                <Link to="/workflow/dashboard" className="text-foreground/80 hover:text-foreground">
+                  Workflow
+                </Link>
+              )}
               {(user.role === "Admin" || user.role === "Project Manager") && (
                 <Link to="/contacts" className="text-foreground/80 hover:text-foreground">
                   Contacts

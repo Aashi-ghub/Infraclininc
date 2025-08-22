@@ -12,13 +12,21 @@ import {
   CreateSubstructureInput,
   UserAssignment,
   AssignUsersInput,
+  BorelogAssignment,
+  CreateBorelogAssignmentInput,
+  UpdateBorelogAssignmentInput,
   LabTest,
   CreateLabTestInput,
   ApiResponse,
   PaginatedResponse,
   BorelogSubmission,
   Borehole,
-  CreateBoreholeInput
+  CreateBoreholeInput,
+  ReviewCommentType,
+  WorkflowStatusData,
+  PendingReview,
+  LabTestAssignment,
+  WorkflowStatistics
 } from './types';
 
 // Get API base URL from environment variables
@@ -218,8 +226,31 @@ export const substructureApi = {
 };
 
 export const assignmentApi = {
-  assignUsers: (data: AssignUsersInput) => 
+  assignUsers: (data: AssignUsersInput) =>
     apiClient.post<ApiResponse<UserAssignment>>('/assignments', data),
+};
+
+export const borelogAssignmentApi = {
+  create: (data: CreateBorelogAssignmentInput) =>
+    apiClient.post<ApiResponse<BorelogAssignment>>('/borelog-assignments', data),
+  
+  update: (assignmentId: string, data: UpdateBorelogAssignmentInput) =>
+    apiClient.put<ApiResponse<BorelogAssignment>>(`/borelog-assignments/${assignmentId}`, data),
+  
+  getByBorelogId: (borelogId: string) =>
+    apiClient.get<ApiResponse<BorelogAssignment[]>>(`/borelog-assignments/borelog/${borelogId}`),
+  
+  getByStructureId: (structureId: string) =>
+    apiClient.get<ApiResponse<BorelogAssignment[]>>(`/borelog-assignments/structure/${structureId}`),
+  
+  getBySiteEngineer: (siteEngineerId: string) =>
+    apiClient.get<ApiResponse<BorelogAssignment[]>>(`/borelog-assignments/site-engineer/${siteEngineerId}`),
+  
+  getActive: () =>
+    apiClient.get<ApiResponse<BorelogAssignment[]>>('/borelog-assignments/active'),
+  
+  delete: (assignmentId: string) =>
+    apiClient.delete<ApiResponse<null>>(`/borelog-assignments/${assignmentId}`),
 };
 
 export const userApi = {
@@ -232,6 +263,66 @@ export const authApi = {
     apiClient.post('/auth/login', data),
   
   me: () => apiClient.get('/auth/me'),
+};
+
+// Workflow API
+export const workflowApi = {
+  // Submit borelog for review
+  submitForReview: (borelogId: string, data: { 
+    comments: string; 
+    version_number: number; 
+  }) => 
+    apiClient.post<ApiResponse<any>>(`/workflow/${borelogId}/submit`, data),
+  
+  // Review borelog (approve/reject/return_for_revision)
+  reviewBorelog: (borelogId: string, data: { 
+    action: 'approve' | 'reject' | 'return_for_revision'; 
+    comments: string; 
+    version_number: number; 
+  }) => 
+    apiClient.post<ApiResponse<any>>(`/workflow/${borelogId}/review`, data),
+  
+  // Assign lab tests
+  assignLabTests: (data: {
+    borelog_id: string;
+    sample_ids: string[];
+    test_types: string[];
+    assigned_lab_engineer: string;
+    priority: 'low' | 'medium' | 'high';
+    expected_completion_date: string;
+  }) => 
+    apiClient.post<ApiResponse<any>>('/workflow/lab-assignments', data),
+  
+  // Submit lab test results
+  submitLabTestResults: (data: {
+    assignment_id: string;
+    sample_id: string;
+    test_type: string;
+    test_date: string;
+    results: Record<string, any>;
+    remarks?: string;
+  }) => 
+    apiClient.post<ApiResponse<any>>('/workflow/lab-results', data),
+  
+  // Get workflow status
+  getWorkflowStatus: (borelogId: string) => 
+    apiClient.get<ApiResponse<WorkflowStatusData>>(`/workflow/${borelogId}/status`),
+  
+  // Get pending reviews (for reviewers)
+  getPendingReviews: () => 
+    apiClient.get<ApiResponse<PendingReview[]>>('/workflow/pending-reviews'),
+  
+  // Get lab assignments (for lab engineers)
+  getLabAssignments: () => 
+    apiClient.get<ApiResponse<LabTestAssignment[]>>('/workflow/lab-assignments'),
+  
+  // Get workflow statistics (for project managers)
+  getWorkflowStatistics: () => 
+    apiClient.get<ApiResponse<WorkflowStatistics>>('/workflow/statistics'),
+  
+  // Get submitted borelogs (for site engineers)
+  getSubmittedBorelogs: () => 
+    apiClient.get<ApiResponse<any[]>>('/workflow/submitted-borelogs'),
 };
 
 export const labTestApi = {

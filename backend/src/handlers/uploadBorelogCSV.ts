@@ -1,53 +1,142 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { checkRole, validateToken, GeologicalLogSchema, validateInput } from '../utils/validateInput';
+import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { parse } from 'csv-parse/sync';
-import { insertGeologicalLog } from '../models/geologicalLog';
-import { getProjectById } from '../models/projects';
 import { z } from 'zod';
+import * as db from '../db';
 
-// CSV Schema for borelog upload
-const BorelogCSVSchema = z.object({
-  project_name: z.string().min(1, 'Project name is required'),
-  client_name: z.string().min(1, 'Client name is required'),
-  design_consultant: z.string().min(1, 'Design consultant is required'),
+// New CSV Schema for borelog upload (matching new borelog entry form)
+const NewBorelogCSVSchema = z.object({
+  project_id: z.string().uuid('Invalid project ID'),
+  structure_id: z.string().uuid('Invalid structure ID'),
+  substructure_id: z.string().uuid('Invalid substructure ID'),
+  borehole_id: z.string().uuid('Invalid borehole ID'),
   job_code: z.string().min(1, 'Job code is required'),
-  project_location: z.string().min(1, 'Project location is required'),
+  section_name: z.string().min(1, 'Section name is required'),
+  coordinate_e: z.string().min(1, 'Easting coordinate is required'),
+  coordinate_l: z.string().min(1, 'Northing coordinate is required'),
+  location: z.string().min(1, 'Location is required'),
+  method_of_boring: z.string().min(1, 'Method of boring is required'),
+  diameter_of_hole: z.string().min(1, 'Diameter of hole is required'),
+  commencement_date: z.string().min(1, 'Commencement date is required'),
+  completion_date: z.string().min(1, 'Completion date is required'),
+  borehole_number: z.string().optional(),
   chainage_km: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
     message: "Chainage KM must be a valid number"
   }).optional(),
-  area: z.string().min(1, 'Area is required'),
-  borehole_location: z.string().min(1, 'Borehole location is required'),
-  borehole_number: z.string().min(1, 'Borehole number is required'),
-  msl: z.string().optional(),
-  method_of_boring: z.string().min(1, 'Method of boring is required'),
-  diameter_of_hole: z.string().refine(val => !isNaN(parseFloat(val)), {
-    message: "Diameter of hole must be a valid number"
-  }),
-  commencement_date: z.string().min(1, 'Commencement date is required'),
-  completion_date: z.string().min(1, 'Completion date is required'),
+  msl: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
+    message: "MSL must be a valid number"
+  }).optional(),
   standing_water_level: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
     message: "Standing water level must be a valid number"
   }).optional(),
-  termination_depth: z.string().refine(val => !isNaN(parseFloat(val)), {
+  termination_depth: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
     message: "Termination depth must be a valid number"
-  }),
-  coordinate_lat: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
-    message: "Coordinate latitude must be a valid number"
   }).optional(),
-  coordinate_lng: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
-    message: "Coordinate longitude must be a valid number"
+  permeability_tests_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "Permeability tests count must be a valid number"
   }).optional(),
-  type_of_core_barrel: z.string().optional(),
-  bearing_of_hole: z.string().optional(),
-  collar_elevation: z.string().refine(val => !val || !isNaN(parseFloat(val)), {
-    message: "Collar elevation must be a valid number"
+  spt_tests_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "SPT tests count must be a valid number"
   }).optional(),
-  logged_by: z.string().min(1, 'Logged by is required'),
-  checked_by: z.string().min(1, 'Checked by is required'),
-  substructure_id: z.string().optional(), // Link to substructure
+  vs_tests_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "VS tests count must be a valid number"
+  }).optional(),
+  undisturbed_samples_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "Undisturbed samples count must be a valid number"
+  }).optional(),
+  disturbed_samples_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "Disturbed samples count must be a valid number"
+  }).optional(),
+  water_samples_count: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "Water samples count must be a valid number"
+  }).optional(),
+  version_number: z.string().refine(val => !val || !isNaN(parseInt(val)), {
+    message: "Version number must be a valid number"
+  }).optional(),
+  status: z.string().optional(), // Accept any string, we'll map it later
+  edited_by: z.string().uuid('Invalid edited_by user ID').optional(),
+  editor_name: z.string().optional(),
 });
+
+// Helper function to map status values to valid enum values
+function mapStatusValue(status: string | undefined): 'draft' | 'submitted' | 'approved' | 'rejected' {
+  if (!status) return 'draft';
+  
+  const statusLower = status.toLowerCase();
+  
+  // Map common status values to valid enum values
+  switch (statusLower) {
+    case 'draft':
+    case 'd':
+      return 'draft';
+    case 'submitted':
+    case 'submit':
+    case 's':
+      return 'submitted';
+    case 'approved':
+    case 'approve':
+    case 'a':
+    case 'final':
+    case 'f':
+      return 'approved';
+    case 'rejected':
+    case 'reject':
+    case 'r':
+    case 'reviewed':
+      return 'rejected';
+    default:
+      return 'draft'; // Default to draft for unknown values
+  }
+}
+
+// Helper function to validate foreign key constraints
+async function validateForeignKeys(borelogData: any) {
+  const pool = await db.getPool();
+  const client = await pool.connect();
+  
+  try {
+    // Check if project exists
+    const projectResult = await client.query(
+      'SELECT project_id FROM projects WHERE project_id = $1',
+      [borelogData.project_id]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new Error(`Project with ID ${borelogData.project_id} does not exist`);
+    }
+
+    // Check if structure exists
+    const structureResult = await client.query(
+      'SELECT structure_id FROM structure WHERE structure_id = $1',
+      [borelogData.structure_id]
+    );
+    if (structureResult.rows.length === 0) {
+      throw new Error(`Structure with ID ${borelogData.structure_id} does not exist`);
+    }
+
+    // Check if substructure exists
+    const substructureResult = await client.query(
+      'SELECT substructure_id FROM sub_structures WHERE substructure_id = $1',
+      [borelogData.substructure_id]
+    );
+    if (substructureResult.rows.length === 0) {
+      throw new Error(`Substructure with ID ${borelogData.substructure_id} does not exist`);
+    }
+
+    // Check if borehole exists
+    const boreholeResult = await client.query(
+      'SELECT borehole_id FROM borehole WHERE borehole_id = $1',
+      [borelogData.borehole_id]
+    );
+    if (boreholeResult.rows.length === 0) {
+      throw new Error(`Borehole with ID ${borelogData.borehole_id} does not exist`);
+    }
+
+  } finally {
+    client.release();
+  }
+}
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
@@ -85,44 +174,39 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const requestBody = JSON.parse(event.body);
-    const { csvData, projectId } = requestBody;
+    const { csvData } = requestBody;
 
-    if (!csvData || !projectId) {
+    if (!csvData) {
       const response = createResponse(400, {
         success: false,
         message: 'Missing required fields',
-        error: 'csvData and projectId are required'
+        error: 'csvData is required'
       });
       logResponse(response, Date.now() - startTime);
       return response;
     }
-
-    // Ensure the project exists and capture its authoritative name
-    const project = await getProjectById(projectId);
-    if (!project) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Invalid projectId: project not found',
-        error: 'PROJECT_NOT_FOUND'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
-
-    const targetProjectName = project.name;
 
     // Parse CSV data
     let parsedData;
     try {
       logger.info('Parsing CSV data...');
+      logger.info('Raw CSV data (first 500 chars):', csvData.substring(0, 500));
+      
       parsedData = parse(csvData, {
         columns: true,
         skip_empty_lines: true,
         trim: true
       });
+      
       logger.info(`Parsed ${parsedData.length} rows from CSV`);
-      logger.info('First row sample:', parsedData[0]);
+      if (parsedData.length > 0) {
+        logger.info('Available columns in first row:', Object.keys(parsedData[0]));
+        logger.info('First row sample:', parsedData[0]);
+      } else {
+        logger.warn('No rows parsed from CSV');
+      }
     } catch (error) {
+      logger.error('CSV parsing error:', error);
       const response = createResponse(400, {
         success: false,
         message: 'Invalid CSV format',
@@ -141,12 +225,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       const rowNumber = i + 2; // +2 because CSV has header and arrays are 0-indexed
 
       try {
-        // Validate row data with CSV schema first
-        const csvValidation = BorelogCSVSchema.safeParse(row);
+        // Validate row data with new CSV schema
+        const csvValidation = NewBorelogCSVSchema.safeParse(row);
         if (!csvValidation.success) {
+          logger.error(`Validation failed for row ${rowNumber}:`, {
+            availableColumns: Object.keys(row),
+            expectedColumns: Object.keys(NewBorelogCSVSchema.shape),
+            validationErrors: csvValidation.error.errors
+          });
+          
           errors.push({
             row: rowNumber,
-            errors: csvValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
+            borehole_number: row.borehole_number || 'Unknown',
+            errors: csvValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`),
+            availableColumns: Object.keys(row)
           });
           continue;
         }
@@ -154,94 +246,69 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const csvData = csvValidation.data;
         logger.info(`Processing validated data for row ${rowNumber}:`, { 
           borehole_number: csvData.borehole_number,
-          project_name: csvData.project_name 
+          project_id: csvData.project_id 
         });
 
         // Convert string values to appropriate types
         const borelogData = {
-          // Override CSV project to the selected project to avoid mismatches
-          project_name: targetProjectName,
-          client_name: csvData.client_name,
-          design_consultant: csvData.design_consultant,
+          project_id: csvData.project_id,
+          structure_id: csvData.structure_id,
+          substructure_id: csvData.substructure_id,
+          borehole_id: csvData.borehole_id,
           job_code: csvData.job_code,
-          project_location: csvData.project_location,
-          chainage_km: csvData.chainage_km ? parseFloat(csvData.chainage_km) : undefined,
-          area: csvData.area,
-          borehole_location: csvData.borehole_location,
-          borehole_number: csvData.borehole_number,
-          msl: csvData.msl,
+          section_name: csvData.section_name,
+          coordinate_e: csvData.coordinate_e,
+          coordinate_l: csvData.coordinate_l,
+          location: csvData.location,
           method_of_boring: csvData.method_of_boring,
-          diameter_of_hole: parseFloat(csvData.diameter_of_hole),
+          diameter_of_hole: csvData.diameter_of_hole,
           commencement_date: csvData.commencement_date,
           completion_date: csvData.completion_date,
-          standing_water_level: csvData.standing_water_level ? parseFloat(csvData.standing_water_level) : undefined,
-          termination_depth: parseFloat(csvData.termination_depth),
-          coordinate: (csvData.coordinate_lat && csvData.coordinate_lng) ? {
-            type: 'Point',
-            coordinates: [parseFloat(csvData.coordinate_lng), parseFloat(csvData.coordinate_lat)]
-          } : undefined,
-          type_of_core_barrel: csvData.type_of_core_barrel,
-          bearing_of_hole: csvData.bearing_of_hole,
-          collar_elevation: csvData.collar_elevation ? parseFloat(csvData.collar_elevation) : undefined,
-          // Store substructure_id for later assignment
-          _substructure_id: csvData.substructure_id, // Temporary field for processing
-          logged_by: csvData.logged_by,
-          checked_by: csvData.checked_by,
-          // Add missing optional fields with default values
-          lithology: undefined,
-          rock_methodology: undefined,
-          structural_condition: undefined,
-          weathering_classification: undefined,
-          fracture_frequency_per_m: undefined,
-          size_of_core_pieces_distribution: undefined,
-          remarks: undefined,
+          borehole_number: csvData.borehole_number,
+          chainage_km: csvData.chainage_km ? parseFloat(csvData.chainage_km) : null,
+          msl: csvData.msl ? parseFloat(csvData.msl) : null,
+          standing_water_level: csvData.standing_water_level ? parseFloat(csvData.standing_water_level) : null,
+          termination_depth: csvData.termination_depth ? parseFloat(csvData.termination_depth) : null,
+          permeability_tests_count: csvData.permeability_tests_count ? parseInt(csvData.permeability_tests_count) : 0,
+          spt_tests_count: csvData.spt_tests_count ? parseInt(csvData.spt_tests_count) : 0,
+          vs_tests_count: csvData.vs_tests_count ? parseInt(csvData.vs_tests_count) : 0,
+          undisturbed_samples_count: csvData.undisturbed_samples_count ? parseInt(csvData.undisturbed_samples_count) : 0,
+          disturbed_samples_count: csvData.disturbed_samples_count ? parseInt(csvData.disturbed_samples_count) : 0,
+          water_samples_count: csvData.water_samples_count ? parseInt(csvData.water_samples_count) : 0,
+          version_number: csvData.version_number ? parseInt(csvData.version_number) : 1,
+          status: mapStatusValue(csvData.status), // Map status to valid enum
+          edited_by: csvData.edited_by || payload.userId,
+          editor_name: csvData.editor_name,
           created_by_user_id: payload.userId
         };
 
-        // Validate the borelog data with the proper schema
-        logger.info(`Validating borelog data for row ${rowNumber}:`, borelogData);
-        const validationResult = validateInput(borelogData, GeologicalLogSchema);
-        if (!validationResult.success) {
-          logger.error(`Validation failed for row ${rowNumber}:`, validationResult.error);
+        // Validate foreign keys before attempting to create
+        try {
+          await validateForeignKeys(borelogData);
+        } catch (fkError) {
+          logger.error(`Foreign key validation failed for row ${rowNumber}:`, fkError);
           errors.push({
             row: rowNumber,
-            borehole_number: csvData.borehole_number,
-            error: `Validation error: ${validationResult.error}`
+            borehole_number: csvData.borehole_number || 'Unknown',
+            error: `Foreign key constraint violation: ${(fkError as Error).message}`
           });
           continue;
         }
-        logger.info(`Validation successful for row ${rowNumber}`);
 
-        // Create the geological log
+        // Create the borelog using the new borelog creation API
         logger.info(`Attempting to create borelog for row ${rowNumber}, borehole: ${csvData.borehole_number}`);
-        logger.info('Validated data being sent to database:', JSON.stringify(validationResult.data, null, 2));
-        const createdBorelog = await insertGeologicalLog(validationResult.data);
+        logger.info('Borelog data being sent to database:', JSON.stringify(borelogData, null, 2));
+        
+        // Call the createBorelog handler logic
+        const createdBorelog = await createBorelogFromCSV(borelogData);
         logger.info(`Successfully created borelog with ID: ${createdBorelog.borelog_id}`, { createdBorelog });
-
-        // If substructure_id is provided, assign it
-        if (borelogData._substructure_id) {
-          try {
-            await query(
-              'INSERT INTO borelog_substructure_mapping (borelog_id, substructure_id) VALUES ($1, $2)',
-              [createdBorelog.borelog_id, borelogData._substructure_id]
-            );
-            logger.info(`Assigned substructure ${borelogData._substructure_id} to borelog ${createdBorelog.borelog_id}`);
-          } catch (subError) {
-            logger.warn(`Failed to assign substructure to borelog ${createdBorelog.borelog_id}:`, subError);
-            errors.push({
-              row: rowNumber,
-              borehole_number: csvData.borehole_number,
-              error: `Created borelog but failed to assign substructure: ${(subError as Error).message}`
-            });
-          }
-        }
         
         results.push({
           row: rowNumber,
-          borehole_number: csvData.borehole_number,
+          borehole_number: csvData.borehole_number || 'N/A',
           borelog_id: createdBorelog.borelog_id,
           status: 'created',
-          substructure_assigned: borelogData._substructure_id ? true : undefined
+          mapped_status: mapStatusValue(csvData.status) // Include the mapped status for reference
         });
 
       } catch (error) {
@@ -287,4 +354,67 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     logResponse(response, Date.now() - startTime);
     return response;
   }
-}; 
+};
+
+// Helper function to create borelog from CSV data
+async function createBorelogFromCSV(borelogData: any) {
+  const pool = await db.getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Create the main borelog record
+    const borelogResult = await client.query(
+      `INSERT INTO boreloge (borelog_id, substructure_id, project_id, type, created_by_user_id)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4)
+       RETURNING borelog_id`,
+      [borelogData.substructure_id, borelogData.project_id, 'Geotechnical', borelogData.created_by_user_id]
+    );
+
+    const borelog_id = borelogResult.rows[0].borelog_id;
+
+    // Create borelog details
+    const detailsResult = await client.query(
+      `INSERT INTO borelog_details (
+        borelog_id, version_no, number, msl, boring_method, hole_diameter,
+        commencement_date, completion_date, standing_water_level, termination_depth,
+        permeability_test_count, spt_vs_test_count, undisturbed_sample_count,
+        disturbed_sample_count, water_sample_count, created_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING borelog_id`,
+      [
+        borelog_id,
+        borelogData.version_number,
+        borelogData.borehole_number || borelogData.job_code,
+        borelogData.msl?.toString(),
+        borelogData.method_of_boring,
+        parseFloat(borelogData.diameter_of_hole),
+        borelogData.commencement_date,
+        borelogData.completion_date,
+        borelogData.standing_water_level,
+        borelogData.termination_depth,
+        borelogData.permeability_tests_count?.toString(),
+        `${borelogData.spt_tests_count}&${borelogData.vs_tests_count}`,
+        borelogData.undisturbed_samples_count?.toString(),
+        borelogData.disturbed_samples_count?.toString(),
+        borelogData.water_samples_count?.toString(),
+        borelogData.created_by_user_id
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      borelog_id,
+      version_no: borelogData.version_number,
+      status: 'created'
+    };
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+} 

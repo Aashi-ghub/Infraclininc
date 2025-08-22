@@ -122,8 +122,8 @@ export interface CreateBorelogDetailInput {
   hole_diameter: number;
   commencement_date: string;
   completion_date: string;
-  standing_water_level?: number;
-  termination_depth: number;
+  standing_water_level?: number | null;
+  termination_depth: number | null;
   coordinate?: {
     type: 'Point';
     coordinates: [number, number]; // [longitude, latitude]
@@ -210,6 +210,42 @@ export interface AssignUsersInput {
   assignment_type: 'AdminToManager' | 'ManagerToTeam';
   assigner: string[];
   assignee: string[];
+}
+
+// Borelog Assignment Types
+export interface BorelogAssignment {
+  assignment_id: string;
+  borelog_id?: string;
+  structure_id?: string;
+  substructure_id?: string;
+  assigned_site_engineer: string;
+  assigned_by: string;
+  assigned_at: string;
+  status: 'active' | 'inactive' | 'completed';
+  notes?: string;
+  expected_completion_date?: string;
+  completed_at?: string;
+  assigned_site_engineer_name?: string;
+  assigned_site_engineer_email?: string;
+  project_name?: string;
+  structure_type?: string;
+  substructure_type?: string;
+}
+
+export interface CreateBorelogAssignmentInput {
+  borelog_id?: string;
+  structure_id?: string;
+  substructure_id?: string;
+  assigned_site_engineer: string;
+  notes?: string;
+  expected_completion_date?: string;
+}
+
+export interface UpdateBorelogAssignmentInput {
+  status?: 'active' | 'inactive' | 'completed';
+  notes?: string;
+  expected_completion_date?: string;
+  completed_at?: string;
 }
 
 // Lab Test Types
@@ -377,4 +413,68 @@ export interface CreateBoreholeInput {
   boring_method?: string;
   hole_diameter?: number;
   created_by_user_id?: string;
+}
+
+// Workflow Types
+export interface WorkflowStatusData {
+  borelog_id: string;
+  current_status: string;
+  version_number: number;
+  submitted_by?: string;
+  submitted_at?: string;
+  approved_by?: string;
+  approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  returned_by?: string;
+  returned_at?: string;
+  submission_comments?: string;
+  review_comments?: string;
+  lab_tests: any[];
+}
+
+export interface PendingReview {
+  borelog_id: string;
+  version_no: number;
+  status: string;
+  submitted_by: string;
+  submitted_at: string;
+  submission_comments?: string;
+  project_name: string;
+  substructure_name?: string;
+  submitted_by_name?: string;
+}
+
+export interface LabTestAssignment {
+  id: string;
+  borelog_id: string;
+  sample_id: string;
+  test_type: string;
+  priority: 'low' | 'medium' | 'high';
+  expected_completion_date: string;
+  status: string;
+  assigned_at: string;
+  project_name: string;
+  borehole_number: string;
+}
+
+export interface WorkflowStatistics {
+  projects: Array<{
+    project_id: string;
+    project_name: string;
+    total_borelogs: string;
+    draft_count: string;
+    submitted_count: string;
+    approved_count: string;
+    rejected_count: string;
+    returned_count: string;
+  }>;
+  totals: {
+    total_borelogs: number;
+    draft_count: number;
+    submitted_count: number;
+    approved_count: number;
+    rejected_count: number;
+    returned_count: number;
+  };
 } 

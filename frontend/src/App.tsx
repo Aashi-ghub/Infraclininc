@@ -11,6 +11,7 @@ import Login from "./pages/auth/login";
 import CreateGeologicalLogPage from "./pages/geological-log/create";
 import BorelogListPage from "./pages/geological-log/list";
 import BorelogDetailPage from "./pages/geological-log/[id]";
+import BoreholeSummaryPage from "./pages/borelog/[id]";
 import ManageBorelogs from "./pages/borelog/manage";
 import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
@@ -26,6 +27,10 @@ import SubstructureListPage from "./pages/substructures/list";
 import CreateSubstructurePage from "./pages/substructures/create";
 import BorelogManagePage from "./pages/borelog/manage";
 import BorelogEntryPage from "./pages/borelog/entry";
+import WorkflowDashboard from "./pages/workflow/dashboard";
+import ProjectAssignmentPage from "./pages/assignments/create";
+import UserManagementPage from "./pages/users/list";
+import BorelogAssignmentsPage from "./pages/borelog-assignments";
 
 const queryClient = new QueryClient();
 
@@ -65,7 +70,7 @@ const App = () => (
                     } />
                     <Route path="/borelog/:id" element={
                       <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
-                        <BorelogDetailPage />
+                        <BoreholeSummaryPage />
                       </ProtectedRoute>
                     } />
                     <Route path="/geological-log/:id" element={
@@ -97,6 +102,11 @@ const App = () => (
                         <CreateBorelogDetailPage />
                       </ProtectedRoute>
                     } />
+                    <Route path="/borelog-details/:id" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <CreateBorelogDetailPage />
+                      </ProtectedRoute>
+                    } />
                     <Route path="/borelog/manage" element={
                       <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer']}>
                         <BorelogManagePage />
@@ -105,6 +115,16 @@ const App = () => (
                     <Route path="/borelog/entry" element={
                       <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
                         <BorelogEntryPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/borelog/edit/:id" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+                        <CreateBorelogDetailPage />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/borelog-assignments" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+                        <BorelogAssignmentsPage />
                       </ProtectedRoute>
                     } />
                     
@@ -171,6 +191,27 @@ const App = () => (
                     <Route path="/reviewer/dashboard" element={
                       <ProtectedRoute allowedRoles={['Admin']}>
                         <ReviewerDashboard />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* Workflow Dashboard */}
+                    <Route path="/workflow/dashboard" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer']}>
+                        <WorkflowDashboard />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* User Assignment Routes */}
+                    <Route path="/assignments/create" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <ProjectAssignmentPage />
+                      </ProtectedRoute>
+                    } />
+                    
+                    {/* User Management Routes */}
+                    <Route path="/users" element={
+                      <ProtectedRoute allowedRoles={['Admin']}>
+                        <UserManagementPage />
                       </ProtectedRoute>
                     } />
                     

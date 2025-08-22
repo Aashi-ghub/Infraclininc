@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Building, MapPin, Drill, Upload } from 'lucide-react';
+import { Search, Plus, Building, MapPin, Drill, Upload, Users } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Project } from '@/lib/types';
 import { BorelogCSVUpload } from '@/components/BorelogCSVUpload';
+import { BorelogAssignmentManager } from '@/components/BorelogAssignmentManager';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
@@ -30,6 +31,8 @@ export default function ManageBorelogs() {
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedProject, setSelectedProject] = useState<string>('all');
   const [showCSVUpload, setShowCSVUpload] = useState(false);
+  const [showAssignments, setShowAssignments] = useState(false);
+  const [selectedBorelogForAssignment, setSelectedBorelogForAssignment] = useState<string | null>(null);
 
   // Load projects
   useEffect(() => {
@@ -268,6 +271,15 @@ export default function ManageBorelogs() {
               <Upload className="h-4 w-4 mr-2" />
               Upload CSV
             </Button>
+            {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
+              <Button 
+                className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300"
+                onClick={() => setShowAssignments(!showAssignments)}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Manage Assignments
+              </Button>
+            )}
             <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
               <Link to="/borelog/entry">
                 <Plus className="h-4 w-4 mr-2" />
@@ -343,6 +355,99 @@ export default function ManageBorelogs() {
                     : (projects.find(p => p.name === selectedProject)?.project_id)
                 }
               />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Assignments Section */}
+        {showAssignments && (user?.role === 'Admin' || user?.role === 'Project Manager') && (
+          <Card className="shadow-form mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Site Engineer Assignments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {selectedProject === 'all' ? (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Select a Project First</h3>
+                  <p className="text-muted-foreground">
+                    Please select a project from the dropdown above to manage site engineer assignments.
+                  </p>
+                </div>
+              ) : selectedBorelogForAssignment ? (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-semibold">Assignments for Selected Borelog</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedBorelogForAssignment(null)}
+                    >
+                      Back to List
+                    </Button>
+                  </div>
+                  <BorelogAssignmentManager
+                    borelogId={selectedBorelogForAssignment}
+                    projectId={projects.find(p => p.name === selectedProject)?.project_id}
+                    onAssignmentComplete={() => {
+                      // Refresh data if needed
+                      toast({
+                        title: 'Success',
+                        description: 'Assignment updated successfully.',
+                      });
+                    }}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="mb-4">
+                    <h4 className="text-lg font-semibold mb-2">Select a Borelog to Manage Assignments</h4>
+                    <p className="text-muted-foreground">
+                      Click on a borelog below to assign site engineers or manage existing assignments.
+                    </p>
+                  </div>
+                  {isLoading ? (
+                    <div className="text-center py-8">
+                      <Loader size="lg" text="Loading borelogs..." />
+                    </div>
+                  ) : filteredBorelogs.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Drill className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No borelogs available</h3>
+                      <p className="text-muted-foreground">
+                        Create borelogs first to assign site engineers.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {filteredBorelogs.map((borelog) => (
+                        <div
+                          key={borelog.borelog_id}
+                          className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => setSelectedBorelogForAssignment(borelog.borelog_id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h5 className="font-semibold">
+                                Borelog #{borelog.details?.number || 'N/A'}
+                              </h5>
+                              <p className="text-sm text-muted-foreground">
+                                {borelog.structure?.type || 'N/A'} - {borelog.substructure?.type || 'N/A'}
+                              </p>
+                            </div>
+                            <Button variant="outline" size="sm">
+                              Manage Assignments
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -456,9 +561,22 @@ export default function ManageBorelogs() {
                                 size="sm"
                                 asChild
                               >
-                                <Link to={`/borelog-details/create?borelog_id=${borelog.borelog_id}`}>
-                                  Edit Details
+                                <Link to={`/borelog/edit/${borelog.borelog_id}`}>
+                                  Edit
                                 </Link>
+                              </Button>
+                            )}
+                            {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setShowAssignments(true);
+                                  setSelectedBorelogForAssignment(borelog.borelog_id);
+                                }}
+                              >
+                                <Users className="h-3 w-3 mr-1" />
+                                Assign
                               </Button>
                             )}
                           </div>

@@ -1,0 +1,691 @@
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { checkRole, validateToken } from '../utils/validateInput';
+import { logger, logRequest, logResponse } from '../utils/logger';
+import { createResponse } from '../types/common';
+import { z } from 'zod';
+import * as db from '../db';
+
+// Schema for submitting borelog for review
+const SubmitForReviewSchema = z.object({
+  comments: z.string().optional(),
+  version_number: z.number().min(1)
+});
+
+// Schema for reviewing borelog
+const ReviewBorelogSchema = z.object({
+  action: z.enum(['approve', 'reject', 'return_for_revision']),
+  comments: z.string().min(1, 'Comments are required'),
+  version_number: z.number().min(1)
+});
+
+// Schema for assigning lab tests
+const AssignLabTestsSchema = z.object({
+  borelog_id: z.string().uuid('Invalid borelog ID'),
+  sample_ids: z.array(z.string().min(1, 'Sample ID is required')),
+  test_types: z.array(z.string().min(1, 'Test type is required')),
+  assigned_lab_engineer: z.string().uuid('Invalid lab engineer ID'),
+  priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  expected_completion_date: z.string().min(1, 'Expected completion date is required')
+});
+
+// Schema for submitting lab test results
+const SubmitLabTestResultsSchema = z.object({
+  assignment_id: z.string().uuid('Invalid assignment ID'),
+  sample_id: z.string().min(1, 'Sample ID is required'),
+  test_type: z.string().min(1, 'Test type is required'),
+  test_date: z.string().min(1, 'Test date is required'),
+  results: z.record(z.any()),
+  remarks: z.string().optional()
+});
+
+// Submit borelog for review (Site Engineer)
+export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has Site Engineer role
+    const authError = await checkRole(['Site Engineer', 'Admin', 'Project Manager'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelogId = event.pathParameters?.borelog_id;
+    if (!borelogId) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing borelog_id parameter',
+        error: 'borelog_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Parse and validate request body
+    const body = JSON.parse(event.body || '{}');
+    const validationResult = SubmitForReviewSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation error',
+        error: validationResult.error.errors
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const { comments, version_number } = validationResult.data;
+
+    // Check if borelog exists and user has access
+    const borelogQuery = `
+      SELECT b.*, p.project_id 
+      FROM boreloge b 
+      JOIN projects p ON b.project_id = p.project_id 
+      WHERE b.borelog_id = $1
+    `;
+    const borelogResult = await db.query(borelogQuery, [borelogId]);
+    
+    if (borelogResult.length === 0) {
+      const response = createResponse(404, {
+        success: false,
+        message: 'Borelog not found',
+        error: 'Borelog with the specified ID does not exist'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelog = borelogResult[0];
+
+    // Check if user has access to this project
+    const accessQuery = `
+      SELECT 1 FROM user_project_assignments 
+      WHERE project_id = $1 AND $2 = ANY(assignee)
+    `;
+    const accessResult = await db.query(accessQuery, [borelog.project_id, payload.userId]);
+    
+    if (accessResult.length === 0 && payload.role !== 'Admin') {
+      const response = createResponse(403, {
+        success: false,
+        message: 'Access denied: User not assigned to this project',
+        error: 'Insufficient permissions'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Update borelog version status to submitted
+    const updateQuery = `
+      UPDATE borelog_versions 
+      SET status = 'submitted', 
+          submitted_by = $1, 
+          submitted_at = NOW(),
+          submission_comments = $2
+      WHERE borelog_id = $3 AND version_no = $4
+    `;
+    await db.query(updateQuery, [payload.userId, comments, borelogId, version_number]);
+
+    // Log the submission
+    logger.info(`Borelog ${borelogId} submitted for review by user ${payload.userId}`, {
+      borelogId,
+      submittedBy: payload.userId,
+      versionNumber: version_number,
+      comments
+    });
+
+    const response = createResponse(200, {
+      success: true,
+      message: 'Borelog submitted for review successfully',
+      data: {
+        borelog_id: borelogId,
+        version_number,
+        status: 'submitted',
+        submitted_by: payload.userId,
+        submitted_at: new Date().toISOString()
+      }
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
+  } catch (error) {
+    logger.error('Error submitting borelog for review:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to submit borelog for review'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
+// Review borelog (Approval Engineer/Admin)
+export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has Approval Engineer or Admin role
+    const authError = await checkRole(['Approval Engineer', 'Admin'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelogId = event.pathParameters?.borelog_id;
+    if (!borelogId) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing borelog_id parameter',
+        error: 'borelog_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Parse and validate request body
+    const body = JSON.parse(event.body || '{}');
+    const validationResult = ReviewBorelogSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation error',
+        error: validationResult.error.errors
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const { action, comments, version_number } = validationResult.data;
+
+    // Check if borelog exists
+    const borelogQuery = `
+      SELECT b.*, p.project_id 
+      FROM boreloge b 
+      JOIN projects p ON b.project_id = p.project_id 
+      WHERE b.borelog_id = $1
+    `;
+    const borelogResult = await db.query(borelogQuery, [borelogId]);
+    
+    if (borelogResult.length === 0) {
+      const response = createResponse(404, {
+        success: false,
+        message: 'Borelog not found',
+        error: 'Borelog with the specified ID does not exist'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelog = borelogResult[0];
+
+    // Update borelog version status based on action
+    let newStatus: string;
+    let updateFields: string;
+    let updateParams: any[];
+
+    switch (action) {
+      case 'approve':
+        newStatus = 'approved';
+        updateFields = `
+          status = $1, 
+          approved_by = $2, 
+          approved_at = NOW(),
+          review_comments = $3
+        `;
+        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
+        break;
+      case 'reject':
+        newStatus = 'rejected';
+        updateFields = `
+          status = $1, 
+          rejected_by = $2, 
+          rejected_at = NOW(),
+          review_comments = $3
+        `;
+        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
+        break;
+      case 'return_for_revision':
+        newStatus = 'returned_for_revision';
+        updateFields = `
+          status = $1, 
+          returned_by = $2, 
+          returned_at = NOW(),
+          review_comments = $3
+        `;
+        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
+        break;
+      default:
+        const response = createResponse(400, {
+          success: false,
+          message: 'Invalid action',
+          error: 'Action must be approve, reject, or return_for_revision'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+    }
+
+    const updateQuery = `
+      UPDATE borelog_versions 
+      SET ${updateFields}
+      WHERE borelog_id = $4 AND version_no = $5
+    `;
+    await db.query(updateQuery, updateParams);
+
+    // Log the review action
+    logger.info(`Borelog ${borelogId} ${action} by user ${payload.userId}`, {
+      borelogId,
+      reviewedBy: payload.userId,
+      action,
+      versionNumber: version_number,
+      comments
+    });
+
+    const response = createResponse(200, {
+      success: true,
+      message: `Borelog ${action} successfully`,
+      data: {
+        borelog_id: borelogId,
+        version_number,
+        status: newStatus,
+        reviewed_by: payload.userId,
+        reviewed_at: new Date().toISOString(),
+        action
+      }
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
+  } catch (error) {
+    logger.error('Error reviewing borelog:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to review borelog'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
+// Assign lab tests (Project Manager/Admin)
+export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has Project Manager or Admin role
+    const authError = await checkRole(['Project Manager', 'Admin'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Parse and validate request body
+    const body = JSON.parse(event.body || '{}');
+    const validationResult = AssignLabTestsSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation error',
+        error: validationResult.error.errors
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const assignmentData = validationResult.data;
+
+    // Check if borelog exists and is approved
+    const borelogQuery = `
+      SELECT b.*, p.project_id 
+      FROM boreloge b 
+      JOIN projects p ON b.project_id = p.project_id 
+      WHERE b.borelog_id = $1
+    `;
+    const borelogResult = await db.query(borelogQuery, [assignmentData.borelog_id]);
+    
+    if (borelogResult.length === 0) {
+      const response = createResponse(404, {
+        success: false,
+        message: 'Borelog not found',
+        error: 'Borelog with the specified ID does not exist'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelog = borelogResult[0];
+
+    // Check if user has access to this project
+    const accessQuery = `
+      SELECT 1 FROM user_project_assignments 
+      WHERE project_id = $1 AND $2 = ANY(assignee)
+    `;
+    const accessResult = await db.query(accessQuery, [borelog.project_id, payload.userId]);
+    
+    if (accessResult.length === 0 && payload.role !== 'Admin') {
+      const response = createResponse(403, {
+        success: false,
+        message: 'Access denied: User not assigned to this project',
+        error: 'Insufficient permissions'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Create lab test assignments
+    const assignments = [];
+    for (let i = 0; i < assignmentData.sample_ids.length; i++) {
+      const assignment = {
+        id: `lt-${Date.now()}-${i}`,
+        borelog_id: assignmentData.borelog_id,
+        sample_id: assignmentData.sample_ids[i],
+        test_type: assignmentData.test_types[i],
+        assigned_lab_engineer: assignmentData.assigned_lab_engineer,
+        priority: assignmentData.priority,
+        expected_completion_date: assignmentData.expected_completion_date,
+        status: 'assigned',
+        assigned_by: payload.userId,
+        assigned_at: new Date().toISOString()
+      };
+      assignments.push(assignment);
+    }
+
+    // In a real implementation, you would save these to a lab_assignments table
+    // For now, we'll just return the assignments
+    logger.info(`Lab tests assigned for borelog ${assignmentData.borelog_id} by user ${payload.userId}`, {
+      borelogId: assignmentData.borelog_id,
+      assignedBy: payload.userId,
+      assignments: assignments.length
+    });
+
+    const response = createResponse(201, {
+      success: true,
+      message: 'Lab tests assigned successfully',
+      data: {
+        assignments,
+        total_assigned: assignments.length
+      }
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
+  } catch (error) {
+    logger.error('Error assigning lab tests:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to assign lab tests'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
+// Submit lab test results (Lab Engineer)
+export const submitLabTestResults = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has Lab Engineer role
+    const authError = await checkRole(['Lab Engineer', 'Admin'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Parse and validate request body
+    const body = JSON.parse(event.body || '{}');
+    const validationResult = SubmitLabTestResultsSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation error',
+        error: validationResult.error.errors
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const testData = validationResult.data;
+
+    // In a real implementation, you would save the lab test results to a database
+    // For now, we'll just return a success response
+    const labTestResult = {
+      id: `ltr-${Date.now()}`,
+      assignment_id: testData.assignment_id,
+      sample_id: testData.sample_id,
+      test_type: testData.test_type,
+      test_date: testData.test_date,
+      results: testData.results,
+      remarks: testData.remarks,
+      submitted_by: payload.userId,
+      submitted_at: new Date().toISOString(),
+      status: 'completed'
+    };
+
+    logger.info(`Lab test results submitted by user ${payload.userId}`, {
+      assignmentId: testData.assignment_id,
+      sampleId: testData.sample_id,
+      testType: testData.test_type,
+      submittedBy: payload.userId
+    });
+
+    const response = createResponse(201, {
+      success: true,
+      message: 'Lab test results submitted successfully',
+      data: labTestResult
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
+  } catch (error) {
+    logger.error('Error submitting lab test results:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to submit lab test results'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
+// Get workflow status for a borelog
+export const getWorkflowStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer', 'Customer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!);
+    if (!payload) {
+      const response = createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const borelogId = event.pathParameters?.borelog_id;
+    if (!borelogId) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing borelog_id parameter',
+        error: 'borelog_id is required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Get borelog and its latest version status
+    const statusQuery = `
+      SELECT 
+        b.borelog_id,
+        b.project_id,
+        b.substructure_id,
+        b.type,
+        bv.version_no,
+        bv.status,
+        bv.submitted_by,
+        bv.submitted_at,
+        bv.approved_by,
+        bv.approved_at,
+        bv.rejected_by,
+        bv.rejected_at,
+        bv.returned_by,
+        bv.returned_at,
+        bv.submission_comments,
+        bv.review_comments
+      FROM boreloge b
+      LEFT JOIN borelog_versions bv ON b.borelog_id = bv.borelog_id
+      WHERE b.borelog_id = $1
+      ORDER BY bv.version_no DESC
+      LIMIT 1
+    `;
+    const statusResult = await db.query(statusQuery, [borelogId]);
+    
+    if (statusResult.length === 0) {
+      const response = createResponse(404, {
+        success: false,
+        message: 'Borelog not found',
+        error: 'Borelog with the specified ID does not exist'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const workflowStatus = statusResult[0];
+
+    // Get lab test assignments for this borelog
+    const labTestsQuery = `
+      SELECT 
+        assignment_id,
+        sample_id,
+        test_type,
+        status,
+        assigned_at,
+        expected_completion_date
+      FROM lab_assignments
+      WHERE borelog_id = $1
+      ORDER BY assigned_at DESC
+    `;
+    
+    // In a real implementation, you would query the lab_assignments table
+    // For now, we'll return empty array
+    const labTests = [];
+
+    const response = createResponse(200, {
+      success: true,
+      message: 'Workflow status retrieved successfully',
+      data: {
+        borelog_id: borelogId,
+        current_status: workflowStatus.status || 'draft',
+        version_number: workflowStatus.version_no,
+        submitted_by: workflowStatus.submitted_by,
+        submitted_at: workflowStatus.submitted_at,
+        approved_by: workflowStatus.approved_by,
+        approved_at: workflowStatus.approved_at,
+        rejected_by: workflowStatus.rejected_by,
+        rejected_at: workflowStatus.rejected_at,
+        returned_by: workflowStatus.returned_by,
+        returned_at: workflowStatus.returned_at,
+        submission_comments: workflowStatus.submission_comments,
+        review_comments: workflowStatus.review_comments,
+        lab_tests: labTests
+      }
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
+  } catch (error) {
+    logger.error('Error getting workflow status:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to get workflow status'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
