@@ -17,6 +17,10 @@ import {
   UpdateBorelogAssignmentInput,
   LabTest,
   CreateLabTestInput,
+  LabRequest,
+  LabReport,
+  CreateLabReportInput,
+  ReviewLabReportInput,
   ApiResponse,
   PaginatedResponse,
   BorelogSubmission,
@@ -477,4 +481,92 @@ export const boreholesApi = {
   
   delete: (id: string) => 
     apiClient.delete<ApiResponse<null>>(`/boreholes/${id}`),
+};
+
+// Lab Test Results API
+export const labTestResultsApi = {
+  // Create new lab test result
+  create: (data: {
+    assignment_id: string;
+    sample_id: string;
+    test_type: string;
+    test_date: string;
+    results: any;
+    technician: string;
+    status: 'draft' | 'submitted' | 'approved' | 'rejected';
+    remarks?: string;
+  }) =>
+    apiClient.post<ApiResponse<any>>('/lab-test-results', data),
+
+  // Get lab test result by ID
+  getById: (testId: string) =>
+    apiClient.get<ApiResponse<any>>(`/lab-test-results/${testId}`),
+
+  // Update lab test result
+  update: (testId: string, data: {
+    results?: any;
+    status?: 'draft' | 'submitted' | 'approved' | 'rejected';
+    remarks?: string;
+  }) =>
+    apiClient.put<ApiResponse<any>>(`/lab-test-results/${testId}`, data),
+
+  // Get all lab test results with optional filters
+  getAll: (params?: {
+    status?: string;
+    technician?: string;
+    sample_id?: string;
+    test_type?: string;
+  }) =>
+    apiClient.get<ApiResponse<any[]>>('/lab-test-results', { params }),
+
+  // Delete lab test result
+  delete: (testId: string) =>
+    apiClient.delete<ApiResponse<null>>(`/lab-test-results/${testId}`),
+};
+
+// Lab Report Management API
+export const labReportApi = {
+  // Lab Requests
+  getRequests: () => 
+    apiClient.get<ApiResponse<LabRequest[]>>('/lab-requests'),
+  
+  getRequestById: (id: string) => 
+    apiClient.get<ApiResponse<LabRequest>>(`/lab-requests/${id}`),
+  
+  createRequest: (data: Omit<LabRequest, 'id' | 'requested_date' | 'status'>) => 
+    apiClient.post<ApiResponse<LabRequest>>('/lab-requests', data),
+  
+  updateRequest: (id: string, data: Partial<LabRequest>) => 
+    apiClient.put<ApiResponse<LabRequest>>(`/lab-requests/${id}`, data),
+  
+  deleteRequest: (id: string) => 
+    apiClient.delete<ApiResponse<null>>(`/lab-requests/${id}`),
+  
+  // Lab Reports
+  getReports: () => 
+    apiClient.get<ApiResponse<LabReport[]>>('/lab-reports'),
+  
+  getReportById: (id: string) => 
+    apiClient.get<ApiResponse<LabReport>>(`/lab-reports/${id}`),
+  
+  createReport: (data: CreateLabReportInput) => 
+    apiClient.post<ApiResponse<LabReport>>('/lab-reports', data),
+  
+  updateReport: (id: string, data: Partial<CreateLabReportInput>) => 
+    apiClient.put<ApiResponse<LabReport>>(`/lab-reports/${id}`, data),
+  
+  deleteReport: (id: string) => 
+    apiClient.delete<ApiResponse<null>>(`/lab-reports/${id}`),
+  
+  // Review Reports
+  reviewReport: (id: string, data: ReviewLabReportInput) => 
+    apiClient.put<ApiResponse<LabReport>>(`/lab-reports/${id}/review`, data),
+  
+  // Get reports by status
+  getReportsByStatus: (status: LabReport['status']) => 
+    apiClient.get<ApiResponse<LabReport[]>>(`/lab-reports/status/${status}`),
+  
+  // Get reports by user role
+  getReportsByRole: (role: string) => 
+    apiClient.get<ApiResponse<LabReport[]>>(`/lab-reports/role/${role}`),
 };

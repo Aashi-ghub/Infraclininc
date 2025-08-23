@@ -15,6 +15,10 @@ import BoreholeSummaryPage from "./pages/borelog/[id]";
 import ManageBorelogs from "./pages/borelog/manage";
 import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
+import LabReportManagement from "./pages/lab-reports/index";
+import CreateLabReport from "./pages/lab-reports/create";
+import RockLabTestPage from "./pages/lab-reports/rock-test";
+import SoilLabTestPage from "./pages/lab-reports/soil-test";
 import ReviewerDashboard from "./pages/reviewer/dashboard";
 import CreateBorelogDetailPage from "./pages/borelog-details/create";
 import ContactsListPage from "./pages/contacts/list";
@@ -177,7 +181,7 @@ const App = () => (
                       </ProtectedRoute>
                     } />
                     
-                    {/* Protected Routes - Admin Only */}
+                    {/* Lab Test Routes */}
                     <Route path="/lab-tests/create" element={
                       <ProtectedRoute allowedRoles={['Admin']}>
                         <CreateLabTest />
@@ -188,6 +192,30 @@ const App = () => (
                         <LabTestsList />
                       </ProtectedRoute>
                     } />
+                    
+                    {/* Lab Report Management Routes */}
+                            <Route path="/lab-reports" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer', 'Customer']}>
+            <LabReportManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/create/:requestId?" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
+            <CreateLabReport />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/rock-test" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
+            <RockLabTestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/soil-test" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
+            <SoilLabTestPage />
+          </ProtectedRoute>
+        } />
+                    
+                    {/* Protected Routes - Admin Only */}
                     <Route path="/reviewer/dashboard" element={
                       <ProtectedRoute allowedRoles={['Admin']}>
                         <ReviewerDashboard />

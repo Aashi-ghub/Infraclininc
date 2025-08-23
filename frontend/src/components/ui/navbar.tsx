@@ -71,6 +71,11 @@ export function Navbar() {
                   Lab Tests
                 </Link>
               )}
+              {(user.role === "Admin" || user.role === "Project Manager" || user.role === "Lab Engineer" || user.role === "Approval Engineer" || user.role === "Customer") && (
+                <Link to="/lab-reports" className="text-foreground/80 hover:text-foreground">
+                  Lab Reports
+                </Link>
+              )}
               {user.role === "Admin" && (
                 <Link to="/users" className="text-foreground/80 hover:text-foreground">
                   Users

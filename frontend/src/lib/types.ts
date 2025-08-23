@@ -478,3 +478,88 @@ export interface WorkflowStatistics {
     returned_count: number;
   };
 } 
+
+// Lab Report Management Types
+export interface LabRequest {
+  id: string;
+  borelog_id: string;
+  sample_id: string;
+  requested_by: string;
+  requested_date: string;
+  status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
+  test_type: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  due_date?: string;
+  notes?: string;
+  borelog: {
+    borehole_number: string;
+    project_name: string;
+    chainage?: string;
+  };
+}
+
+export interface LabReport {
+  id: string;
+  request_id: string;
+  borelog_id: string;
+  sample_id: string;
+  test_type: string;
+  results: string;
+  file_url?: string;
+  submitted_by: string;
+  submitted_at: string;
+  status: 'Draft' | 'Submitted' | 'Under Review' | 'Approved' | 'Rejected';
+  version: number;
+  approved_by?: string;
+  approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  rejection_comments?: string;
+  borelog: {
+    borehole_number: string;
+    project_name: string;
+    chainage?: string;
+  };
+}
+
+export interface CreateLabReportInput {
+  request_id: string;
+  test_type: string;
+  results: string;
+  file?: File;
+}
+
+export interface ReviewLabReportInput {
+  status: 'Approved' | 'Rejected';
+  comments?: string;
+}
+
+export interface LabTestType {
+  id: string;
+  name: string;
+  category: string;
+  description?: string;
+  standard_method?: string;
+}
+
+// Lab Report Status Badge Variants
+export const getLabReportStatusVariant = (status: LabReport['status']) => {
+  switch (status) {
+    case 'Draft': return 'secondary';
+    case 'Submitted': return 'outline';
+    case 'Under Review': return 'default';
+    case 'Approved': return 'default';
+    case 'Rejected': return 'destructive';
+    default: return 'secondary';
+  }
+};
+
+export const getLabRequestStatusVariant = (status: LabRequest['status']) => {
+  switch (status) {
+    case 'Pending': return 'secondary';
+    case 'In Progress': return 'default';
+    case 'Completed': return 'default';
+    case 'Cancelled': return 'destructive';
+    default: return 'secondary';
+  }
+}; 
