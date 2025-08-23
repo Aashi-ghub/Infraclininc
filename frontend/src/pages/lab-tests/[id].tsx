@@ -38,7 +38,7 @@ export default function LabTestDetailPage() {
   const [labTest, setLabTest] = useState<LabTestDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [status, setStatus] = useState<string>('');
+  const [status, setStatus] = useState<string>('assigned');
   const [progressNotes, setProgressNotes] = useState<string>('');
   const [testResults, setTestResults] = useState<string>('');
 

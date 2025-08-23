@@ -97,8 +97,8 @@ export default function BorelogAssignmentsPage() {
 
   const filteredAssignments = assignments.filter(assignment => {
     const matchesStatus = statusFilter === 'all' || assignment.status === statusFilter;
-    const matchesSiteEngineer = !selectedSiteEngineer || assignment.assigned_site_engineer === selectedSiteEngineer;
-    const matchesProject = !selectedProject || assignment.project_name === projects.find(p => p.project_id === selectedProject)?.name;
+    const matchesSiteEngineer = selectedSiteEngineer === 'all' || !selectedSiteEngineer || assignment.assigned_site_engineer === selectedSiteEngineer;
+    const matchesProject = selectedProject === 'all' || !selectedProject || assignment.project_name === projects.find(p => p.project_id === selectedProject)?.name;
     
     return matchesStatus && matchesSiteEngineer && matchesProject;
   });
@@ -165,7 +165,7 @@ export default function BorelogAssignmentsPage() {
                   <SelectValue placeholder="All Engineers" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Engineers</SelectItem>
+                  <SelectItem value="all">All Engineers</SelectItem>
                   {siteEngineers.map((engineer) => (
                     <SelectItem key={engineer.user_id} value={engineer.user_id}>
                       {engineer.name}
@@ -182,7 +182,7 @@ export default function BorelogAssignmentsPage() {
                   <SelectValue placeholder="All Projects" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Projects</SelectItem>
+                  <SelectItem value="all">All Projects</SelectItem>
                   {projects.map((project) => (
                     <SelectItem key={project.project_id} value={project.project_id}>
                       {project.name}
@@ -199,7 +199,7 @@ export default function BorelogAssignmentsPage() {
                   <SelectValue placeholder="All Structures" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Structures</SelectItem>
+                  <SelectItem value="all">All Structures</SelectItem>
                   {structures.map((structure) => (
                     <SelectItem key={structure.structure_id} value={structure.structure_id}>
                       {structure.type} - {structure.description}

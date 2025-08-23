@@ -4,21 +4,35 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { LabRequest } from '@/lib/types';
-import { labReportApi } from '@/lib/api';
+import { labReportApi, userApi, workflowApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
-interface LabTestType {
-  id: string;
-  name: string;
-  category: string;
-}
+
 
 interface Borelog {
   borelog_id: string;
   borehole_number: string;
   project_name: string;
   chainage?: string;
+}
+
+interface LabEngineer {
+  user_id: string;
+  name: string;
+  email: string;
+}
+
+interface AssignmentFormData {
+  borelog_id: string;
+  sample_ids: string[];
+  test_types: string[];
+  assigned_lab_engineer: string;
+  priority: string;
+  expected_completion_date: string;
+  notes: string;
 }
 
 interface LabRequestFormProps {
@@ -31,36 +45,29 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
   const [formData, setFormData] = useState({
     borelog_id: '',
     sample_id: '',
-    test_type: ''
+    assigned_lab_engineer: '',
+    due_date: '',
+    notes: ''
   });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [borelogs, setBorelogs] = useState<Borelog[]>([]);
-  const [isLoadingBorelogs, setIsLoadingBorelogs] = useState(false);
-  const { toast } = useToast();
 
-  // Test types - these could also come from API in the future
-  const testTypes: LabTestType[] = [
-    { id: '1', name: 'Compressive Strength Test', category: 'Strength Tests' },
-    { id: '2', name: 'Tensile Strength Test', category: 'Strength Tests' },
-    { id: '3', name: 'Density Test', category: 'Soil Tests' },
-    { id: '4', name: 'Moisture Content Test', category: 'Soil Tests' },
-    { id: '5', name: 'Atterberg Limits Test', category: 'Soil Tests' },
-    { id: '6', name: 'Permeability Test', category: 'Hydraulic Tests' },
-    { id: '7', name: 'Consolidation Test', category: 'Soil Tests' },
-    { id: '8', name: 'Shear Strength Test', category: 'Strength Tests' },
-    { id: '9', name: 'Unconfined Compressive Strength', category: 'Rock Tests' },
-    { id: '10', name: 'Point Load Test', category: 'Rock Tests' },
-    { id: '11', name: 'Brazilian Test', category: 'Rock Tests' },
-    { id: '12', name: 'Triaxial Test', category: 'Soil Tests' },
-    { id: '13', name: 'Direct Shear Test', category: 'Soil Tests' },
-    { id: '14', name: 'Grain Size Analysis', category: 'Soil Tests' },
-    { id: '15', name: 'Specific Gravity Test', category: 'Soil Tests' }
-  ];
+  const [borelogs, setBorelogs] = useState<Borelog[]>([]);
+  const [approvedBorelogs, setApprovedBorelogs] = useState<Borelog[]>([]);
+  const [labEngineers, setLabEngineers] = useState<LabEngineer[]>([]);
+  const [isLoadingBorelogs, setIsLoadingBorelogs] = useState(false);
+  const [isLoadingEngineers, setIsLoadingEngineers] = useState(false);
+
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+
 
   useEffect(() => {
     loadBorelogs();
-  }, []);
+    if (user?.role === 'Admin' || user?.role === 'Project Manager') {
+      loadApprovedBorelogs();
+      loadLabEngineers();
+    }
+  }, [user]);
 
   const loadBorelogs = async () => {
     setIsLoadingBorelogs(true);
@@ -95,20 +102,49 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
     }
   };
 
-  const filteredTestTypes = testTypes.filter(type => {
-    const matchesSearch = type.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || type.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const loadApprovedBorelogs = async () => {
+    try {
+      const response = await labReportApi.getFinalBorelogs();
+      if (response.data?.success) {
+        const allBorelogs = response.data.data || [];
+        const approved = allBorelogs.filter((borelog: any) => borelog.status === 'approved');
+        const transformedBorelogs = approved.map((borelog: any) => ({
+          borelog_id: borelog.borelog_id,
+          borehole_number: borelog.borehole_number,
+          project_name: borelog.project_name,
+          chainage: borelog.project_location ? `${borelog.project_location}` : undefined
+        }));
+        setApprovedBorelogs(transformedBorelogs);
+      }
+    } catch (error) {
+      console.error('Error fetching approved borelogs:', error);
+      setApprovedBorelogs([]);
+    }
+  };
+
+  const loadLabEngineers = async () => {
+    setIsLoadingEngineers(true);
+    try {
+      const response = await userApi.list();
+      if (response.data?.success) {
+        const allUsers = response.data.data || [];
+        const engineers = allUsers.filter((user: any) => user.role === 'Lab Engineer');
+        setLabEngineers(engineers);
+      }
+    } catch (error) {
+      console.error('Error fetching lab engineers:', error);
+      setLabEngineers([]);
+    } finally {
+      setIsLoadingEngineers(false);
+    }
+  };
 
   const filteredBorelogs = borelogs; // Show all borelogs since there's no search for borelogs
 
-  const categories = Array.from(new Set(testTypes.map(type => type.category)));
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.borelog_id || !formData.sample_id || !formData.test_type) {
+    if (!formData.borelog_id || !formData.sample_id) {
       toast({
         title: 'Error',
         description: 'Please fill in all required fields',
@@ -118,15 +154,52 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
     }
 
     const selectedBorelog = borelogs.find(b => b.borelog_id === formData.borelog_id);
-    const selectedTestType = testTypes.find(t => t.id === formData.test_type);
 
+    // If assignment fields are filled, create assignment
+    if (formData.assigned_lab_engineer) {
+      try {
+        await workflowApi.assignLabTests({
+          borelog_id: formData.borelog_id,
+          sample_ids: [formData.sample_id],
+          test_types: ['Standard Lab Test'], // Default test type
+          assigned_lab_engineer: formData.assigned_lab_engineer,
+          priority: 'medium', // Default priority
+          expected_completion_date: formData.due_date
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Lab test assigned successfully',
+        });
+        
+        // Reset form
+        setFormData({
+          borelog_id: '',
+          sample_id: '',
+          assigned_lab_engineer: '',
+          due_date: '',
+          notes: ''
+        });
+        return;
+      } catch (error: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: error.response?.data?.message || 'Failed to assign lab test',
+        });
+        return;
+      }
+    }
+
+    // Otherwise, create regular lab request
     onSubmit({
       borelog_id: formData.borelog_id,
       sample_id: formData.sample_id,
-      test_type: selectedTestType?.name || formData.test_type,
-      priority: 'Medium', // Default priority
-      due_date: undefined, // No due date
-      notes: '', // No notes
+      test_type: 'Standard Lab Test', // Default test type
+      priority: 'medium', // Default priority
+      due_date: formData.due_date || undefined,
+      notes: formData.notes,
+      requested_by: user?.name || user?.email || 'Unknown',
       borelog: selectedBorelog ? {
         borehole_number: selectedBorelog.borehole_number,
         project_name: selectedBorelog.project_name,
@@ -135,11 +208,19 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
     });
   };
 
+
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Lab Test Request Details</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {user?.role === 'Site Engineer' 
+              ? 'Create lab test requests for your assigned borelogs'
+              : 'Create lab test requests or assign tests to lab engineers'
+            }
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Borelog Selection */}
@@ -177,49 +258,59 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
             />
           </div>
 
-          {/* Test Type Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="test_type">Test Type *</Label>
-            <div className="space-y-2">
-              <Input
-                placeholder="Search test types..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="mb-2"
-              />
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={formData.test_type} onValueChange={(value) => setFormData(prev => ({ ...prev, test_type: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select test type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredTestTypes.length > 0 ? (
-                    filteredTestTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="no-results" disabled>
-                      No test types found
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+
+
+          {/* Assignment Fields - Only for Admin and Project Manager */}
+          {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
+            <>
+              {/* Lab Engineer Assignment */}
+              <div className="space-y-2">
+                <Label htmlFor="assigned_lab_engineer">Assign to Lab Engineer</Label>
+                <Select value={formData.assigned_lab_engineer || ''} onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_lab_engineer: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select lab engineer (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isLoadingEngineers ? (
+                      <SelectItem value="loading" disabled>Loading engineers...</SelectItem>
+                    ) : labEngineers.length === 0 ? (
+                      <SelectItem value="none" disabled>No lab engineers found</SelectItem>
+                    ) : (
+                      labEngineers.map((engineer) => (
+                        <SelectItem key={engineer.user_id} value={engineer.user_id}>
+                          {engineer.name} ({engineer.email})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+
+
+              {/* Due Date */}
+              <div className="space-y-2">
+                <Label htmlFor="due_date">Expected Completion Date</Label>
+                <Input
+                  type="date"
+                  value={formData.due_date || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  value={formData.notes || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes or instructions..."
+                  rows={3}
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -229,7 +320,7 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
           Cancel
         </Button>
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Creating...' : 'Create Request'}
+          {isLoading ? 'Creating...' : (formData.assigned_lab_engineer ? 'Create & Assign' : 'Create Lab Request')}
         </Button>
       </div>
     </form>
