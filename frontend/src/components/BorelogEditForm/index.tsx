@@ -431,6 +431,10 @@ export function BorelogEditForm({
           if (coord.type === 'Point' && Array.isArray(coord.coordinates)) {
             easting = String(coord.coordinates[0] ?? '');
             northing = String(coord.coordinates[1] ?? '');
+          } else if (coord.coordinates && Array.isArray(coord.coordinates)) {
+            // Handle case where coordinates array exists but no type
+            easting = String(coord.coordinates[0] ?? '');
+            northing = String(coord.coordinates[1] ?? '');
           } else {
             easting = coord.e ?? coord.E ?? coord.easting ?? coord.coordinates?.[0] ?? null;
             northing = coord.l ?? coord.L ?? coord.northing ?? coord.coordinates?.[1] ?? null;
@@ -606,7 +610,6 @@ export function BorelogEditForm({
           const stratumResponse = await borelogApiV2.getStratumData(details.borelog_id, details.version_no);
           console.log('Stratum response:', stratumResponse.data);
           console.log('Stratum response structure:', {
-            success: stratumResponse.data?.success,
             hasData: !!stratumResponse.data?.data,
             hasLayers: !!stratumResponse.data?.data?.layers,
             layerCount: stratumResponse.data?.data?.layers?.length || 0
@@ -642,7 +645,7 @@ export function BorelogEditForm({
                   spt_15cm_2: toNumber(sample.spt_15cm_2),
                   spt_15cm_3: toNumber(sample.spt_15cm_3),
                   n_value: toNumber(sample.n_value),
-                  total_core_length_cm: toNumber(sample.total_core_length_cm),
+                  total_core_length: toNumber(sample.total_core_length_cm),
                   tcr_percent: toNumber(sample.tcr_percent),
                   rqd_length: toNumber(sample.rqd_length_cm),
                   rqd_percent: toNumber(sample.rqd_percent),
@@ -1062,7 +1065,7 @@ export function BorelogEditForm({
             spt_15cm_2: sample.spt_15cm_2 !== undefined ? Number(sample.spt_15cm_2) : null,
             spt_15cm_3: sample.spt_15cm_3 !== undefined ? Number(sample.spt_15cm_3) : null,
             n_value: sample.n_value !== undefined ? Number(sample.n_value) : null,
-            total_core_length_cm: sample.total_core_length_cm !== undefined ? Number(sample.total_core_length_cm) : null,
+            total_core_length: sample.total_core_length !== undefined ? Number(sample.total_core_length) : null,
             tcr_percent: sample.tcr_percent !== undefined ? Number(sample.tcr_percent) : null,
             rqd_length_cm: sample.rqd_length !== undefined ? Number(sample.rqd_length) : null,
             rqd_percent: sample.rqd_percent !== undefined ? Number(sample.rqd_percent) : null,
@@ -1370,6 +1373,7 @@ export function BorelogEditForm({
                             {...form.register('coordinate_e')}
                             disabled={!canEdit}
                             className="bg-gray-100 pl-6"
+                            placeholder="e.g., 123456.789"
                           />
                         </div>
                         <div className="relative">
@@ -1378,6 +1382,7 @@ export function BorelogEditForm({
                             {...form.register('coordinate_l')}
                             disabled={!canEdit}
                             className="bg-gray-100 pl-6"
+                            placeholder="e.g., 987654.321"
                           />
                         </div>
                       </div>

@@ -86,7 +86,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         SELECT 
           borelog_id, version_no, created_at, created_by_user_id,
           number, msl, boring_method, hole_diameter, commencement_date, completion_date,
-          standing_water_level, termination_depth, coordinate,
+          standing_water_level, termination_depth, ST_AsGeoJSON(coordinate)::json as coordinate,
           permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
           job_code, location, chainage_km,
           stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
@@ -100,7 +100,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         SELECT 
           borelog_id, version_no, created_at, created_by_user_id,
           number, msl, boring_method, hole_diameter, commencement_date, completion_date,
-          standing_water_level, termination_depth, coordinate,
+          standing_water_level, termination_depth, ST_AsGeoJSON(coordinate)::json as coordinate,
           permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
           job_code, location, chainage_km,
           stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,

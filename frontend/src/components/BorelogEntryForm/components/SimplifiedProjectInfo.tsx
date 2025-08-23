@@ -217,6 +217,7 @@ export function SimplifiedProjectInfo({
                   {...register('coordinate_e')}
                   disabled={!canEdit}
                   className="bg-gray-100 pl-6"
+                  placeholder="e.g., 123456.789"
                 />
               </div>
               <div className="relative">
@@ -225,6 +226,7 @@ export function SimplifiedProjectInfo({
                   {...register('coordinate_l')}
                   disabled={!canEdit}
                   className="bg-gray-100 pl-6"
+                  placeholder="e.g., 987654.321"
                 />
               </div>
             </div>

@@ -180,7 +180,7 @@ export function ProjectInfoSection({
                            <FormControl>
                              <Input
                                disabled={!canEdit}
-                               placeholder=""
+                               placeholder="e.g., 123456.789"
                                className="border-0 p-1 text-xs h-6"
                                {...field}
                              />
@@ -202,7 +202,7 @@ export function ProjectInfoSection({
                            <FormControl>
                              <Input
                                disabled={!canEdit}
-                               placeholder=""
+                               placeholder="e.g., 987654.321"
                                className="border-0 p-1 text-xs h-6"
                                {...field}
                              />

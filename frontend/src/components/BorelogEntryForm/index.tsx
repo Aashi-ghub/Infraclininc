@@ -313,7 +313,7 @@ export function BorelogEntryForm({
       let northing: string | null = null;
       const coord = details.coordinate;
       
-      console.log('Processing coordinate:', coord);
+
       
       if (Array.isArray(coord) && coord.length >= 2) {
         easting = String(coord[0] ?? '');
@@ -321,6 +321,10 @@ export function BorelogEntryForm({
       } else if (typeof coord === 'object' && coord !== null) {
         // Handle GeoJSON format and other object formats
         if (coord.type === 'Point' && Array.isArray(coord.coordinates)) {
+          easting = String(coord.coordinates[0] ?? '');
+          northing = String(coord.coordinates[1] ?? '');
+        } else if (coord.coordinates && Array.isArray(coord.coordinates)) {
+          // Handle case where coordinates array exists but no type
           easting = String(coord.coordinates[0] ?? '');
           northing = String(coord.coordinates[1] ?? '');
         } else {
@@ -361,7 +365,7 @@ export function BorelogEntryForm({
       if (easting !== null) next.coordinate_e = easting;
       if (northing !== null) next.coordinate_l = northing;
       
-      console.log('Extracted coordinates:', { easting, northing });
+
     }
     
     // Apply all the collected values to the form, but avoid changing selection fields here
