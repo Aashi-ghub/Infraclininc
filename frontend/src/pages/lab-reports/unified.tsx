@@ -1,18 +1,53 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import UnifiedLabReportForm from '@/components/UnifiedLabReportForm';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, FileText, Download, Eye } from 'lucide-react';
+import { unifiedLabReportsApi } from '@/lib/api';
 
 export default function UnifiedLabReportPage() {
   const navigate = useNavigate();
-  const { requestId } = useParams();
+  const { requestId, reportId } = useParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [existingReport, setExistingReport] = useState<any>(null);
+  const [labRequest, setLabRequest] = useState<any>(null);
 
-  // Sample lab request data
+  // Load existing report if reportId is provided
+  useEffect(() => {
+    if (reportId) {
+      loadExistingReport();
+    }
+  }, [reportId]);
+
+  const loadExistingReport = async () => {
+    try {
+      setIsLoading(true);
+      const response = await unifiedLabReportsApi.getById(reportId!);
+      if (response.data.success) {
+        setExistingReport(response.data.data);
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to load existing report',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing report:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to load existing report',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Sample lab request data (in a real app, this would come from the backend)
   const sampleLabRequest = {
     id: requestId || 'LR-2024-001',
     borelog: {
@@ -24,36 +59,62 @@ export default function UnifiedLabReportPage() {
     test_type: 'Comprehensive Soil & Rock Tests'
   };
 
-  // Sample existing report data
-  const sampleExistingReport = {
-    id: 'ULR-2024-001',
-    request_id: requestId || 'LR-2024-001',
-    borelog_id: 'BL-2024-001',
-    sample_id: 'BH-4',
-    submitted_by: 'Dr. Michael Chen',
-    submitted_at: '2024-01-15T10:30:00Z',
-    status: 'Draft',
-    borelog: {
-      project_name: 'Highway Bridge Project - Phase 2'
-    }
-  };
-
   const handleSubmit = async (reportData: any) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log('Unified Lab Report Data:', reportData);
-      
-      toast({
-        title: 'Success',
-        description: 'Unified lab report submitted successfully! Both soil and rock test data have been saved.',
-      });
-      
-      // Navigate back to lab reports list
-      navigate('/lab-reports');
+      if (existingReport) {
+        // Update existing report
+        const response = await unifiedLabReportsApi.update(existingReport.report_id, {
+          soil_test_data: reportData.combined_data.soil,
+          rock_test_data: reportData.combined_data.rock,
+          test_types: reportData.test_types,
+          status: 'submitted',
+          remarks: reportData.remarks
+        });
+        
+        if (response.data.success) {
+          toast({
+            title: 'Success',
+            description: 'Unified lab report updated and submitted successfully!',
+          });
+          navigate('/lab-reports');
+        } else {
+          throw new Error(response.data.message || 'Failed to update report');
+        }
+      } else {
+        // Create new report
+        const createData = {
+          assignment_id: requestId || 'default-assignment',
+          borelog_id: 'default-borelog',
+          sample_id: reportData.borehole_no,
+          project_name: reportData.project_name,
+          borehole_no: reportData.borehole_no,
+          client: reportData.client,
+          test_date: reportData.date.toISOString(),
+          tested_by: reportData.tested_by,
+          checked_by: reportData.checked_by,
+          approved_by: reportData.approved_by,
+          test_types: reportData.test_types,
+          soil_test_data: reportData.combined_data.soil,
+          rock_test_data: reportData.combined_data.rock,
+          status: 'submitted',
+          remarks: reportData.remarks
+        };
+        
+        const response = await unifiedLabReportsApi.create(createData);
+        
+        if (response.data.success) {
+          toast({
+            title: 'Success',
+            description: 'Unified lab report created and submitted successfully!',
+          });
+          navigate('/lab-reports');
+        } else {
+          throw new Error(response.data.message || 'Failed to create report');
+        }
+      }
     } catch (error) {
+      console.error('Error submitting unified lab report:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -66,16 +127,57 @@ export default function UnifiedLabReportPage() {
 
   const handleSaveDraft = async (reportData: any) => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('Draft saved:', reportData);
-      
-      toast({
-        title: 'Draft Saved',
-        description: 'Unified lab report draft has been saved successfully.',
-      });
+      if (existingReport) {
+        // Update existing report as draft
+        const response = await unifiedLabReportsApi.update(existingReport.report_id, {
+          soil_test_data: reportData.combined_data.soil,
+          rock_test_data: reportData.combined_data.rock,
+          test_types: reportData.test_types,
+          status: 'draft',
+          remarks: reportData.remarks
+        });
+        
+        if (response.data.success) {
+          toast({
+            title: 'Draft Saved',
+            description: 'Unified lab report draft has been updated successfully.',
+          });
+        } else {
+          throw new Error(response.data.message || 'Failed to save draft');
+        }
+      } else {
+        // Create new draft
+        const createData = {
+          assignment_id: requestId || 'default-assignment',
+          borelog_id: 'default-borelog',
+          sample_id: reportData.borehole_no,
+          project_name: reportData.project_name,
+          borehole_no: reportData.borehole_no,
+          client: reportData.client,
+          test_date: reportData.date.toISOString(),
+          tested_by: reportData.tested_by,
+          checked_by: reportData.checked_by,
+          approved_by: reportData.approved_by,
+          test_types: reportData.test_types,
+          soil_test_data: reportData.combined_data.soil,
+          rock_test_data: reportData.combined_data.rock,
+          status: 'draft',
+          remarks: reportData.remarks
+        };
+        
+        const response = await unifiedLabReportsApi.create(createData);
+        
+        if (response.data.success) {
+          toast({
+            title: 'Draft Saved',
+            description: 'Unified lab report draft has been created successfully.',
+          });
+        } else {
+          throw new Error(response.data.message || 'Failed to save draft');
+        }
+      }
     } catch (error) {
+      console.error('Error saving draft:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -90,62 +192,17 @@ export default function UnifiedLabReportPage() {
 
   return (
     <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={handleCancel}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Reports
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <FileText className="h-8 w-8 text-primary" />
-              Unified Lab Report
-            </h1>
-            <p className="text-muted-foreground">
-              Complete both soil and rock tests for comprehensive borelog analysis
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Project Info Card */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Project Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm font-medium">Project Name</p>
-              <p className="text-sm text-muted-foreground">{sampleLabRequest.borelog.project_name}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Borehole Number</p>
-              <p className="text-sm text-muted-foreground">{sampleLabRequest.sample_id}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Request ID</p>
-              <p className="text-sm text-muted-foreground">{sampleLabRequest.id}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Unified Form */}
-      <UnifiedLabReportForm
-        labRequest={sampleLabRequest}
-        existingReport={sampleExistingReport}
-        onSubmit={handleSubmit}
-        onCancel={handleCancel}
-        onSaveDraft={handleSaveDraft}
-        isLoading={isLoading}
-        userRole="Lab Engineer"
-        isReadOnly={false}
-      />
+       <UnifiedLabReportForm
+         labRequest={sampleLabRequest}
+         existingReport={existingReport}
+         onSubmit={handleSubmit}
+         onCancel={handleCancel}
+         onSaveDraft={handleSaveDraft}
+         isLoading={isLoading}
+         userRole="Lab Engineer"
+         isReadOnly={false}
+       />
     </div>
   );
 }

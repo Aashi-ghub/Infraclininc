@@ -10,6 +10,7 @@ import { LabRequest, LabReport, UserRole } from '@/lib/types';
 import SoilLabReportForm from './SoilLabReportForm';
 import RockLabReportForm from './RockLabReportForm';
 import { exportUnifiedLabReportToExcel, UnifiedLabReportData } from '@/lib/labReportExporter';
+import { LabReportVersionControl } from './LabReportVersionControl';
 
 interface UnifiedLabReportFormProps {
   labRequest?: LabRequest;
@@ -83,6 +84,8 @@ export default function UnifiedLabReportForm({
   });
 
   const [activeTab, setActiveTab] = useState('general');
+  const [currentVersion, setCurrentVersion] = useState(1);
+  const [currentStatus, setCurrentStatus] = useState('draft');
   const { toast } = useToast();
 
   const handleSoilFormSubmit = (soilData: any) => {
@@ -109,62 +112,7 @@ export default function UnifiedLabReportForm({
     });
   };
 
-  const handleSubmit = async () => {
-    if (!formData.soil_test_completed && !formData.rock_test_completed) {
-      toast({
-        variant: 'destructive',
-        title: 'Validation Error',
-        description: 'Please complete at least one test type (Soil or Rock) before submitting.',
-      });
-      return;
-    }
 
-    const unifiedReportData: UnifiedLabReportData = {
-      lab_report_id: formData.lab_report_id || '',
-      project_name: formData.project_name,
-      borehole_no: formData.borehole_no,
-      client: formData.client,
-      date: formData.date,
-      tested_by: formData.tested_by,
-      checked_by: formData.checked_by,
-      approved_by: formData.approved_by,
-      test_types: [
-        ...(formData.soil_test_completed ? ['Soil'] : []),
-        ...(formData.rock_test_completed ? ['Rock'] : [])
-      ],
-      combined_data: {
-        soil: formData.soil_test_data,
-        rock: formData.rock_test_data
-      }
-    };
-
-    onSubmit(unifiedReportData);
-  };
-
-  const handleSaveDraft = () => {
-    const draftData: UnifiedLabReportData = {
-      lab_report_id: formData.lab_report_id || '',
-      project_name: formData.project_name,
-      borehole_no: formData.borehole_no,
-      client: formData.client,
-      date: formData.date,
-      tested_by: formData.tested_by,
-      checked_by: formData.checked_by,
-      approved_by: formData.approved_by,
-      test_types: [
-        ...(formData.soil_test_completed ? ['Soil'] : []),
-        ...(formData.rock_test_completed ? ['Rock'] : [])
-      ],
-      combined_data: {
-        soil: formData.soil_test_data,
-        rock: formData.rock_test_data
-      }
-    };
-
-    if (onSaveDraft) {
-      onSaveDraft(draftData);
-    }
-  };
 
   const handleExportToExcel = () => {
     if (!formData.soil_test_completed && !formData.rock_test_completed) {
@@ -220,43 +168,19 @@ export default function UnifiedLabReportForm({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-6 w-6" />
-                Unified Lab Report Form
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Complete both soil and rock tests for comprehensive borelog analysis
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={formData.report_status === 'Draft' ? 'secondary' : 'default'}>
-                {formData.report_status}
-              </Badge>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm font-medium">Project</p>
-              <p className="text-sm text-muted-foreground">{formData.project_name}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Borehole</p>
-              <p className="text-sm text-muted-foreground">{formData.borehole_no}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Report ID</p>
-              <p className="text-sm text-muted-foreground">{formData.lab_report_id}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+             {/* Version Control */}
+       {formData.lab_report_id && (
+         <LabReportVersionControl
+           reportId={formData.lab_report_id}
+           currentVersion={currentVersion}
+           currentStatus={currentStatus}
+           onVersionChange={setCurrentVersion}
+           onStatusChange={setCurrentStatus}
+           isReadOnly={isReadOnly}
+           formData={formData}
+         />
+       )}
 
       {/* Progress Indicator */}
       <Card>
@@ -321,40 +245,37 @@ export default function UnifiedLabReportForm({
             </TabsList>
 
             <TabsContent value="general" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Project Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium">Project Name</label>
-                      <p className="text-sm text-muted-foreground mt-1">{formData.project_name}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Borehole Number</label>
-                      <p className="text-sm text-muted-foreground mt-1">{formData.borehole_no}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Client</label>
-                      <p className="text-sm text-muted-foreground mt-1">{formData.client || 'Not specified'}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Report Details</h3>
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Report Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <div>
                       <label className="text-sm font-medium">Report ID</label>
                       <p className="text-sm text-muted-foreground mt-1">{formData.lab_report_id}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Tested By</label>
-                      <p className="text-sm text-muted-foreground mt-1">{formData.tested_by}</p>
+                      <label className="text-sm font-medium">Status</label>
+                      <p className="text-sm text-muted-foreground mt-1">{formData.report_status}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Date</label>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {formData.date.toLocaleDateString()}
+                        {formData.date ? new Date(formData.date).toLocaleDateString() : 'Not set'}
                       </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium">Tested By</label>
+                      <p className="text-sm text-muted-foreground mt-1">{formData.tested_by}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Checked By</label>
+                      <p className="text-sm text-muted-foreground mt-1">{formData.checked_by}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Approved By</label>
+                      <p className="text-sm text-muted-foreground mt-1">{formData.approved_by}</p>
                     </div>
                   </div>
                 </div>
@@ -418,14 +339,6 @@ export default function UnifiedLabReportForm({
               <Button variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={handleSaveDraft}
-                disabled={!formData.soil_test_completed && !formData.rock_test_completed}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Draft
-              </Button>
             </div>
             <div className="flex gap-2">
               <Button 
@@ -448,13 +361,6 @@ export default function UnifiedLabReportForm({
               >
                 <Eye className="h-4 w-4 mr-2" />
                 Preview Report
-              </Button>
-              <Button 
-                onClick={handleSubmit}
-                disabled={isLoading || (!formData.soil_test_completed && !formData.rock_test_completed)}
-              >
-                <Send className="h-4 w-4 mr-2" />
-                Submit Combined Report
               </Button>
             </div>
           </div>

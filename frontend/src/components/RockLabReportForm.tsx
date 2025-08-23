@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -135,7 +135,7 @@ export default function RockLabReportForm({
     approval_date: existingReport?.approved_at ? new Date(existingReport.approved_at) : undefined
   });
 
-  const [activeTab, setActiveTab] = useState('general');
+
   const { toast } = useToast();
 
   const handleInputChange = (field: keyof FormData, value: any) => {
@@ -190,23 +190,11 @@ export default function RockLabReportForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.borehole_no || formData.rock_test_data.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Please fill in all required fields',
-      });
-      return;
-    }
-
-    onSubmit(formData);
+    // This function is now handled by the parent component's version control
   };
 
   const handleSaveDraft = () => {
-    if (onSaveDraft) {
-      onSaveDraft({ ...formData, report_status: 'Draft' });
-    }
+    // This function is now handled by the parent component's version control
   };
 
   return (
@@ -233,17 +221,11 @@ export default function RockLabReportForm({
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="general">General Info</TabsTrigger>
-                <TabsTrigger value="caliper">Caliper Method</TabsTrigger>
-                <TabsTrigger value="buoyancy">Buoyancy & Water Displacement</TabsTrigger>
-                <TabsTrigger value="strength">Strength Tests</TabsTrigger>
-              </TabsList>
+                     <form onSubmit={handleSubmit} className="space-y-6">
+             <div className="space-y-6">
 
-              {/* General Info Tab */}
-              <TabsContent value="general" className="space-y-4">
+                             {/* General Info Section */}
+               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="project_name">Project Name</Label>
@@ -322,11 +304,11 @@ export default function RockLabReportForm({
                       disabled={isReadOnly}
                     />
                   </div>
-                </div>
-              </TabsContent>
+                                 </div>
+               </div>
 
-              {/* Caliper Method Tab */}
-              <TabsContent value="caliper" className="space-y-4">
+               {/* Caliper Method Section */}
+               <div className="space-y-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h4 className="font-medium mb-2">Caliper Method - Sample Dimensions and Properties</h4>
                   <p className="text-sm text-muted-foreground">
@@ -483,11 +465,11 @@ export default function RockLabReportForm({
                     <Plus className="h-4 w-4 mr-2" />
                     Add Sample Row
                   </Button>
-                )}
-              </TabsContent>
+                                 )}
+               </div>
 
-              {/* Buoyancy & Water Displacement Tab */}
-              <TabsContent value="buoyancy" className="space-y-4">
+               {/* Buoyancy & Water Displacement Section */}
+               <div className="space-y-4">
                 <div className="bg-green-50 p-4 rounded-lg">
                   <h4 className="font-medium mb-2">Buoyancy Techniques & Water Displacement</h4>
                   <p className="text-sm text-muted-foreground">
@@ -601,10 +583,10 @@ export default function RockLabReportForm({
                     </TableBody>
                   </Table>
                 </div>
-              </TabsContent>
+              </div>
 
-              {/* Strength Tests Tab */}
-              <TabsContent value="strength" className="space-y-4">
+              {/* Strength Tests Section */}
+              <div className="space-y-4">
                 <div className="bg-orange-50 p-4 rounded-lg">
                   <h4 className="font-medium mb-2">Strength Tests - Point Load, UCS, and Brazilian</h4>
                   <p className="text-sm text-muted-foreground">
@@ -722,9 +704,9 @@ export default function RockLabReportForm({
                       ))}
                     </TableBody>
                   </Table>
-                </div>
-              </TabsContent>
-            </Tabs>
+                                 </div>
+               </div>
+             </div>
 
             {/* Review Section - Only for Approval Engineers */}
             {userRole === 'Approval Engineer' && (
@@ -797,18 +779,6 @@ export default function RockLabReportForm({
               <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
-              {onSaveDraft && !isReadOnly && (
-                <Button type="button" variant="secondary" onClick={handleSaveDraft}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Draft
-                </Button>
-              )}
-              {!isReadOnly && (
-                <Button type="submit" disabled={isLoading}>
-                  <Send className="h-4 w-4 mr-2" />
-                  {isLoading ? 'Submitting...' : 'Submit Report'}
-                </Button>
-              )}
             </div>
           </form>
         </CardContent>

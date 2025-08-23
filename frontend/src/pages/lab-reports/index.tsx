@@ -23,7 +23,7 @@ import {
 import LabReportView from '@/components/LabReportView';
 import LabRequestForm from '@/components/LabRequestForm';
 import { useNavigate } from 'react-router-dom';
-import { labTestResultsApi } from '@/lib/api';
+import { labTestResultsApi, unifiedLabReportsApi } from '@/lib/api';
 
 // Mock data for demonstration
 const mockLabRequests: LabRequest[] = [
@@ -137,6 +137,7 @@ export default function LabReportManagement() {
   const [labRequests, setLabRequests] = useState<LabRequest[]>(mockLabRequests);
   const [labReports, setLabReports] = useState<LabReport[]>(mockLabReports);
   const [labTestResults, setLabTestResults] = useState<any[]>([]);
+  const [unifiedLabReports, setUnifiedLabReports] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedReport, setSelectedReport] = useState<LabReport | null>(null);
@@ -153,30 +154,39 @@ export default function LabReportManagement() {
   const [reviewComments, setReviewComments] = useState('');
   const { toast } = useToast();
 
-  // Load lab test results from backend
+  // Load lab test results and unified lab reports from backend
   useEffect(() => {
-    const loadLabTestResults = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       try {
-        const response = await labTestResultsApi.getAll();
-        if (response.success) {
-          setLabTestResults(response.data);
+        // Load lab test results
+        const labResultsResponse = await labTestResultsApi.getAll();
+        if (labResultsResponse.data.success) {
+          setLabTestResults(labResultsResponse.data.data);
         } else {
-          console.error('Failed to load lab test results:', response.message);
+          console.error('Failed to load lab test results:', labResultsResponse.data.message);
+        }
+
+        // Load unified lab reports
+        const unifiedReportsResponse = await unifiedLabReportsApi.getAll();
+        if (unifiedReportsResponse.data.success) {
+          setUnifiedLabReports(unifiedReportsResponse.data.data);
+        } else {
+          console.error('Failed to load unified lab reports:', unifiedReportsResponse.data.message);
         }
       } catch (error) {
-        console.error('Error loading lab test results:', error);
+        console.error('Error loading data:', error);
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: 'Failed to load lab test results',
+          description: 'Failed to load lab data',
         });
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadLabTestResults();
+    loadData();
   }, [toast]);
 
   // Filter data based on role and search
@@ -505,68 +515,110 @@ export default function LabReportManagement() {
               </CardContent>
             </Card>
 
-            {/* Submitted Reports */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  My Submitted Reports
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Report ID</TableHead>
-                        <TableHead>Borelog ID</TableHead>
-                        <TableHead>Test Type</TableHead>
-                        <TableHead>Submitted On</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Version</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredReports
-                        .filter(report => report.submitted_by === 'Dr. Michael Chen')
-                        .map((report) => (
-                        <TableRow key={report.id}>
-                          <TableCell className="font-medium">{report.id}</TableCell>
-                          <TableCell>{report.borelog.borehole_number}</TableCell>
-                          <TableCell>{report.test_type}</TableCell>
-                          <TableCell>{format(new Date(report.submitted_at), 'MMM dd, yyyy')}</TableCell>
-                          <TableCell>
-                            <Badge variant={getLabReportStatusVariant(report.status)}>
-                              {report.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">v{report.version}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => setSelectedReport(report)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              {report.file_url && (
-                                <Button size="sm" variant="outline">
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                         {/* Submitted Reports */}
+             <Card>
+               <CardHeader>
+                 <CardTitle className="flex items-center gap-2">
+                   <FileText className="h-5 w-5" />
+                   My Submitted Reports
+                 </CardTitle>
+               </CardHeader>
+               <CardContent>
+                 <div className="overflow-x-auto">
+                   <Table>
+                     <TableHeader>
+                       <TableRow>
+                         <TableHead>Report ID</TableHead>
+                         <TableHead>Borehole</TableHead>
+                         <TableHead>Test Types</TableHead>
+                         <TableHead>Submitted On</TableHead>
+                         <TableHead>Status</TableHead>
+                         <TableHead>Actions</TableHead>
+                       </TableRow>
+                     </TableHeader>
+                     <TableBody>
+                       {/* Show unified lab reports */}
+                       {unifiedLabReports
+                         .filter(report => report.tested_by === 'Dr. Michael Chen')
+                         .map((report) => (
+                         <TableRow key={report.report_id}>
+                           <TableCell className="font-medium">{report.report_id}</TableCell>
+                           <TableCell>{report.borehole_no}</TableCell>
+                           <TableCell>
+                             <div className="flex gap-1">
+                               {report.test_types?.map((type: string, index: number) => (
+                                 <Badge key={index} variant={type === 'Soil' ? 'default' : 'secondary'}>
+                                   {type}
+                                 </Badge>
+                               ))}
+                             </div>
+                           </TableCell>
+                           <TableCell>
+                             {report.submitted_at ? format(new Date(report.submitted_at), 'MMM dd, yyyy') : 'Not submitted'}
+                           </TableCell>
+                           <TableCell>
+                             <Badge variant={getLabReportStatusVariant(report.status)}>
+                               {report.status}
+                             </Badge>
+                           </TableCell>
+                           <TableCell>
+                             <div className="flex gap-2">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => navigate(`/lab-reports/unified/${report.report_id}`)}
+                               >
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => navigate(`/lab-reports/unified/${report.report_id}`)}
+                               >
+                                 <FileText className="h-4 w-4" />
+                               </Button>
+                             </div>
+                           </TableCell>
+                         </TableRow>
+                       ))}
+                       
+                       {/* Show legacy lab reports */}
+                       {filteredReports
+                         .filter(report => report.submitted_by === 'Dr. Michael Chen')
+                         .map((report) => (
+                         <TableRow key={report.id}>
+                           <TableCell className="font-medium">{report.id}</TableCell>
+                           <TableCell>{report.borelog.borehole_number}</TableCell>
+                           <TableCell>{report.test_type}</TableCell>
+                           <TableCell>{format(new Date(report.submitted_at), 'MMM dd, yyyy')}</TableCell>
+                           <TableCell>
+                             <Badge variant={getLabReportStatusVariant(report.status)}>
+                               {report.status}
+                             </Badge>
+                           </TableCell>
+                           <TableCell>
+                             <div className="flex gap-2">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => setSelectedReport(report)}
+                               >
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                               {report.file_url && (
+                                 <Button size="sm" variant="outline">
+                                   <Download className="h-4 w-4" />
+                                 </Button>
+                               )}
+                             </div>
+                           </TableCell>
+                         </TableRow>
+                       ))}
+                     </TableBody>
+                   </Table>
+                 </div>
+               </CardContent>
+             </Card>
           </div>
         );
 

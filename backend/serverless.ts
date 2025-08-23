@@ -1060,6 +1060,130 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    
+    // Unified Lab Reports endpoints
+    createUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.createUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/unified-lab-reports',
+            cors: true
+          }
+        }
+      ]
+    },
+    getUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.getUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/unified-lab-reports/{reportId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.updateUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/unified-lab-reports/{reportId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getUnifiedLabReports: {
+      handler: 'src/handlers/unifiedLabReports.getUnifiedLabReports',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/unified-lab-reports',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.deleteUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/unified-lab-reports/{reportId}',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Lab Report Version Control endpoints
+    saveLabReportDraft: {
+      handler: 'src/handlers/labReportVersionControl.saveLabReportDraft',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/lab-reports/draft',
+            cors: true
+          }
+        }
+      ]
+    },
+    submitLabReportForReview: {
+      handler: 'src/handlers/labReportVersionControl.submitLabReportForReview',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/lab-reports/submit',
+            cors: true
+          }
+        }
+      ]
+    },
+    reviewLabReport: {
+      handler: 'src/handlers/labReportVersionControl.reviewLabReport',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/lab-reports/{report_id}/review',
+            cors: true
+          }
+        }
+      ]
+    },
+    getLabReportVersionHistory: {
+      handler: 'src/handlers/labReportVersionControl.getLabReportVersionHistory',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-reports/{report_id}/versions',
+            cors: true
+          }
+        }
+      ]
+    },
+    getLabReportVersion: {
+      handler: 'src/handlers/labReportVersionControl.getLabReportVersion',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-reports/{report_id}/version/{version_no}',
+            cors: true
+          }
+        }
+      ]
+    },
   },
   package: {
     individually: true

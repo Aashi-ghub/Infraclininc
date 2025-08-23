@@ -26,7 +26,7 @@ import {
   BorelogSubmission,
   Borehole,
   CreateBoreholeInput,
-  ReviewCommentType,
+
   WorkflowStatusData,
   PendingReview,
   LabTestAssignment,
@@ -522,6 +522,81 @@ export const labTestResultsApi = {
   // Delete lab test result
   delete: (testId: string) =>
     apiClient.delete<ApiResponse<null>>(`/lab-test-results/${testId}`),
+};
+
+// Unified Lab Reports API
+export const unifiedLabReportsApi = {
+  // Create new unified lab report
+  create: (data: {
+    assignment_id: string;
+    borelog_id: string;
+    sample_id: string;
+    project_name: string;
+    borehole_no: string;
+    client: string;
+    test_date: string;
+    tested_by: string;
+    checked_by: string;
+    approved_by: string;
+    test_types: string[];
+    soil_test_data: any[];
+    rock_test_data: any[];
+    status: 'draft' | 'submitted' | 'approved' | 'rejected';
+    remarks?: string;
+  }) =>
+    apiClient.post<ApiResponse<any>>('/unified-lab-reports', data),
+
+  // Get unified lab report by ID
+  getById: (reportId: string) =>
+    apiClient.get<ApiResponse<any>>(`/unified-lab-reports/${reportId}`),
+
+  // Update unified lab report
+  update: (reportId: string, data: {
+    soil_test_data?: any[];
+    rock_test_data?: any[];
+    test_types?: string[];
+    status?: 'draft' | 'submitted' | 'approved' | 'rejected';
+    remarks?: string;
+    rejection_reason?: string;
+  }) =>
+    apiClient.put<ApiResponse<any>>(`/unified-lab-reports/${reportId}`, data),
+
+  // Get all unified lab reports with optional filters
+  getAll: (params?: {
+    status?: string;
+    tested_by?: string;
+    sample_id?: string;
+    borehole_no?: string;
+    project_name?: string;
+  }) =>
+    apiClient.get<ApiResponse<any[]>>('/unified-lab-reports', { params }),
+
+  // Delete unified lab report
+  delete: (reportId: string) =>
+    apiClient.delete<ApiResponse<null>>(`/unified-lab-reports/${reportId}`),
+};
+
+// Lab Report Version Control API
+export const labReportVersionControlApi = {
+  // Save draft version
+  saveDraft: (data: any) => 
+    apiClient.post<ApiResponse<any>>('/lab-reports/draft', data),
+
+  // Submit for review
+  submitForReview: (data: { report_id: string; version_no: number; submission_comments?: string }) => 
+    apiClient.post<ApiResponse<any>>('/lab-reports/submit', data),
+
+  // Review (approve/reject/return for revision)
+  review: (reportId: string, data: { action: 'approve' | 'reject' | 'return_for_revision'; version_no: number; review_comments?: string }) => 
+    apiClient.post<ApiResponse<any>>(`/lab-reports/${reportId}/review`, data),
+
+  // Get version history
+  getVersionHistory: (reportId: string) => 
+    apiClient.get<ApiResponse<any>>(`/lab-reports/${reportId}/versions`),
+
+  // Get specific version
+  getVersion: (reportId: string, versionNo: number) => 
+    apiClient.get<ApiResponse<any>>(`/lab-reports/${reportId}/version/${versionNo}`),
 };
 
 // Lab Report Management API
