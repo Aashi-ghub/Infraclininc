@@ -15,6 +15,7 @@ interface PendingReview {
   status: string;
   submitted_by: string;
   submitted_at: string;
+  created_at: string;
   submission_comments?: string;
   project_name: string;
   substructure_name?: string;
@@ -61,6 +62,7 @@ interface SubmittedBorelog {
   status: string;
   submitted_by: string;
   submitted_at: string;
+  created_at: string;
   submission_comments?: string;
   review_comments?: string;
   approved_by?: string;

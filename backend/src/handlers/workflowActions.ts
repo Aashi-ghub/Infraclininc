@@ -149,10 +149,11 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
       UPDATE borelog_versions 
       SET status = 'submitted', 
           submitted_by = $1, 
-          submitted_at = NOW()
+          submitted_at = NOW(),
+          submission_comments = $4
       WHERE borelog_id = $2 AND version_no = $3
     `;
-    await db.query(updateQuery, [payload.userId, borelogId, version_number]);
+    await db.query(updateQuery, [payload.userId, borelogId, version_number, comments || null]);
 
     // Add submission comment to review comments table if provided
     if (comments && comments.trim()) {
@@ -290,28 +291,31 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
          newStatus = 'approved';
          updateFields = `
            status = $1, 
-           reviewed_by = $2, 
-           reviewed_at = NOW()
+           approved_by = $2, 
+           approved_at = NOW(),
+           review_comments = $5
          `;
-         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         updateParams = [newStatus, payload.userId, borelogId, version_number, comments || null];
          break;
        case 'reject':
          newStatus = 'rejected';
          updateFields = `
            status = $1, 
-           reviewed_by = $2, 
-           reviewed_at = NOW()
+           rejected_by = $2, 
+           rejected_at = NOW(),
+           review_comments = $5
          `;
-         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         updateParams = [newStatus, payload.userId, borelogId, version_number, comments || null];
          break;
        case 'return_for_revision':
          newStatus = 'returned_for_revision';
          updateFields = `
            status = $1, 
-           reviewed_by = $2, 
-           reviewed_at = NOW()
+           returned_by = $2, 
+           returned_at = NOW(),
+           review_comments = $5
          `;
-         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         updateParams = [newStatus, payload.userId, borelogId, version_number, comments || null];
          break;
       default:
         const response = createResponse(400, {
