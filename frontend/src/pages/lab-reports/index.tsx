@@ -347,6 +347,14 @@ export default function LabReportManagement() {
                 <div className="flex gap-4">
                   <Button 
                     variant="outline"
+                    onClick={() => navigate('/lab-reports/unified')}
+                    className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Create Unified Report
+                  </Button>
+                  <Button 
+                    variant="outline"
                     onClick={() => navigate('/lab-reports/soil-test')}
                     className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
                   >
@@ -463,33 +471,30 @@ export default function LabReportManagement() {
                                <Button 
                                  size="sm" 
                                  variant="outline"
-                                 onClick={() => handleCreateLabReport(request.id)}
+                                 onClick={() => navigate(`/lab-reports/unified/${request.id}`)}
+                                 className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
                                >
-                                 <Plus className="h-4 w-4 mr-1" />
+                                 <FileText className="h-4 w-4 mr-1" />
                                  Fill Sample Report
                                </Button>
-                               {request.test_type.toLowerCase().includes('rock') && (
-                                 <Button 
-                                   size="sm" 
-                                   variant="outline"
-                                   onClick={() => navigate('/lab-reports/rock-test')}
-                                   className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-                                 >
-                                   <Mountain className="h-4 w-4 mr-1" />
-                                   Rock Test
-                                 </Button>
-                               )}
-                               {request.test_type.toLowerCase().includes('soil') && (
-                                 <Button 
-                                   size="sm" 
-                                   variant="outline"
-                                   onClick={() => navigate('/lab-reports/soil-test')}
-                                   className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                                 >
-                                   <FlaskConical className="h-4 w-4 mr-1" />
-                                   Soil Test
-                                 </Button>
-                               )}
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => navigate('/lab-reports/soil-test')}
+                                 className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                               >
+                                 <FlaskConical className="h-4 w-4 mr-1" />
+                                 Soil Only
+                               </Button>
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => navigate('/lab-reports/rock-test')}
+                                 className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                               >
+                                 <Mountain className="h-4 w-4 mr-1" />
+                                 Rock Only
+                               </Button>
                              </div>
                            </TableCell>
                         </TableRow>

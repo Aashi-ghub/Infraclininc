@@ -19,6 +19,7 @@ import LabReportManagement from "./pages/lab-reports/index";
 import CreateLabReport from "./pages/lab-reports/create";
 import RockLabTestPage from "./pages/lab-reports/rock-test";
 import SoilLabTestPage from "./pages/lab-reports/soil-test";
+import UnifiedLabReportPage from "./pages/lab-reports/unified";
 import ReviewerDashboard from "./pages/reviewer/dashboard";
 import CreateBorelogDetailPage from "./pages/borelog-details/create";
 import ContactsListPage from "./pages/contacts/list";
@@ -212,6 +213,11 @@ const App = () => (
         <Route path="/lab-reports/soil-test" element={
           <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
             <SoilLabTestPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/unified/:requestId?" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
+            <UnifiedLabReportPage />
           </ProtectedRoute>
         } />
                     
