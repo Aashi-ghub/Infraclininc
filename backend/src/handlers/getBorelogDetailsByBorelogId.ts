@@ -66,10 +66,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Get borelog details with version history
+    // Get borelog details with version history (include both final and staging versions)
     const query = `
-      SELECT 
-        bd.*,
+      SELECT DISTINCT ON (v.version_no)
+        v.*,
         b.substructure_id,
         b.project_id,
         b.type as borelog_type,
@@ -82,14 +82,41 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         p.location as project_location,
         u.name as created_by_name,
         u.email as created_by_email
-      FROM borelog_details bd
-      JOIN boreloge b ON bd.borelog_id = b.borelog_id
+      FROM (
+        SELECT 
+          borelog_id, version_no, created_at, created_by_user_id,
+          number, msl, boring_method, hole_diameter, commencement_date, completion_date,
+          standing_water_level, termination_depth, coordinate,
+          permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
+          job_code, location, chainage_km,
+          stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
+          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
+          total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
+          borehole_diameter, remarks, images,
+          1 as preference,
+          'approved'::text as status
+        FROM borelog_details WHERE borelog_id = $1
+        UNION ALL
+        SELECT 
+          borelog_id, version_no, created_at, created_by_user_id,
+          number, msl, boring_method, hole_diameter, commencement_date, completion_date,
+          standing_water_level, termination_depth, coordinate,
+          permeability_test_count, spt_vs_test_count, undisturbed_sample_count, disturbed_sample_count, water_sample_count,
+          job_code, location, chainage_km,
+          stratum_description, stratum_depth_from, stratum_depth_to, stratum_thickness_m,
+          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm, n_value_is_2131,
+          total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent, return_water_colour, water_loss,
+          borehole_diameter, remarks, NULL as images,
+          2 as preference,
+          COALESCE(status, 'submitted')::text as status
+        FROM borelog_versions WHERE borelog_id = $1
+      ) v
+      JOIN boreloge b ON v.borelog_id = b.borelog_id
       JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
       JOIN structure s ON ss.structure_id = s.structure_id
       JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN users u ON bd.created_by_user_id = u.user_id
-      WHERE bd.borelog_id = $1
-      ORDER BY bd.version_no DESC
+      LEFT JOIN users u ON v.created_by_user_id = u.user_id
+      ORDER BY v.version_no DESC, v.preference ASC, v.created_at DESC
     `;
 
     const borelogDetails = await db.query(query, [borelogId]);
