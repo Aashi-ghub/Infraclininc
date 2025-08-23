@@ -1,360 +1,18 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
+import { checkRole } from '../utils/validateInput';
 import { logger } from '../utils/logger';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
-
-interface UnifiedLabReport {
-  report_id?: string;
-  assignment_id: string;
-  borelog_id: string;
-  sample_id: string;
-  project_name: string;
-  borehole_no: string;
-  client: string;
-  test_date: string;
-  tested_by: string;
-  checked_by: string;
-  approved_by: string;
-  test_types: string[]; // ['Soil', 'Rock']
-  soil_test_data: any[];
-  rock_test_data: any[];
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  remarks?: string;
-  submitted_at?: string;
-  approved_at?: string;
-  rejected_at?: string;
-  rejection_reason?: string;
-}
-
-interface CreateUnifiedLabReportRequest {
-  assignment_id: string;
-  borelog_id: string;
-  sample_id: string;
-  project_name: string;
-  borehole_no: string;
-  client: string;
-  test_date: string;
-  tested_by: string;
-  checked_by: string;
-  approved_by: string;
-  test_types: string[];
-  soil_test_data: any[];
-  rock_test_data: any[];
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  remarks?: string;
-}
-
-interface UpdateUnifiedLabReportRequest {
-  soil_test_data?: any[];
-  rock_test_data?: any[];
-  test_types?: string[];
-  status?: 'draft' | 'submitted' | 'approved' | 'rejected';
-  remarks?: string;
-  rejection_reason?: string;
-}
-
-// Create new unified lab report
-export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const body: CreateUnifiedLabReportRequest = JSON.parse(event.body || '{}');
-    const reportId = uuidv4();
-
-    const query = `
-      INSERT INTO unified_lab_reports (
-        report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no,
-        client, test_date, tested_by, checked_by, approved_by, test_types,
-        soil_test_data, rock_test_data, status, remarks, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
-      RETURNING *
-    `;
-
-    const values = [
-      reportId,
-      body.assignment_id,
-      body.borelog_id,
-      body.sample_id,
-      body.project_name,
-      body.borehole_no,
-      body.client,
-      body.test_date,
-      body.tested_by,
-      body.checked_by,
-      body.approved_by,
-      JSON.stringify(body.test_types),
-      JSON.stringify(body.soil_test_data),
-      JSON.stringify(body.rock_test_data),
-      body.status,
-      body.remarks || null
-    ];
-
-    const result = await pool.query(query, values);
-
-    logger.info('Unified lab report created successfully', { reportId });
-
-    return {
-      statusCode: 201,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: true,
-        data: result.rows[0],
-        message: 'Unified lab report created successfully'
-      })
-    };
-  } catch (error) {
-    logger.error('Error creating unified lab report:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: false,
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
-  }
-};
-
-// Get unified lab report by ID
-export const getUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const reportId = event.pathParameters?.reportId;
-
-    if (!reportId) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Report ID is required'
-        })
-      };
-    }
-
-    const query = 'SELECT * FROM unified_lab_reports WHERE report_id = $1';
-    const result = await pool.query(query, [reportId]);
-
-    if (result.rows.length === 0) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Unified lab report not found'
-        })
-      };
-    }
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: true,
-        data: result.rows[0]
-      })
-    };
-  } catch (error) {
-    logger.error('Error getting unified lab report:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: false,
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
-  }
-};
-
-// Update unified lab report
-export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const reportId = event.pathParameters?.reportId;
-    const body: UpdateUnifiedLabReportRequest = JSON.parse(event.body || '{}');
-
-    if (!reportId) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Report ID is required'
-        })
-      };
-    }
-
-    // Build dynamic update query
-    const updateFields: string[] = [];
-    const values: any[] = [];
-    let paramCount = 1;
-
-    if (body.soil_test_data !== undefined) {
-      updateFields.push(`soil_test_data = $${paramCount}`);
-      values.push(JSON.stringify(body.soil_test_data));
-      paramCount++;
-    }
-
-    if (body.rock_test_data !== undefined) {
-      updateFields.push(`rock_test_data = $${paramCount}`);
-      values.push(JSON.stringify(body.rock_test_data));
-      paramCount++;
-    }
-
-    if (body.test_types !== undefined) {
-      updateFields.push(`test_types = $${paramCount}`);
-      values.push(JSON.stringify(body.test_types));
-      paramCount++;
-    }
-
-    if (body.status !== undefined) {
-      updateFields.push(`status = $${paramCount}`);
-      values.push(body.status);
-      paramCount++;
-    }
-
-    if (body.remarks !== undefined) {
-      updateFields.push(`remarks = $${paramCount}`);
-      values.push(body.remarks);
-      paramCount++;
-    }
-
-    if (body.rejection_reason !== undefined) {
-      updateFields.push(`rejection_reason = $${paramCount}`);
-      values.push(body.rejection_reason);
-      paramCount++;
-    }
-
-    if (updateFields.length === 0) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'No fields to update'
-        })
-      };
-    }
-
-    // Add status-specific timestamps
-    if (body.status === 'submitted') {
-      updateFields.push(`submitted_at = NOW()`);
-    } else if (body.status === 'approved') {
-      updateFields.push(`approved_at = NOW()`);
-    } else if (body.status === 'rejected') {
-      updateFields.push(`rejected_at = NOW()`);
-    }
-
-    updateFields.push(`updated_at = NOW()`);
-    values.push(reportId);
-
-    const query = `
-      UPDATE unified_lab_reports 
-      SET ${updateFields.join(', ')}
-      WHERE report_id = $${paramCount}
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Unified lab report not found'
-        })
-      };
-    }
-
-    logger.info('Unified lab report updated successfully', { reportId });
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: true,
-        data: result.rows[0],
-        message: 'Unified lab report updated successfully'
-      })
-    };
-  } catch (error) {
-    logger.error('Error updating unified lab report:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: false,
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
-  }
-};
+import { createResponse } from '../types/common';
+import * as db from '../db';
 
 // Get all unified lab reports (with optional filters)
 export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
     const queryParams = event.queryStringParameters || {};
     const { status, tested_by, sample_id, borehole_no, project_name } = queryParams;
 
@@ -394,112 +52,203 @@ export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise
 
     query += ' ORDER BY created_at DESC';
 
-    const result = await pool.query(query, values);
+    const result = await db.query(query, values);
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: true,
-        data: result.rows,
-        count: result.rows.length
-      })
-    };
+    return createResponse(200, {
+      success: true,
+      message: 'Unified lab reports retrieved successfully',
+      data: result
+    });
   } catch (error) {
     logger.error('Error getting unified lab reports:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get unified lab report by ID
+export const getUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const reportId = event.pathParameters?.reportId;
+    if (!reportId) {
+      return createResponse(400, {
         success: false,
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
+        message: 'Report ID is required'
+      });
+    }
+
+    const query = 'SELECT * FROM unified_lab_reports WHERE report_id = $1';
+    const result = await db.query(query, [reportId]);
+
+    if (result.length === 0) {
+      return createResponse(404, {
+        success: false,
+        message: 'Unified lab report not found'
+      });
+    }
+
+    return createResponse(200, {
+      success: true,
+      message: 'Unified lab report retrieved successfully',
+      data: result[0]
+    });
+  } catch (error) {
+    logger.error('Error getting unified lab report:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Create unified lab report
+export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { sample_id, borehole_no, project_name, test_types, soil_test_data, rock_test_data, tested_by, status, remarks } = body;
+
+    const query = `
+      INSERT INTO unified_lab_reports (
+        sample_id, borehole_no, project_name, test_types, 
+        soil_test_data, rock_test_data, tested_by, status, remarks
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *
+    `;
+
+    const values = [sample_id, borehole_no, project_name, test_types, soil_test_data, rock_test_data, tested_by, status || 'draft', remarks];
+
+    const result = await db.query(query, values);
+
+    return createResponse(201, {
+      success: true,
+      message: 'Unified lab report created successfully',
+      data: result[0]
+    });
+  } catch (error) {
+    logger.error('Error creating unified lab report:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Update unified lab report
+export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const reportId = event.pathParameters?.reportId;
+    if (!reportId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Report ID is required'
+      });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { soil_test_data, rock_test_data, test_types, status, remarks, rejection_reason } = body;
+
+    const query = `
+      UPDATE unified_lab_reports 
+      SET 
+        soil_test_data = COALESCE($2, soil_test_data),
+        rock_test_data = COALESCE($3, rock_test_data),
+        test_types = COALESCE($4, test_types),
+        status = COALESCE($5, status),
+        remarks = COALESCE($6, remarks),
+        rejection_reason = COALESCE($7, rejection_reason),
+        updated_at = NOW()
+      WHERE report_id = $1
+      RETURNING *
+    `;
+
+    const values = [reportId, soil_test_data, rock_test_data, test_types, status, remarks, rejection_reason];
+
+    const result = await db.query(query, values);
+
+    if (result.length === 0) {
+      return createResponse(404, {
+        success: false,
+        message: 'Unified lab report not found'
+      });
+    }
+
+    return createResponse(200, {
+      success: true,
+      message: 'Unified lab report updated successfully',
+      data: result[0]
+    });
+  } catch (error) {
+    logger.error('Error updating unified lab report:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 
 // Delete unified lab report
 export const deleteUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const reportId = event.pathParameters?.reportId;
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin'])(event);
+    if (authError !== null) {
+      return authError;
+    }
 
+    const reportId = event.pathParameters?.reportId;
     if (!reportId) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Report ID is required'
-        })
-      };
+      return createResponse(400, {
+        success: false,
+        message: 'Report ID is required'
+      });
     }
 
     const query = 'DELETE FROM unified_lab_reports WHERE report_id = $1 RETURNING *';
-    const result = await pool.query(query, [reportId]);
+    const result = await db.query(query, [reportId]);
 
-    if (result.rows.length === 0) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: false,
-          message: 'Unified lab report not found'
-        })
-      };
+    if (result.length === 0) {
+      return createResponse(404, {
+        success: false,
+        message: 'Unified lab report not found'
+      });
     }
 
     logger.info('Unified lab report deleted successfully', { reportId });
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: true,
-        message: 'Unified lab report deleted successfully'
-      })
-    };
+    return createResponse(200, {
+      success: true,
+      message: 'Unified lab report deleted successfully'
+    });
   } catch (error) {
     logger.error('Error deleting unified lab report:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-      },
-      body: JSON.stringify({
-        success: false,
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    };
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
-

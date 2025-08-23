@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,41 +22,41 @@ export default function LabReportManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-    const loadData = async () => {
-      setIsLoading(true);
-      try {
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
       // Load lab requests
       const requestsResponse = await labReportApi.getRequests();
       if (requestsResponse.data?.success) {
         setLabRequests(requestsResponse.data.data || []);
       }
 
-      // Load lab reports
-      const reportsResponse = await labReportApi.getReports();
+      // Load lab reports (using unified lab reports endpoint)
+      const reportsResponse = await unifiedLabReportsApi.getAll();
       if (reportsResponse.data?.success) {
         setLabReports(reportsResponse.data.data || []);
-        }
+      }
 
-        // Load unified lab reports
+      // Load unified lab reports
       const unifiedResponse = await unifiedLabReportsApi.getAll();
       if (unifiedResponse.data?.success) {
         setUnifiedReports(unifiedResponse.data.data || []);
-        }
-      } catch (error) {
-      console.error('Error loading lab data:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load lab data',
-        variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading lab data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load lab data',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredRequests = labRequests.filter(request => {
     const matchesStatus = filterStatus === 'all' || request.status === filterStatus;

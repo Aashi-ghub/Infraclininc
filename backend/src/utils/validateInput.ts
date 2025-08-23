@@ -22,7 +22,7 @@ const JWT_SECRET = process.env.NODE_ENV === 'production'
   : 'your-fixed-development-secret-key-make-it-long-and-secure-123';
 
 // Function to validate JWT token
-export const validateToken = (token: string): JwtPayload | null => {
+export const validateToken = async (token: string): Promise<JwtPayload | null> => {
   try {
     // Remove 'Bearer ' prefix if present
     const tokenString = token.startsWith('Bearer ') ? token.slice(7) : token;
@@ -53,7 +53,7 @@ export const hasRole = (userRole: UserRole, requiredRoles: UserRole[]): boolean 
 
 // RBAC middleware function
 export const checkRole = (requiredRoles: UserRole[]) => {
-  return (event: any) => {
+  return async (event: any) => {
     // Extract authorization header
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
     
@@ -68,7 +68,7 @@ export const checkRole = (requiredRoles: UserRole[]) => {
     }
     
     // Validate token
-    const payload = validateToken(authHeader);
+    const payload = await validateToken(authHeader);
     
     if (!payload) {
       return {

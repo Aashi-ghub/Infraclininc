@@ -276,9 +276,10 @@ export interface CreateLabTestInput {
 
 // API Response Types
 export interface ApiResponse<T> {
+  success: boolean;
   data: T;
   message?: string;
-  status: 'success' | 'error';
+  status?: 'success' | 'error';
 }
 
 export interface PaginatedResponse<T> {

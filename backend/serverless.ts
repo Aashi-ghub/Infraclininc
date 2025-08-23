@@ -1197,6 +1197,20 @@ const serverlessConfiguration: AWS = {
       ]
     },
 
+    // Lab Reports endpoint (alias for unified lab reports)
+    getLabReports: {
+      handler: 'src/handlers/unifiedLabReports.getUnifiedLabReports',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-reports',
+            cors: true
+          }
+        }
+      ]
+    },
+
     // Lab Report Version Control endpoints
     saveLabReportDraft: {
       handler: 'src/handlers/labReportVersionControl.saveLabReportDraft',

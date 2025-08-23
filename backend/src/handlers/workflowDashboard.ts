@@ -269,7 +269,7 @@ export const getWorkflowStatistics = async (event: APIGatewayProxyEvent): Promis
     const statistics = await db.query(statisticsQuery, queryParams);
 
     // Calculate overall totals
-    const totals = statistics.reduce((acc, project) => ({
+    const totals = statistics.reduce((acc: any, project: any) => ({
       total_borelogs: acc.total_borelogs + parseInt(project.total_borelogs || '0'),
       draft_count: acc.draft_count + parseInt(project.draft_count || '0'),
       submitted_count: acc.submitted_count + parseInt(project.submitted_count || '0'),

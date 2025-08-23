@@ -1,14 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+import * as db from '../db';
 
 // Create new lab request
 export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -50,9 +45,9 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
       WHERE b.borelog_id = $1
     `;
-    const borelogResult = await pool.query(borelogQuery, [body.borelog_id]);
+    const borelogResult = await db.query(borelogQuery, [body.borelog_id]);
     
-    if (borelogResult.rows.length === 0) {
+    if (borelogResult.length === 0) {
       return createResponse(404, {
         success: false,
         message: 'Borelog not found',
@@ -60,31 +55,31 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    const borelog = borelogResult.rows[0];
+    const borelog = borelogResult[0];
     const requestId = uuidv4();
 
     // Create lab request record
     const createQuery = `
       INSERT INTO lab_test_assignments (
-        assignment_id, borelog_id, sample_id, test_type, priority, 
-        due_date, notes, requested_by, status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        assignment_id, borelog_id, version_no, sample_ids, assigned_by, 
+        assigned_to, due_date, priority, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
 
     const values = [
       requestId,
       body.borelog_id,
-      body.sample_id,
-      body.test_type,
-      body.priority || 'Medium',
-      body.due_date || null,
-      body.notes || null,
+      1, // Default version_no
+      [body.sample_id], // Convert to array
       payload.userId,
-      'Pending'
+      payload.userId, // For now, assign to the same user
+      body.due_date || null,
+      body.priority || 'normal',
+      body.notes || null
     ];
 
-    const result = await pool.query(createQuery, values);
+    const result = await db.query(createQuery, values);
     
     logger.info('Lab request created successfully', { requestId, borelogId: body.borelog_id });
 
@@ -92,20 +87,20 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       success: true,
       message: 'Lab request created successfully',
       data: {
-        id: result.rows[0].assignment_id,
-        borelog_id: result.rows[0].borelog_id,
-        sample_id: result.rows[0].sample_id,
-        test_type: result.rows[0].test_type,
-        priority: result.rows[0].priority,
-        due_date: result.rows[0].due_date,
-        notes: result.rows[0].notes,
+        id: result[0].assignment_id,
+        borelog_id: result[0].borelog_id,
+        sample_id: result[0].sample_ids[0], // Get first sample ID from array
+        test_type: body.test_type, // Keep the test_type from request
+        priority: result[0].priority,
+        due_date: result[0].due_date,
+        notes: result[0].notes,
         requested_by: payload.name || payload.email,
-        requested_date: result.rows[0].created_at,
-        status: result.rows[0].status,
+        requested_date: result[0].assigned_at,
+        status: 'assigned', // Default status
         borelog: {
           borehole_number: borelog.borehole_number,
           project_name: borelog.project_name,
-          chainage: borelog.chainage || 'N/A'
+          chainage: borelog.chainage_km || 'N/A'
         }
       }
     });
@@ -143,15 +138,14 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
     let query = `
       SELECT 
         lta.*,
-        b.borelog_id,
         p.name as project_name,
         bd.number as borehole_number,
-        u.name as requested_by_name
+        u.name as assigned_by_name
       FROM lab_test_assignments lta
       LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
       LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
-      LEFT JOIN users u ON lta.requested_by = u.user_id
+      LEFT JOIN borelog_details bd ON lta.borelog_id = bd.borelog_id
+      LEFT JOIN users u ON lta.assigned_by = u.user_id
       WHERE 1=1
     `;
 
@@ -169,30 +163,31 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
       )`;
       queryParams.push(payload.userId);
     } else if (payload.role === 'Lab Engineer') {
-      // Lab engineers can see all pending requests
-      query += ` AND lta.status = 'Pending'`;
+      // Lab engineers can see all assigned requests
+      query += ` AND lta.assigned_to = $${paramCount + 1}`;
+      queryParams.push(payload.userId);
     }
     // Admin can see all requests
 
-    query += ` ORDER BY lta.created_at DESC`;
+    query += ` ORDER BY lta.assigned_at DESC`;
 
-    const result = await pool.query(query, queryParams);
+    const result = await db.query(query, queryParams);
 
-    const labRequests = result.rows.map(row => ({
+    const labRequests = result.map(row => ({
       id: row.assignment_id,
       borelog_id: row.borelog_id,
-      sample_id: row.sample_id,
-      test_type: row.test_type,
+      sample_id: row.sample_ids ? row.sample_ids[0] : '', // Get first sample ID from array
+      test_type: 'Lab Test', // Default test type since it's not stored in the table
       priority: row.priority,
       due_date: row.due_date,
       notes: row.notes,
-      requested_by: row.requested_by_name,
-      requested_date: row.created_at,
-      status: row.status,
+      requested_by: row.assigned_by_name,
+      requested_date: row.assigned_at,
+      status: 'assigned', // Default status
       borelog: {
         borehole_number: row.borehole_number,
         project_name: row.project_name,
-        chainage: row.chainage || 'N/A'
+        chainage: 'N/A'
       }
     }));
 
@@ -243,21 +238,20 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
     const query = `
       SELECT 
         lta.*,
-        b.borelog_id,
         p.name as project_name,
         bd.number as borehole_number,
-        u.name as requested_by_name
+        u.name as assigned_by_name
       FROM lab_test_assignments lta
       LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
       LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
-      LEFT JOIN users u ON lta.requested_by = u.user_id
+      LEFT JOIN borelog_details bd ON lta.borelog_id = bd.borelog_id
+      LEFT JOIN users u ON lta.assigned_by = u.user_id
       WHERE lta.assignment_id = $1
     `;
 
-    const result = await pool.query(query, [requestId]);
+    const result = await db.query(query, [requestId]);
     
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return createResponse(404, {
         success: false,
         message: 'Lab request not found',
@@ -265,22 +259,22 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       });
     }
 
-    const row = result.rows[0];
+    const row = result[0];
     const labRequest = {
       id: row.assignment_id,
       borelog_id: row.borelog_id,
-      sample_id: row.sample_id,
-      test_type: row.test_type,
+      sample_id: row.sample_ids ? row.sample_ids[0] : '', // Get first sample ID from array
+      test_type: 'Lab Test', // Default test type since it's not stored in the table
       priority: row.priority,
       due_date: row.due_date,
       notes: row.notes,
-      requested_by: row.requested_by_name,
-      requested_date: row.created_at,
-      status: row.status,
+      requested_by: row.assigned_by_name,
+      requested_date: row.assigned_at,
+      status: 'assigned', // Default status
       borelog: {
         borehole_number: row.borehole_number,
         project_name: row.project_name,
-        chainage: row.chainage || 'N/A'
+        chainage: 'N/A'
       }
     };
 
@@ -337,15 +331,12 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     if (body.sample_id !== undefined) {
       paramCount++;
-      updateFields.push(`sample_id = $${paramCount}`);
-      values.push(body.sample_id);
+      updateFields.push(`sample_ids = $${paramCount}`);
+      values.push([body.sample_id]); // Convert to array
     }
 
-    if (body.test_type !== undefined) {
-      paramCount++;
-      updateFields.push(`test_type = $${paramCount}`);
-      values.push(body.test_type);
-    }
+    // Note: test_type is not stored in the lab_test_assignments table
+    // It would need to be stored in a separate table or handled differently
 
     if (body.priority !== undefined) {
       paramCount++;
@@ -365,11 +356,8 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       values.push(body.notes);
     }
 
-    if (body.status !== undefined) {
-      paramCount++;
-      updateFields.push(`status = $${paramCount}`);
-      values.push(body.status);
-    }
+    // Note: status is not stored in the lab_test_assignments table
+    // It would need to be stored in a separate table or handled differently
 
     if (updateFields.length === 0) {
       return createResponse(400, {
@@ -380,7 +368,6 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
     }
 
     paramCount++;
-    updateFields.push(`updated_at = NOW()`);
     values.push(requestId);
 
     const updateQuery = `
@@ -390,9 +377,9 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       RETURNING *
     `;
 
-    const result = await pool.query(updateQuery, values);
+    const result = await db.query(updateQuery, values);
     
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return createResponse(404, {
         success: false,
         message: 'Lab request not found',
@@ -405,7 +392,7 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
     return createResponse(200, {
       success: true,
       message: 'Lab request updated successfully',
-      data: result.rows[0]
+      data: result[0]
     });
   } catch (error) {
     logger.error('Error updating lab request:', error);
@@ -452,9 +439,9 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       RETURNING assignment_id
     `;
 
-    const result = await pool.query(deleteQuery, [requestId]);
+    const result = await db.query(deleteQuery, [requestId]);
     
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return createResponse(404, {
         success: false,
         message: 'Lab request not found',
@@ -499,24 +486,23 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    // Get final borelogs (approved versions from borelog_details table)
+    // Get final borelogs (only the latest version of each borelog)
     let query = `
-      SELECT DISTINCT ON (bd.borelog_id)
+      SELECT 
         bd.borelog_id,
         bd.number as borehole_number,
-        bd.version_no,
         bd.created_at,
         p.name as project_name,
         p.location as project_location,
-        ss.type as substructure_name,
-        s.type as structure_name,
-        u.name as created_by_name
+        bd.version_no
       FROM borelog_details bd
-      JOIN boreloge b ON bd.borelog_id = b.borelog_id
-      JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-      LEFT JOIN structure s ON ss.structure_id = s.structure_id
-      LEFT JOIN users u ON bd.created_by_user_id = u.user_id
+      INNER JOIN (
+        SELECT borelog_id, MAX(version_no) as max_version
+        FROM borelog_details
+        GROUP BY borelog_id
+      ) latest ON bd.borelog_id = latest.borelog_id AND bd.version_no = latest.max_version
+      LEFT JOIN boreloge b ON bd.borelog_id = b.borelog_id
+      LEFT JOIN projects p ON b.project_id = p.project_id
       WHERE bd.borelog_id IS NOT NULL
     `;
 
@@ -538,18 +524,36 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
 
     query += ` ORDER BY bd.borelog_id, bd.version_no DESC`;
 
-    const result = await pool.query(query, queryParams);
+    logger.info('Executing getFinalBorelogs query:', { query, queryParams });
 
-    const finalBorelogs = result.rows.map(row => ({
+    let result;
+    try {
+      result = await db.query(query, queryParams);
+    } catch (dbError) {
+      logger.error('Database query error in getFinalBorelogs:', dbError);
+      return createResponse(500, {
+        success: false,
+        message: 'Database query error',
+        error: 'Failed to execute database query'
+      });
+    }
+
+    if (!result) {
+      logger.error('Database query returned undefined result');
+      return createResponse(500, {
+        success: false,
+        message: 'Database error',
+        error: 'Failed to retrieve data from database'
+      });
+    }
+
+    const finalBorelogs = result.map(row => ({
       borelog_id: row.borelog_id,
       borehole_number: row.borehole_number,
       project_name: row.project_name,
       project_location: row.project_location,
-      substructure_name: row.substructure_name,
-      structure_name: row.structure_name,
       version_no: row.version_no,
-      created_at: row.created_at,
-      created_by_name: row.created_by_name
+      created_at: row.created_at
     }));
 
     return createResponse(200, {
