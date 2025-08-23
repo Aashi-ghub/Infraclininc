@@ -47,7 +47,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
           b.substructure_id,
           b.type as borelog_type,
           p.name as project_name,
-          ss.name as substructure_name,
+          ss.type as substructure_name,
           u.name as submitted_by_name
         FROM borelog_versions bv
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
@@ -71,7 +71,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
           b.substructure_id,
           b.type as borelog_type,
           p.name as project_name,
-          ss.name as substructure_name,
+          ss.type as substructure_name,
           u.name as submitted_by_name
         FROM borelog_versions bv
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
@@ -135,34 +135,28 @@ export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-    // In a real implementation, you would query the lab_assignments table
-    // For now, we'll return mock data
-    const labAssignments = [
-      {
-        id: 'lt-1',
-        borelog_id: '550e8400-e29b-41d4-a716-446655440001',
-        sample_id: 'SAMPLE-001',
-        test_type: 'Compression Test',
-        priority: 'high',
-        expected_completion_date: '2024-02-15',
-        status: 'assigned',
-        assigned_at: '2024-02-01T10:00:00Z',
-        project_name: 'Highway Bridge Project',
-        borehole_number: 'BH-001'
-      },
-      {
-        id: 'lt-2',
-        borelog_id: '550e8400-e29b-41d4-a716-446655440002',
-        sample_id: 'SAMPLE-002',
-        test_type: 'Shear Test',
-        priority: 'medium',
-        expected_completion_date: '2024-02-20',
-        status: 'in_progress',
-        assigned_at: '2024-02-01T11:00:00Z',
-        project_name: 'Highway Bridge Project',
-        borehole_number: 'BH-002'
-      }
-    ];
+         // Query lab assignments from the database
+     const labAssignmentsQuery = `
+       SELECT 
+         la.assignment_id as id,
+         la.borelog_id,
+         la.sample_ids,
+         la.assigned_at,
+         la.due_date,
+         la.priority,
+         la.notes,
+         p.name as project_name,
+         COALESCE(bd.number, gl.borehole_number) as borehole_number
+       FROM lab_test_assignments la
+       JOIN boreloge b ON la.borelog_id = b.borelog_id
+       JOIN projects p ON b.project_id = p.project_id
+       LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
+       LEFT JOIN geological_log gl ON b.borelog_id = gl.borelog_id
+       WHERE la.assigned_to = $1
+       ORDER BY la.assigned_at DESC
+     `;
+     
+     const labAssignments = await db.query(labAssignmentsQuery, [payload.userId]);
 
     const response = createResponse(200, {
       success: true,
@@ -332,81 +326,81 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
     let queryParams: any[] = [];
 
     if (payload.role === 'Admin') {
-      // Admin can see all submitted borelogs
-      submittedBorelogsQuery = `
-        SELECT 
-          bv.borelog_id,
-          bv.version_no,
-          bv.status,
-          bv.submitted_by,
-          bv.submitted_at,
-          bv.submission_comments,
-          bv.review_comments,
-          bv.approved_by,
-          bv.approved_at,
-          bv.rejected_by,
-          bv.rejected_at,
-          bv.returned_by,
-          bv.returned_at,
-          b.project_id,
-          b.substructure_id,
-          b.type as borelog_type,
-          p.name as project_name,
-          ss.name as substructure_name,
-          u.name as submitted_by_name,
-          ua.name as approved_by_name,
-          ur.name as rejected_by_name,
-          urt.name as returned_by_name
-        FROM borelog_versions bv
-        JOIN boreloge b ON bv.borelog_id = b.borelog_id
-        JOIN projects p ON b.project_id = p.project_id
-        LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
-        LEFT JOIN users ua ON bv.approved_by = ua.user_id
-        LEFT JOIN users ur ON bv.rejected_by = ur.user_id
-        LEFT JOIN users urt ON bv.returned_by = urt.user_id
-        WHERE bv.status IN ('submitted', 'approved', 'rejected', 'returned_for_revision')
-        ORDER BY bv.submitted_at DESC
-      `;
+             // Admin can see all submitted borelogs
+       submittedBorelogsQuery = `
+         SELECT 
+           bv.borelog_id,
+           bv.version_no,
+           bv.status,
+           bv.submitted_by,
+           bv.submitted_at,
+           bv.submission_comments,
+           bv.review_comments,
+           bv.approved_by,
+           bv.approved_at,
+           bv.rejected_by,
+           bv.rejected_at,
+           bv.returned_by,
+           bv.returned_at,
+           b.project_id,
+           b.substructure_id,
+           b.type as borelog_type,
+           p.name as project_name,
+           ss.type as substructure_name,
+           u.name as submitted_by_name,
+           ua.name as approved_by_name,
+           ur.name as rejected_by_name,
+           urt.name as returned_by_name
+         FROM borelog_versions bv
+         JOIN boreloge b ON bv.borelog_id = b.borelog_id
+         JOIN projects p ON b.project_id = p.project_id
+         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
+         LEFT JOIN users u ON bv.submitted_by = u.user_id
+         LEFT JOIN users ua ON bv.approved_by = ua.user_id
+         LEFT JOIN users ur ON bv.rejected_by = ur.user_id
+         LEFT JOIN users urt ON bv.returned_by = urt.user_id
+         WHERE bv.status IN ('submitted', 'approved', 'rejected', 'returned_for_revision')
+         ORDER BY bv.submitted_at DESC
+       `;
     } else {
-      // Site Engineers can only see submitted borelogs for projects they're assigned to
-      submittedBorelogsQuery = `
-        SELECT 
-          bv.borelog_id,
-          bv.version_no,
-          bv.status,
-          bv.submitted_by,
-          bv.submitted_at,
-          bv.submission_comments,
-          bv.review_comments,
-          bv.approved_by,
-          bv.approved_at,
-          bv.rejected_by,
-          bv.rejected_at,
-          bv.returned_by,
-          bv.returned_at,
-          b.project_id,
-          b.substructure_id,
-          b.type as borelog_type,
-          p.name as project_name,
-          ss.name as substructure_name,
-          u.name as submitted_by_name,
-          ua.name as approved_by_name,
-          ur.name as rejected_by_name,
-          urt.name as returned_by_name
-        FROM borelog_versions bv
-        JOIN boreloge b ON bv.borelog_id = b.borelog_id
-        JOIN projects p ON b.project_id = p.project_id
-        LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
-        LEFT JOIN users ua ON bv.approved_by = ua.user_id
-        LEFT JOIN users ur ON bv.rejected_by = ur.user_id
-        LEFT JOIN users urt ON bv.returned_by = urt.user_id
-        JOIN user_project_assignments upa ON p.project_id = upa.project_id
-        WHERE bv.status IN ('submitted', 'approved', 'rejected', 'returned_for_revision') 
-          AND $1 = ANY(upa.assignee)
-        ORDER BY bv.submitted_at DESC
-      `;
+             // Site Engineers can only see submitted borelogs for projects they're assigned to
+       submittedBorelogsQuery = `
+         SELECT 
+           bv.borelog_id,
+           bv.version_no,
+           bv.status,
+           bv.submitted_by,
+           bv.submitted_at,
+           bv.submission_comments,
+           bv.review_comments,
+           bv.approved_by,
+           bv.approved_at,
+           bv.rejected_by,
+           bv.rejected_at,
+           bv.returned_by,
+           bv.returned_at,
+           b.project_id,
+           b.substructure_id,
+           b.type as borelog_type,
+           p.name as project_name,
+           ss.type as substructure_name,
+           u.name as submitted_by_name,
+           ua.name as approved_by_name,
+           ur.name as rejected_by_name,
+           urt.name as returned_by_name
+         FROM borelog_versions bv
+         JOIN boreloge b ON bv.borelog_id = b.borelog_id
+         JOIN projects p ON b.project_id = p.project_id
+         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
+         LEFT JOIN users u ON bv.submitted_by = u.user_id
+         LEFT JOIN users ua ON bv.approved_by = ua.user_id
+         LEFT JOIN users ur ON bv.rejected_by = ur.user_id
+         LEFT JOIN users urt ON bv.returned_by = urt.user_id
+         JOIN user_project_assignments upa ON p.project_id = upa.project_id
+         WHERE bv.status IN ('submitted', 'approved', 'rejected', 'returned_for_revision') 
+           AND $1 = ANY(upa.assignee)
+         ORDER BY bv.submitted_at DESC
+       `;
       queryParams = [payload.userId];
     }
 
