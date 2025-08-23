@@ -131,7 +131,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           bd.created_at as details_created_at,
           COALESCE(bd.created_by_user_id, b.created_by_user_id) as details_created_by,
           u.name as created_by_name,
-          u.email as created_by_email
+          u.email as created_by_email,
+          ba.assignment_id,
+          ba.assigned_site_engineer,
+          ba.status as assignment_status,
+          assigned_user.name as assigned_site_engineer_name,
+          assigned_user.email as assigned_site_engineer_email
         FROM boreloge b
         JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
         JOIN structure s ON ss.structure_id = s.structure_id
@@ -139,6 +144,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         JOIN latest_versions lv ON b.borelog_id = lv.borelog_id
         JOIN borelog_details bd ON b.borelog_id = bd.borelog_id AND bd.version_no = lv.latest_version_no
         LEFT JOIN users u ON COALESCE(bd.created_by_user_id, b.created_by_user_id) = u.user_id
+        LEFT JOIN borelog_assignments ba ON b.borelog_id = ba.borelog_id AND ba.status = 'active'
+        LEFT JOIN users assigned_user ON ba.assigned_site_engineer = assigned_user.user_id
         WHERE b.project_id = $1 AND b.borelog_id = ANY($2)
         ORDER BY s.type, ss.type, b.created_at DESC
       `;
@@ -212,7 +219,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           bd.created_at as details_created_at,
           COALESCE(bd.created_by_user_id, b.created_by_user_id) as details_created_by,
           u.name as created_by_name,
-          u.email as created_by_email
+          u.email as created_by_email,
+          ba.assignment_id,
+          ba.assigned_site_engineer,
+          ba.status as assignment_status,
+          assigned_user.name as assigned_site_engineer_name,
+          assigned_user.email as assigned_site_engineer_email
         FROM boreloge b
         JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
         JOIN structure s ON ss.structure_id = s.structure_id
@@ -220,6 +232,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         JOIN latest_versions lv ON b.borelog_id = lv.borelog_id
         JOIN borelog_details bd ON b.borelog_id = bd.borelog_id AND bd.version_no = lv.latest_version_no
         LEFT JOIN users u ON COALESCE(bd.created_by_user_id, b.created_by_user_id) = u.user_id
+        LEFT JOIN borelog_assignments ba ON b.borelog_id = ba.borelog_id AND ba.status = 'active'
+        LEFT JOIN users assigned_user ON ba.assigned_site_engineer = assigned_user.user_id
         WHERE b.project_id = $1
         ORDER BY s.type, ss.type, b.created_at DESC
       `;

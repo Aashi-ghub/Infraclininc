@@ -121,7 +121,13 @@ export default function ManageBorelogs() {
           created_by_email: borelog.created_by_email || borelog.created_by?.email || '',
           // Add project info for context
           project_name: selectedProjectData.name,
-          project_location: selectedProjectData.location
+          project_location: selectedProjectData.location,
+          // Assignment information
+          assignment_id: borelog.assignment_id || null,
+          assigned_site_engineer: borelog.assigned_site_engineer || null,
+          assignment_status: borelog.assignment_status || null,
+          assigned_site_engineer_name: borelog.assigned_site_engineer_name || null,
+          assigned_site_engineer_email: borelog.assigned_site_engineer_email || null
         }));
 
         setBorelogs(transformedBorelogs);
@@ -238,7 +244,13 @@ export default function ManageBorelogs() {
             created_by_name: borelog.created_by_name || borelog.created_by?.name || 'Unknown',
             created_by_email: borelog.created_by_email || borelog.created_by?.email || '',
             project_name: selectedProjectData.name,
-            project_location: selectedProjectData.location
+            project_location: selectedProjectData.location,
+            // Assignment information
+            assignment_id: borelog.assignment_id || null,
+            assigned_site_engineer: borelog.assigned_site_engineer || null,
+            assignment_status: borelog.assignment_status || null,
+            assigned_site_engineer_name: borelog.assigned_site_engineer_name || null,
+            assigned_site_engineer_email: borelog.assigned_site_engineer_email || null
           }));
 
           setBorelogs(transformedBorelogs);
@@ -292,32 +304,35 @@ export default function ManageBorelogs() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Manage Borelogs</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Manage Borelogs</h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
               View and manage borelog details for your projects
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button 
-              className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300"
+              className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300 w-full sm:w-auto"
               onClick={() => setShowCSVUpload(!showCSVUpload)}
             >
               <Upload className="h-4 w-4 mr-2" />
-              Upload CSV
+              <span className="hidden sm:inline">Upload CSV</span>
+              <span className="sm:hidden">CSV</span>
             </Button>
             {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
               <Button 
-                className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300"
+                className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300 w-full sm:w-auto"
                 onClick={() => setShowAssignments(!showAssignments)}
               >
                 <Users className="h-4 w-4 mr-2" />
-                Manage Assignments
+                <span className="hidden sm:inline">Manage Assignments</span>
+                <span className="sm:hidden">Assignments</span>
               </Button>
             )}
-            <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300" asChild>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-elegant transition-all duration-300 w-full sm:w-auto" asChild>
               <Link to="/borelog/entry">
                 <Plus className="h-4 w-4 mr-2" />
-                Create New Borelog
+                <span className="hidden sm:inline">Create New Borelog</span>
+                <span className="sm:hidden">New Borelog</span>
               </Link>
             </Button>
           </div>
@@ -334,7 +349,7 @@ export default function ManageBorelogs() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Project Selection */}
               <div>
                 <label className="text-sm font-medium mb-2 block">Project</label>
@@ -465,8 +480,8 @@ export default function ManageBorelogs() {
                           className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
                           onClick={() => setSelectedBorelogForAssignment(borelog.borelog_id)}
                         >
-                          <div className="flex items-center justify-between">
-                            <div>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex-1">
                               <h5 className="font-semibold">
                                 Borelog #{borelog.number}
                               </h5>
@@ -474,8 +489,9 @@ export default function ManageBorelogs() {
                                 {borelog.structure_type} - {borelog.substructure_type}
                               </p>
                             </div>
-                            <Button variant="outline" size="sm">
-                              Manage Assignments
+                            <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                              <span className="hidden sm:inline">Manage Assignments</span>
+                              <span className="sm:hidden">Manage</span>
                             </Button>
                           </div>
                         </div>
@@ -544,80 +560,117 @@ export default function ManageBorelogs() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Borelog Number</TableHead>
-                      <TableHead>Structure/Substructure</TableHead>
-                      <TableHead>Depth (m)</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Created By</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="min-w-[120px]">Borelog Number</TableHead>
+                      <TableHead className="min-w-[150px]">Structure/Substructure</TableHead>
+                      <TableHead className="min-w-[80px]">Depth (m)</TableHead>
+                      <TableHead className="min-w-[80px]">Version</TableHead>
+                      <TableHead className="min-w-[150px] hidden md:table-cell">Created By</TableHead>
+                      <TableHead className="min-w-[200px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredBorelogs.map((borelog) => (
                       <TableRow key={borelog.borelog_id}>
                         <TableCell className="font-medium">
-                          {borelog.number}
+                          <div className="flex flex-col">
+                            <span className="font-medium">{borelog.number}</span>
+                            <span className="text-xs text-muted-foreground md:hidden">
+                              {borelog.created_by_name}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-1">
-                              <Building className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{borelog.structure_type}</span>
+                              <Building className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                              <span className="text-sm truncate">{borelog.structure_type}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">{borelog.substructure_type}</span>
+                              <MapPin className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                              <span className="text-xs text-muted-foreground truncate">{borelog.substructure_type}</span>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          {borelog.termination_depth} m
+                          <span className="whitespace-nowrap">{borelog.termination_depth} m</span>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 whitespace-nowrap">
                             v{borelog.version_no}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">{borelog.created_by_name}</span>
                             <span className="text-xs text-muted-foreground">{borelog.created_by_email}</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              asChild
-                            >
-                              <Link to={`/borelog/${borelog.borelog_id}`}>
-                                View
-                              </Link>
-                            </Button>
-                            {(user?.role === 'Admin' || user?.role === 'Project Manager' || user?.role === 'Site Engineer') && (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex gap-1">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 asChild
+                                className="flex-1 min-w-0"
                               >
-                                <Link to={`/borelog/edit/${borelog.borelog_id}`}>
-                                  Edit
+                                <Link to={`/borelog/${borelog.borelog_id}`}>
+                                  <span className="hidden sm:inline">View</span>
+                                  <span className="sm:hidden">👁</span>
                                 </Link>
                               </Button>
-                            )}
+                              {(user?.role === 'Admin' || user?.role === 'Project Manager' || user?.role === 'Site Engineer') && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  asChild
+                                  className="flex-1 min-w-0"
+                                >
+                                  <Link to={`/borelog/edit/${borelog.borelog_id}`}>
+                                    <span className="hidden sm:inline">Edit</span>
+                                    <span className="sm:hidden">✏</span>
+                                  </Link>
+                                </Button>
+                              )}
+                            </div>
                             {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setShowAssignments(true);
-                                  setSelectedBorelogForAssignment(borelog.borelog_id);
-                                }}
-                              >
-                                <Users className="h-3 w-3 mr-1" />
-                                Assign
-                              </Button>
+                              borelog.assignment_id ? (
+                                <div className="flex flex-col gap-1">
+                                  <div className="text-xs text-muted-foreground">
+                                    Assigned to:
+                                  </div>
+                                  <div className="text-sm font-medium truncate">
+                                    {borelog.assigned_site_engineer_name}
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setShowAssignments(true);
+                                      setSelectedBorelogForAssignment(borelog.borelog_id);
+                                    }}
+                                    className="w-full"
+                                  >
+                                    <Users className="h-3 w-3 mr-1 flex-shrink-0" />
+                                    <span className="hidden sm:inline">Manage</span>
+                                    <span className="sm:hidden">Manage</span>
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setShowAssignments(true);
+                                    setSelectedBorelogForAssignment(borelog.borelog_id);
+                                  }}
+                                  className="w-full"
+                                >
+                                  <Users className="h-3 w-3 mr-1 flex-shrink-0" />
+                                  <span className="hidden sm:inline">Assign</span>
+                                  <span className="sm:hidden">Assign</span>
+                                </Button>
+                              )
                             )}
                           </div>
                         </TableCell>
