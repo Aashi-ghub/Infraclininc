@@ -203,7 +203,12 @@ export function WorkflowDashboard() {
                       <TableCell>{review.substructure_name || 'N/A'}</TableCell>
                       <TableCell>{review.submitted_by_name || review.submitted_by}</TableCell>
                       <TableCell>
-                        {format(new Date(review.submitted_at), 'MMM dd, yyyy HH:mm')}
+                        {review.submitted_at ? 
+                          format(new Date(review.submitted_at), 'MMM dd, yyyy HH:mm') :
+                          review.created_at ? 
+                            format(new Date(review.created_at), 'MMM dd, yyyy HH:mm') :
+                            'N/A'
+                        }
                       </TableCell>
                       <TableCell>
                         <div className="max-w-[200px] truncate" title={review.submission_comments}>
@@ -405,7 +410,12 @@ export function WorkflowDashboard() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(borelog.submitted_at), 'MMM dd, yyyy HH:mm')}
+                        {borelog.submitted_at ? 
+                          format(new Date(borelog.submitted_at), 'MMM dd, yyyy HH:mm') :
+                          borelog.created_at ? 
+                            format(new Date(borelog.created_at), 'MMM dd, yyyy HH:mm') :
+                            'N/A'
+                        }
                       </TableCell>
                       <TableCell>
                         <div className="max-w-[200px] truncate" title={borelog.review_comments}>

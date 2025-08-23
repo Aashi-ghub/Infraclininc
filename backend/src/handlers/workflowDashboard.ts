@@ -42,6 +42,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
           bv.status,
           bv.submitted_by,
           bv.submitted_at,
+          bv.created_at,
           bv.submission_comments,
           b.project_id,
           b.substructure_id,
@@ -53,7 +54,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
         JOIN projects p ON b.project_id = p.project_id
         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
+        LEFT JOIN users u ON bv.submitted_by = u.user_id OR (bv.submitted_by IS NULL AND bv.created_by_user_id = u.user_id)
         WHERE bv.status = 'submitted'
           AND bv.version_no = (
             SELECT MAX(version_no) 
@@ -72,6 +73,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
           bv.status,
           bv.submitted_by,
           bv.submitted_at,
+          bv.created_at,
           bv.submission_comments,
           b.project_id,
           b.substructure_id,
@@ -83,7 +85,7 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
         JOIN projects p ON b.project_id = p.project_id
         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
+        LEFT JOIN users u ON bv.submitted_by = u.user_id OR (bv.submitted_by IS NULL AND bv.created_by_user_id = u.user_id)
         JOIN user_project_assignments upa ON p.project_id = upa.project_id
         WHERE bv.status = 'submitted' 
           AND $1 = ANY(upa.assignee)
@@ -347,6 +349,7 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
           bv.status,
           bv.submitted_by,
           bv.submitted_at,
+          bv.created_at,
           bv.submission_comments,
           bv.review_comments,
           bv.approved_by,
@@ -368,7 +371,7 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
         JOIN projects p ON b.project_id = p.project_id
         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
+        LEFT JOIN users u ON bv.submitted_by = u.user_id OR (bv.submitted_by IS NULL AND bv.created_by_user_id = u.user_id)
         LEFT JOIN users ua ON bv.approved_by = ua.user_id
         LEFT JOIN users ur ON bv.rejected_by = ur.user_id
         LEFT JOIN users urt ON bv.returned_by = urt.user_id
@@ -390,6 +393,7 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
           bv.status,
           bv.submitted_by,
           bv.submitted_at,
+          bv.created_at,
           bv.submission_comments,
           bv.review_comments,
           bv.approved_by,
@@ -411,14 +415,14 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
         JOIN boreloge b ON bv.borelog_id = b.borelog_id
         JOIN projects p ON b.project_id = p.project_id
         LEFT JOIN sub_structures ss ON b.substructure_id = ss.substructure_id
-        LEFT JOIN users u ON bv.submitted_by = u.user_id
+        LEFT JOIN users u ON bv.submitted_by = u.user_id OR (bv.submitted_by IS NULL AND bv.created_by_user_id = u.user_id)
         LEFT JOIN users ua ON bv.approved_by = ua.user_id
         LEFT JOIN users ur ON bv.rejected_by = ur.user_id
         LEFT JOIN users urt ON bv.returned_by = urt.user_id
         JOIN user_project_assignments upa ON p.project_id = upa.project_id
         WHERE bv.status IN ('submitted', 'approved', 'rejected', 'returned_for_revision') 
           AND $1 = ANY(upa.assignee)
-          AND bv.submitted_by = $2
+          AND (bv.submitted_by = $2 OR (bv.submitted_by IS NULL AND bv.created_by_user_id = $2))
           AND bv.version_no = (
             SELECT MAX(version_no) 
             FROM borelog_versions bv2 
