@@ -17,6 +17,7 @@ import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
 import LabReportManagement from "./pages/lab-reports/index";
 import CreateLabReport from "./pages/lab-reports/create";
+import CreateLabRequest from "./pages/lab-reports/create-request";
 import RockLabTestPage from "./pages/lab-reports/rock-test";
 import SoilLabTestPage from "./pages/lab-reports/soil-test";
 import UnifiedLabReportPage from "./pages/lab-reports/unified";
@@ -203,6 +204,11 @@ const App = () => (
         <Route path="/lab-reports/create/:requestId?" element={
           <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
             <CreateLabReport />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/create-request" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Project Manager']}>
+            <CreateLabRequest />
           </ProtectedRoute>
         } />
         <Route path="/lab-reports/rock-test" element={

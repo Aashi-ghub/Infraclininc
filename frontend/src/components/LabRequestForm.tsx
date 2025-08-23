@@ -2,62 +2,106 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, FlaskConical, Plus, Search } from 'lucide-react';
-import { format } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { LabRequest, LabTestType } from '@/lib/types';
+import { LabRequest } from '@/lib/types';
+import { labReportApi } from '@/lib/api';
+
+interface LabTestType {
+  id: string;
+  name: string;
+  category: string;
+}
+
+interface Borelog {
+  borelog_id: string;
+  borehole_number: string;
+  project_name: string;
+  chainage?: string;
+}
 
 interface LabRequestFormProps {
-  onSubmit: (request: Omit<LabRequest, 'id' | 'requested_date' | 'status'>) => void;
+  onSubmit: (data: Omit<LabRequest, 'id' | 'requested_date' | 'status'>) => void;
   onCancel: () => void;
   isLoading?: boolean;
 }
-
-const testTypes: LabTestType[] = [
-  { id: '1', name: 'Compressive Strength Test', category: 'Strength Tests', description: 'Determines the compressive strength of concrete or rock samples' },
-  { id: '2', name: 'Tensile Strength Test', category: 'Strength Tests', description: 'Measures the tensile strength of materials' },
-  { id: '3', name: 'Density Test', category: 'Soil Tests', description: 'Determines the bulk and dry density of soil samples' },
-  { id: '4', name: 'Moisture Content Test', category: 'Soil Tests', description: 'Measures the water content in soil samples' },
-  { id: '5', name: 'Atterberg Limits Test', category: 'Soil Tests', description: 'Determines liquid limit, plastic limit, and plasticity index' },
-  { id: '6', name: 'Permeability Test', category: 'Hydraulic Tests', description: 'Measures the rate of water flow through soil' },
-  { id: '7', name: 'Consolidation Test', category: 'Soil Tests', description: 'Determines the compressibility characteristics of soil' },
-  { id: '8', name: 'Shear Strength Test', category: 'Strength Tests', description: 'Measures the shear strength parameters of soil' },
-  { id: '9', name: 'California Bearing Ratio (CBR) Test', category: 'Strength Tests', description: 'Measures the strength of subgrade soil' },
-  { id: '10', name: 'Proctor Compaction Test', category: 'Soil Tests', description: 'Determines the optimum moisture content and maximum dry density' }
-];
-
-// Mock borelog data - in real app, this would come from API
-const mockBorelogs = [
-  { id: 'bl-001', borehole_number: 'BH-001', project_name: 'Highway Bridge Project', chainage: '2.5 km' },
-  { id: 'bl-002', borehole_number: 'BH-002', project_name: 'Highway Bridge Project', chainage: '3.2 km' },
-  { id: 'bl-003', borehole_number: 'BH-003', project_name: 'Highway Bridge Project', chainage: '4.1 km' },
-  { id: 'bl-004', borehole_number: 'BH-004', project_name: 'Residential Complex', chainage: '0.8 km' },
-  { id: 'bl-005', borehole_number: 'BH-005', project_name: 'Residential Complex', chainage: '1.2 km' }
-];
 
 export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }: LabRequestFormProps) {
   const [formData, setFormData] = useState({
     borelog_id: '',
     sample_id: '',
-    test_type: '',
-    priority: 'Medium' as 'Low' | 'Medium' | 'High' | 'Urgent',
-    due_date: null as Date | null,
-    notes: ''
+    test_type: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [borelogs, setBorelogs] = useState<Borelog[]>([]);
+  const [isLoadingBorelogs, setIsLoadingBorelogs] = useState(false);
   const { toast } = useToast();
+
+  // Test types - these could also come from API in the future
+  const testTypes: LabTestType[] = [
+    { id: '1', name: 'Compressive Strength Test', category: 'Strength Tests' },
+    { id: '2', name: 'Tensile Strength Test', category: 'Strength Tests' },
+    { id: '3', name: 'Density Test', category: 'Soil Tests' },
+    { id: '4', name: 'Moisture Content Test', category: 'Soil Tests' },
+    { id: '5', name: 'Atterberg Limits Test', category: 'Soil Tests' },
+    { id: '6', name: 'Permeability Test', category: 'Hydraulic Tests' },
+    { id: '7', name: 'Consolidation Test', category: 'Soil Tests' },
+    { id: '8', name: 'Shear Strength Test', category: 'Strength Tests' },
+    { id: '9', name: 'Unconfined Compressive Strength', category: 'Rock Tests' },
+    { id: '10', name: 'Point Load Test', category: 'Rock Tests' },
+    { id: '11', name: 'Brazilian Test', category: 'Rock Tests' },
+    { id: '12', name: 'Triaxial Test', category: 'Soil Tests' },
+    { id: '13', name: 'Direct Shear Test', category: 'Soil Tests' },
+    { id: '14', name: 'Grain Size Analysis', category: 'Soil Tests' },
+    { id: '15', name: 'Specific Gravity Test', category: 'Soil Tests' }
+  ];
+
+  useEffect(() => {
+    loadBorelogs();
+  }, []);
+
+  const loadBorelogs = async () => {
+    setIsLoadingBorelogs(true);
+    try {
+      const response = await labReportApi.getFinalBorelogs();
+      if (response.data?.success) {
+        // Transform the final borelogs to match the expected format
+        const transformedBorelogs = response.data.data.map((borelog: any) => ({
+          borelog_id: borelog.borelog_id,
+          borehole_number: borelog.borehole_number,
+          project_name: borelog.project_name,
+          chainage: borelog.project_location ? `${borelog.project_location}` : undefined
+        }));
+        setBorelogs(transformedBorelogs);
+      } else {
+        console.error('Failed to load borelogs:', response.data?.message);
+        toast({
+          title: 'Error',
+          description: 'Failed to load borelogs',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading borelogs:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load borelogs',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingBorelogs(false);
+    }
+  };
 
   const filteredTestTypes = testTypes.filter(type => {
     const matchesSearch = type.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || type.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const filteredBorelogs = borelogs; // Show all borelogs since there's no search for borelogs
 
   const categories = Array.from(new Set(testTypes.map(type => type.category)));
 
@@ -66,46 +110,38 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
     
     if (!formData.borelog_id || !formData.sample_id || !formData.test_type) {
       toast({
-        variant: 'destructive',
         title: 'Error',
         description: 'Please fill in all required fields',
-      });
-      return;
-    }
-
-    const selectedBorelog = mockBorelogs.find(b => b.id === formData.borelog_id);
-    if (!selectedBorelog) {
-      toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Invalid borelog selected',
       });
       return;
     }
 
-    const requestData = {
+    const selectedBorelog = borelogs.find(b => b.borelog_id === formData.borelog_id);
+    const selectedTestType = testTypes.find(t => t.id === formData.test_type);
+
+    onSubmit({
       borelog_id: formData.borelog_id,
       sample_id: formData.sample_id,
-      test_type: formData.test_type,
-      priority: formData.priority,
-      due_date: formData.due_date?.toISOString(),
-      notes: formData.notes,
-      borelog: selectedBorelog
-    };
-
-    onSubmit(requestData);
+      test_type: selectedTestType?.name || formData.test_type,
+      priority: 'Medium', // Default priority
+      due_date: undefined, // No due date
+      notes: '', // No notes
+      borelog: selectedBorelog ? {
+        borehole_number: selectedBorelog.borehole_number,
+        project_name: selectedBorelog.project_name,
+        chainage: selectedBorelog.chainage || 'N/A'
+      } : undefined
+    });
   };
 
   return (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FlaskConical className="h-6 w-6" />
-          Create Lab Test Request
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Lab Test Request Details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           {/* Borelog Selection */}
           <div className="space-y-2">
             <Label htmlFor="borelog">Borelog *</Label>
@@ -114,16 +150,17 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
                 <SelectValue placeholder="Select a borelog" />
               </SelectTrigger>
               <SelectContent>
-                {mockBorelogs.map((borelog) => (
-                  <SelectItem key={borelog.id} value={borelog.id}>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{borelog.borehole_number}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {borelog.project_name} - {borelog.chainage}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
+                {isLoadingBorelogs ? (
+                  <SelectItem value="loading" disabled>Loading borelogs...</SelectItem>
+                ) : filteredBorelogs.length === 0 ? (
+                  <SelectItem value="no-borelogs" disabled>No borelogs found</SelectItem>
+                ) : (
+                  filteredBorelogs.map((borelog) => (
+                    <SelectItem key={borelog.borelog_id} value={borelog.borelog_id}>
+                      {borelog.borehole_number} - {borelog.project_name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -133,17 +170,23 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
             <Label htmlFor="sample_id">Sample ID *</Label>
             <Input
               id="sample_id"
-              placeholder="Enter sample ID (e.g., SAMPLE-001)"
               value={formData.sample_id}
               onChange={(e) => setFormData(prev => ({ ...prev, sample_id: e.target.value }))}
+              placeholder="Enter sample ID"
+              required
             />
           </div>
 
           {/* Test Type Selection */}
           <div className="space-y-2">
-            <Label>Test Type *</Label>
-            <div className="space-y-3">
-              {/* Category Filter */}
+            <Label htmlFor="test_type">Test Type *</Label>
+            <div className="space-y-2">
+              <Input
+                placeholder="Search test types..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="mb-2"
+              />
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger>
                   <SelectValue placeholder="Filter by category" />
@@ -157,101 +200,38 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
                   ))}
                 </SelectContent>
               </Select>
-
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search test types..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-
-              {/* Test Type Selection */}
               <Select value={formData.test_type} onValueChange={(value) => setFormData(prev => ({ ...prev, test_type: value }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select test type" />
                 </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {filteredTestTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.name}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{type.name}</span>
-                        <span className="text-sm text-muted-foreground">{type.description}</span>
-                      </div>
+                <SelectContent>
+                  {filteredTestTypes.length > 0 ? (
+                    filteredTestTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>
+                        {type.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-results" disabled>
+                      No test types found
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Priority */}
-          <div className="space-y-2">
-            <Label>Priority</Label>
-            <Select value={formData.priority} onValueChange={(value: 'Low' | 'Medium' | 'High' | 'Urgent') => setFormData(prev => ({ ...prev, priority: value }))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Low">Low</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="High">High</SelectItem>
-                <SelectItem value="Urgent">Urgent</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Due Date */}
-          <div className="space-y-2">
-            <Label>Due Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {formData.due_date ? format(formData.due_date, 'PPP') : 'Pick a date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={formData.due_date}
-                  onSelect={(date) => setFormData(prev => ({ ...prev, due_date: date }))}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              placeholder="Additional notes or special requirements..."
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={3}
-            />
-          </div>
-
-          {/* Form Actions */}
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              <Plus className="h-4 w-4 mr-2" />
-              {isLoading ? 'Creating...' : 'Create Request'}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+      {/* Form Actions */}
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? 'Creating...' : 'Create Request'}
+        </Button>
+      </div>
+    </form>
   );
 }

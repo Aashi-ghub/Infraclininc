@@ -77,3 +77,4 @@ COMMENT ON TABLE stratum_sample_points IS 'Stores sample points (subdivisions) w
 COMMIT;
 
 
+

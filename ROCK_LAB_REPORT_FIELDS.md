@@ -280,3 +280,4 @@ The form should be pre-populated with sample data matching the image:
 - Red highlighting for calculated results
 
 This specification ensures the rock lab test report form matches the professional standards and data structure shown in the reference image.
+

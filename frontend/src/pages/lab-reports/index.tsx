@@ -1,902 +1,418 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { FileUpload, Download, Eye, CheckCircle, XCircle, Clock, FlaskConical, Search, Filter, Plus, History, FileText, Users, Mountain } from 'lucide-react';
-import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { ProtectedRoute } from '@/lib/authComponents';
-import { 
-  LabRequest, 
-  LabReport, 
-  UserRole, 
-  getLabReportStatusVariant, 
-  getLabRequestStatusVariant 
-} from '@/lib/types';
-import LabReportView from '@/components/LabReportView';
-import LabRequestForm from '@/components/LabRequestForm';
-import { useNavigate } from 'react-router-dom';
-import { labTestResultsApi, unifiedLabReportsApi } from '@/lib/api';
-
-// Mock data for demonstration
-const mockLabRequests: LabRequest[] = [
-  {
-    id: 'req-001',
-    borelog_id: 'bl-001',
-    sample_id: 'SAMPLE-001',
-    requested_by: 'John Smith',
-    requested_date: '2024-01-15T10:00:00Z',
-    status: 'Pending',
-    test_type: 'Compressive Strength Test',
-    priority: 'High',
-    due_date: '2024-01-20T17:00:00Z',
-    notes: 'Critical for foundation design',
-    borelog: {
-      borehole_number: 'BH-001',
-      project_name: 'Highway Bridge Project',
-      chainage: '2.5 km'
-    }
-  },
-  {
-    id: 'req-002',
-    borelog_id: 'bl-002',
-    sample_id: 'SAMPLE-002',
-    requested_by: 'Sarah Johnson',
-    requested_date: '2024-01-14T14:30:00Z',
-    status: 'In Progress',
-    test_type: 'Density Test',
-    priority: 'Medium',
-    due_date: '2024-01-18T17:00:00Z',
-    borelog: {
-      borehole_number: 'BH-002',
-      project_name: 'Highway Bridge Project',
-      chainage: '3.2 km'
-    }
-  },
-  {
-    id: 'req-003',
-    borelog_id: 'bl-003',
-    sample_id: 'Rock_BH.4',
-    requested_by: 'Dr. Sarah Johnson',
-    requested_date: '2024-01-16T09:00:00Z',
-    status: 'Pending',
-    test_type: 'Rock Mechanics Tests',
-    priority: 'High',
-    due_date: '2024-01-25T17:00:00Z',
-    notes: 'Comprehensive rock testing including UCS, Point Load, and Brazilian tests',
-    borelog: {
-      borehole_number: 'BH-004',
-      project_name: 'Highway Bridge Project - Phase 2',
-      chainage: '4.8 km'
-    }
-  }
-];
-
-const mockLabReports: LabReport[] = [
-  {
-    id: 'rep-001',
-    request_id: 'req-001',
-    borelog_id: 'bl-001',
-    sample_id: 'SAMPLE-001',
-    test_type: 'Compressive Strength Test',
-    results: 'Average compressive strength: 45.2 MPa\nStandard deviation: 2.1 MPa\nSample count: 6',
-    file_url: '/reports/compressive-strength-001.pdf',
-    submitted_by: 'Dr. Michael Chen',
-    submitted_at: '2024-01-16T15:30:00Z',
-    status: 'Submitted',
-    version: 1,
-    borelog: {
-      borehole_number: 'BH-001',
-      project_name: 'Highway Bridge Project',
-      chainage: '2.5 km'
-    }
-  },
-  {
-    id: 'rep-002',
-    request_id: 'req-002',
-    borelog_id: 'bl-002',
-    sample_id: 'SAMPLE-002',
-    test_type: 'Density Test',
-    results: 'Bulk density: 2.45 g/cm³\nDry density: 2.32 g/cm³\nMoisture content: 5.6%',
-    file_url: '/reports/density-test-002.pdf',
-    submitted_by: 'Dr. Michael Chen',
-    submitted_at: '2024-01-17T11:20:00Z',
-    status: 'Approved',
-    version: 1,
-    approved_by: 'Prof. David Wilson',
-    approved_at: '2024-01-18T09:15:00Z',
-    borelog: {
-      borehole_number: 'BH-002',
-      project_name: 'Highway Bridge Project',
-      chainage: '3.2 km'
-    }
-  }
-];
-
-const testTypes = [
-  { id: '1', name: 'Compressive Strength Test', category: 'Strength Tests' },
-  { id: '2', name: 'Tensile Strength Test', category: 'Strength Tests' },
-  { id: '3', name: 'Density Test', category: 'Soil Tests' },
-  { id: '4', name: 'Moisture Content Test', category: 'Soil Tests' },
-  { id: '5', name: 'Atterberg Limits Test', category: 'Soil Tests' },
-  { id: '6', name: 'Permeability Test', category: 'Hydraulic Tests' },
-  { id: '7', name: 'Consolidation Test', category: 'Soil Tests' },
-  { id: '8', name: 'Shear Strength Test', category: 'Strength Tests' }
-];
+import { LabRequest, LabReport } from '@/lib/types';
+import { labTestResultsApi, unifiedLabReportsApi, labReportApi } from '@/lib/api';
 
 export default function LabReportManagement() {
   const navigate = useNavigate();
-  const [activeRole, setActiveRole] = useState<UserRole>('Lab Engineer');
-  const [labRequests, setLabRequests] = useState<LabRequest[]>(mockLabRequests);
-  const [labReports, setLabReports] = useState<LabReport[]>(mockLabReports);
-  const [labTestResults, setLabTestResults] = useState<any[]>([]);
-  const [unifiedLabReports, setUnifiedLabReports] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('requests');
+  const [labRequests, setLabRequests] = useState<LabRequest[]>([]);
+  const [labReports, setLabReports] = useState<LabReport[]>([]);
+  const [unifiedReports, setUnifiedReports] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedReport, setSelectedReport] = useState<LabReport | null>(null);
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const [isReviewingReport, setIsReviewingReport] = useState(false);
-  const [isCreatingRequest, setIsCreatingRequest] = useState(false);
-  const [showCreateRequest, setShowCreateRequest] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [newReport, setNewReport] = useState({
-    test_type: '',
-    results: '',
-    file: null as File | null
-  });
-  const [reviewComments, setReviewComments] = useState('');
   const { toast } = useToast();
 
-  // Load lab test results and unified lab reports from backend
   useEffect(() => {
+    loadData();
+  }, []);
+
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // Load lab test results
-        const labResultsResponse = await labTestResultsApi.getAll();
-        if (labResultsResponse.data.success) {
-          setLabTestResults(labResultsResponse.data.data);
-        } else {
-          console.error('Failed to load lab test results:', labResultsResponse.data.message);
+      // Load lab requests
+      const requestsResponse = await labReportApi.getRequests();
+      if (requestsResponse.data?.success) {
+        setLabRequests(requestsResponse.data.data || []);
+      }
+
+      // Load lab reports
+      const reportsResponse = await labReportApi.getReports();
+      if (reportsResponse.data?.success) {
+        setLabReports(reportsResponse.data.data || []);
         }
 
         // Load unified lab reports
-        const unifiedReportsResponse = await unifiedLabReportsApi.getAll();
-        if (unifiedReportsResponse.data.success) {
-          setUnifiedLabReports(unifiedReportsResponse.data.data);
-        } else {
-          console.error('Failed to load unified lab reports:', unifiedReportsResponse.data.message);
+      const unifiedResponse = await unifiedLabReportsApi.getAll();
+      if (unifiedResponse.data?.success) {
+        setUnifiedReports(unifiedResponse.data.data || []);
         }
       } catch (error) {
-        console.error('Error loading data:', error);
+      console.error('Error loading lab data:', error);
         toast({
-          variant: 'destructive',
           title: 'Error',
           description: 'Failed to load lab data',
+        variant: 'destructive',
         });
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadData();
-  }, [toast]);
-
-  // Filter data based on role and search
   const filteredRequests = labRequests.filter(request => {
-    const matchesSearch = 
-      request.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.borelog.borehole_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.test_type.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+    const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
+    const matchesSearch = request.sample_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         request.borelog?.borehole_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         request.borelog?.project_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
   });
 
   const filteredReports = labReports.filter(report => {
-    const matchesSearch = 
-      report.sample_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.borelog.borehole_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.test_type.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
-    
-    // Role-based filtering
-    if (activeRole === 'Customer') {
-      return matchesSearch && matchesStatus && report.status === 'Approved';
-    }
-    
-    return matchesSearch && matchesStatus;
+    const matchesStatus = filterStatus === 'all' || report.status === filterStatus;
+    const matchesSearch = report.sample_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         report.borelog?.borehole_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         report.borelog?.project_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
   });
 
-  const handleCreateLabReport = (requestId: string) => {
-    navigate(`/lab-reports/create/${requestId}`);
-  };
+  const filteredUnifiedReports = unifiedReports.filter(report => {
+    const matchesStatus = filterStatus === 'all' || report.status === filterStatus;
+    const matchesSearch = report.sample_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         report.borehole_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         report.project_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
 
-  const handleReviewReport = async (reportId: string, status: 'Approved' | 'Rejected', comments?: string) => {
-    setIsReviewingReport(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setLabReports(prev => prev.map(report => {
-        if (report.id === reportId) {
-          return {
-            ...report,
-            status,
-            approved_by: status === 'Approved' ? 'Prof. David Wilson' : undefined,
-            approved_at: status === 'Approved' ? new Date().toISOString() : undefined,
-            rejected_by: status === 'Rejected' ? 'Prof. David Wilson' : undefined,
-            rejected_at: status === 'Rejected' ? new Date().toISOString() : undefined,
-            rejection_comments: status === 'Rejected' ? comments : undefined,
-          };
-        }
-        return report;
-      }));
-      
-      setReviewComments('');
-      setIsReviewingReport(false);
-      
-      toast({
-        title: 'Success',
-        description: `Report ${status.toLowerCase()} successfully`,
-      });
-    }, 1000);
-  };
-
-  const handleCreateRequest = async (requestData: Omit<LabRequest, 'id' | 'requested_date' | 'status'>) => {
-    setIsCreatingRequest(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      const newRequest: LabRequest = {
-        id: `req-${Date.now()}`,
-        ...requestData,
-        requested_date: new Date().toISOString(),
-        status: 'Pending',
-        requested_by: 'John Smith' // This would come from current user
-      };
-
-      setLabRequests(prev => [newRequest, ...prev]);
-      setIsCreatingRequest(false);
-      setShowCreateRequest(false);
-      
-      toast({
-        title: 'Success',
-        description: 'Lab test request created successfully',
-      });
-    }, 1000);
-  };
-
-  const getRoleBasedContent = () => {
-    switch (activeRole) {
-      case 'Project Manager':
-        return (
-          <div className="space-y-6">
-            {/* Create New Request Button */}
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Lab Test Requests
-                  </CardTitle>
-                  <Button onClick={() => setShowCreateRequest(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Request
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Request ID</TableHead>
-                        <TableHead>Borelog ID</TableHead>
-                        <TableHead>Sample ID</TableHead>
-                        <TableHead>Test Type</TableHead>
-                        <TableHead>Requested Date</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRequests.map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell className="font-medium">{request.id}</TableCell>
-                          <TableCell>{request.borelog.borehole_number}</TableCell>
-                          <TableCell>{request.sample_id}</TableCell>
-                          <TableCell>{request.test_type}</TableCell>
-                          <TableCell>{format(new Date(request.requested_date), 'MMM dd, yyyy')}</TableCell>
-                          <TableCell>
-                            <Badge variant={request.priority === 'Urgent' ? 'destructive' : 'secondary'}>
-                              {request.priority}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getLabRequestStatusVariant(request.status)}>
-                              {request.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="outline">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case 'Lab Engineer':
-        return (
-          <div className="space-y-6">
-            {/* Quick Access Buttons */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FlaskConical className="h-5 w-5" />
-                  Quick Access - Lab Test Forms
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4">
-                  <Button 
-                    variant="outline"
-                    onClick={() => navigate('/lab-reports/unified')}
-                    className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Create Unified Report
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => navigate('/lab-reports/soil-test')}
-                    className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                  >
-                    <FlaskConical className="h-4 w-4 mr-2" />
-                    Create Soil Test Report
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => navigate('/lab-reports/rock-test')}
-                    className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-                  >
-                    <Mountain className="h-4 w-4 mr-2" />
-                    Create Rock Test Report
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Workload Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-orange-500" />
-                    <div>
-                      <p className="text-sm font-medium">Pending</p>
-                      <p className="text-2xl font-bold">{filteredRequests.filter(r => r.status === 'Pending').length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <FlaskConical className="h-5 w-5 text-blue-500" />
-                    <div>
-                      <p className="text-sm font-medium">In Progress</p>
-                      <p className="text-2xl font-bold">{filteredRequests.filter(r => r.status === 'In Progress').length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="text-sm font-medium">Submitted</p>
-                      <p className="text-2xl font-bold">{filteredReports.filter(r => r.submitted_by === 'Dr. Michael Chen' && r.status === 'Submitted').length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <div>
-                      <p className="text-sm font-medium">Approved</p>
-                      <p className="text-2xl font-bold">{filteredReports.filter(r => r.submitted_by === 'Dr. Michael Chen' && r.status === 'Approved').length}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Pending Lab Requests */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Pending Lab Requests ({filteredRequests.filter(r => r.status === 'Pending').length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Request ID</TableHead>
-                        <TableHead>Borelog ID</TableHead>
-                        <TableHead>Sample ID</TableHead>
-                        <TableHead>Test Type</TableHead>
-                        <TableHead>Requested By</TableHead>
-                        <TableHead>Requested Date</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRequests
-                        .filter(request => request.status === 'Pending')
-                        .map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell className="font-medium">{request.id}</TableCell>
-                          <TableCell>{request.borelog.borehole_number}</TableCell>
-                          <TableCell>{request.sample_id}</TableCell>
-                          <TableCell>{request.test_type}</TableCell>
-                          <TableCell>{request.requested_by}</TableCell>
-                          <TableCell>{format(new Date(request.requested_date), 'MMM dd, yyyy')}</TableCell>
-                          <TableCell>
-                            <Badge variant={request.priority === 'Urgent' ? 'destructive' : 'secondary'}>
-                              {request.priority}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getLabRequestStatusVariant(request.status)}>
-                              {request.status}
-                            </Badge>
-                          </TableCell>
-                                                     <TableCell>
-                             <div className="flex gap-2">
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => navigate(`/lab-reports/unified/${request.id}`)}
-                                 className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-                               >
-                                 <FileText className="h-4 w-4 mr-1" />
-                                 Fill Sample Report
-                               </Button>
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => navigate('/lab-reports/soil-test')}
-                                 className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-                               >
-                                 <FlaskConical className="h-4 w-4 mr-1" />
-                                 Soil Only
-                               </Button>
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => navigate('/lab-reports/rock-test')}
-                                 className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-                               >
-                                 <Mountain className="h-4 w-4 mr-1" />
-                                 Rock Only
-                               </Button>
-                             </div>
-                           </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-                         {/* Submitted Reports */}
-             <Card>
-               <CardHeader>
-                 <CardTitle className="flex items-center gap-2">
-                   <FileText className="h-5 w-5" />
-                   My Submitted Reports
-                 </CardTitle>
-               </CardHeader>
-               <CardContent>
-                 <div className="overflow-x-auto">
-                   <Table>
-                     <TableHeader>
-                       <TableRow>
-                         <TableHead>Report ID</TableHead>
-                         <TableHead>Borehole</TableHead>
-                         <TableHead>Test Types</TableHead>
-                         <TableHead>Submitted On</TableHead>
-                         <TableHead>Status</TableHead>
-                         <TableHead>Actions</TableHead>
-                       </TableRow>
-                     </TableHeader>
-                     <TableBody>
-                       {/* Show unified lab reports */}
-                       {unifiedLabReports
-                         .filter(report => report.tested_by === 'Dr. Michael Chen')
-                         .map((report) => (
-                         <TableRow key={report.report_id}>
-                           <TableCell className="font-medium">{report.report_id}</TableCell>
-                           <TableCell>{report.borehole_no}</TableCell>
-                           <TableCell>
-                             <div className="flex gap-1">
-                               {report.test_types?.map((type: string, index: number) => (
-                                 <Badge key={index} variant={type === 'Soil' ? 'default' : 'secondary'}>
-                                   {type}
-                                 </Badge>
-                               ))}
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             {report.submitted_at ? format(new Date(report.submitted_at), 'MMM dd, yyyy') : 'Not submitted'}
-                           </TableCell>
-                           <TableCell>
-                             <Badge variant={getLabReportStatusVariant(report.status)}>
-                               {report.status}
-                             </Badge>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex gap-2">
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => navigate(`/lab-reports/unified/${report.report_id}`)}
-                               >
-                                 <Eye className="h-4 w-4" />
-                               </Button>
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => navigate(`/lab-reports/unified/${report.report_id}`)}
-                               >
-                                 <FileText className="h-4 w-4" />
-                               </Button>
-                             </div>
-                           </TableCell>
-                         </TableRow>
-                       ))}
-                       
-                       {/* Show legacy lab reports */}
-                       {filteredReports
-                         .filter(report => report.submitted_by === 'Dr. Michael Chen')
-                         .map((report) => (
-                         <TableRow key={report.id}>
-                           <TableCell className="font-medium">{report.id}</TableCell>
-                           <TableCell>{report.borelog.borehole_number}</TableCell>
-                           <TableCell>{report.test_type}</TableCell>
-                           <TableCell>{format(new Date(report.submitted_at), 'MMM dd, yyyy')}</TableCell>
-                           <TableCell>
-                             <Badge variant={getLabReportStatusVariant(report.status)}>
-                               {report.status}
-                             </Badge>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex gap-2">
-                               <Button 
-                                 size="sm" 
-                                 variant="outline"
-                                 onClick={() => setSelectedReport(report)}
-                               >
-                                 <Eye className="h-4 w-4" />
-                               </Button>
-                               {report.file_url && (
-                                 <Button size="sm" variant="outline">
-                                   <Download className="h-4 w-4" />
-                                 </Button>
-                               )}
-                             </div>
-                           </TableCell>
-                         </TableRow>
-                       ))}
-                     </TableBody>
-                   </Table>
-                 </div>
-               </CardContent>
-             </Card>
-          </div>
-        );
-
-      case 'Approval Engineer':
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5" />
-                Reports Pending Review ({filteredReports.filter(r => r.status === 'Submitted').length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Report ID</TableHead>
-                      <TableHead>Borelog ID</TableHead>
-                      <TableHead>Test Type</TableHead>
-                      <TableHead>Submitted On</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReports
-                      .filter(report => report.status === 'Submitted')
-                      .map((report) => (
-                      <TableRow key={report.id}>
-                        <TableCell className="font-medium">{report.id}</TableCell>
-                        <TableCell>{report.borelog.borehole_number}</TableCell>
-                        <TableCell>{report.test_type}</TableCell>
-                        <TableCell>{format(new Date(report.submitted_at), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>
-                          <Badge variant={getLabReportStatusVariant(report.status)}>
-                            {report.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">v{report.version}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => setSelectedReport(report)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700">
-                                  <CheckCircle className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Approve Report</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to approve this lab report? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleReviewReport(report.id, 'Approved')}>
-                                    Approve
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="destructive">
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Reject Report</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Please provide comments for rejection:
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <div className="py-4">
-                                  <Textarea
-                                    placeholder="Enter rejection comments..."
-                                    value={reviewComments}
-                                    onChange={(e) => setReviewComments(e.target.value)}
-                                    rows={3}
-                                  />
-                                </div>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    onClick={() => handleReviewReport(report.id, 'Rejected')}
-                                    disabled={!reviewComments.trim()}
-                                  >
-                                    Reject
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        );
-
-      case 'Customer':
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Approved Lab Reports
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Report ID</TableHead>
-                      <TableHead>Borelog ID</TableHead>
-                      <TableHead>Test Type</TableHead>
-                      <TableHead>Approved Date</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReports
-                      .filter(report => report.status === 'Approved')
-                      .map((report) => (
-                      <TableRow key={report.id}>
-                        <TableCell className="font-medium">{report.id}</TableCell>
-                        <TableCell>{report.borelog.borehole_number}</TableCell>
-                        <TableCell>{report.test_type}</TableCell>
-                        <TableCell>{format(new Date(report.approved_at!), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">v{report.version}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => setSelectedReport(report)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {report.file_url && (
-                              <Button size="sm" variant="outline">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        );
-
+  const getStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'in progress':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'completed':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'approved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'submitted':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
       default:
-        return <div>Select a role to view content</div>;
+        return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading lab data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer', 'Customer']}>
       <div className="container mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <FlaskConical className="h-8 w-8 text-primary" />
-              Lab Report Management
-            </h1>
-            <p className="text-muted-foreground">Manage laboratory test requests and reports</p>
+            <h1 className="text-3xl font-bold text-gray-900">Lab Report Management</h1>
+            <p className="text-gray-600 mt-2">Manage lab test requests and reports</p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate('/lab-reports/create-request')}>
+              Create Lab Request
+            </Button>
+            <Button onClick={() => navigate('/lab-reports/unified')}>
+              Create Unified Report
+            </Button>
           </div>
         </div>
 
-        {/* Role Selector */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Role Selection</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={activeRole} onValueChange={(value) => setActiveRole(value as UserRole)}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="Project Manager">Project Manager</TabsTrigger>
-                <TabsTrigger value="Lab Engineer">Lab Engineer</TabsTrigger>
-                <TabsTrigger value="Approval Engineer">Approval Engineer</TabsTrigger>
-                <TabsTrigger value="Customer">Customer</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardContent>
-        </Card>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="requests">Lab Requests ({labRequests.length})</TabsTrigger>
+            <TabsTrigger value="reports">Lab Reports ({labReports.length})</TabsTrigger>
+            <TabsTrigger value="unified">Unified Reports ({unifiedReports.length})</TabsTrigger>
+            <TabsTrigger value="statistics">Statistics</TabsTrigger>
+          </TabsList>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Filters
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by sample ID, borehole, or test type..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Submitted">Submitted</SelectItem>
-                  <SelectItem value="Approved">Approved</SelectItem>
-                  <SelectItem value="Rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Filters */}
+          <div className="flex gap-4 items-center">
+            <div className="flex-1">
+              <Input
+                placeholder="Search by sample ID, borehole number, or project name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-md"
+              />
             </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="in progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="submitted">Submitted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <TabsContent value="requests" className="space-y-4">
+            {filteredRequests.length === 0 ? (
+            <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-gray-500">No lab requests found</p>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredRequests.map((request) => (
+                <Card key={request.id} className="hover:shadow-md transition-shadow">
+              <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{request.sample_id}</CardTitle>
+                        <CardDescription>
+                          {request.borelog?.project_name} - {request.borelog?.borehole_number}
+                        </CardDescription>
+                      </div>
+                      <Badge className={getStatusColor(request.status)}>
+                        {request.status}
+                      </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">Test Type:</span>
+                        <p className="text-gray-600">{request.test_type}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Requested By:</span>
+                        <p className="text-gray-600">{request.requested_by}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Requested Date:</span>
+                        <p className="text-gray-600">{formatDate(request.requested_date)}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Due Date:</span>
+                        <p className="text-gray-600">{request.due_date ? formatDate(request.due_date) : 'Not set'}</p>
+                      </div>
+                </div>
+                    {request.notes && (
+                      <div className="mt-4">
+                        <span className="font-medium">Notes:</span>
+                        <p className="text-gray-600 mt-1">{request.notes}</p>
+          </div>
+                    )}
+                    <div className="flex gap-2 mt-4">
+                  <Button 
+                        size="sm" 
+                        onClick={() => navigate(`/lab-reports/create/${request.id}`)}
+                        disabled={request.status !== 'Pending'}
+                      >
+                        Create Report
+                  </Button>
+                  <Button 
+                        size="sm" 
+                    variant="outline"
+                        onClick={() => navigate(`/lab-reports/unified/${request.id}`)}
+                      >
+                        Create Unified Report
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="reports" className="space-y-4">
+            {filteredReports.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-gray-500">No lab reports found</p>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredReports.map((report) => (
+                <Card key={report.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle className="text-lg">{report.sample_id}</CardTitle>
+                        <CardDescription>
+                          {report.borelog?.project_name} - {report.borelog?.borehole_number}
+                        </CardDescription>
+                      </div>
+                      <Badge className={getStatusColor(report.status)}>
+                        {report.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">Test Type:</span>
+                        <p className="text-gray-600">{report.test_type}</p>
+                  </div>
+                    <div>
+                        <span className="font-medium">Submitted By:</span>
+                        <p className="text-gray-600">{report.submitted_by}</p>
+                    </div>
+                      <div>
+                        <span className="font-medium">Submitted Date:</span>
+                        <p className="text-gray-600">{formatDate(report.submitted_at)}</p>
+                  </div>
+                    <div>
+                        <span className="font-medium">Version:</span>
+                        <p className="text-gray-600">{report.version}</p>
+                    </div>
+                  </div>
+                    <div className="flex gap-2 mt-4">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                        onClick={() => navigate(`/lab-reports/${report.id}`)}
+                               >
+                        View Report
+                               </Button>
+                      {report.file_url && (
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                          onClick={() => window.open(report.file_url, '_blank')}
+                               >
+                          Download PDF
+                               </Button>
+                      )}
+                </div>
+              </CardContent>
+            </Card>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="unified" className="space-y-4">
+            {filteredUnifiedReports.length === 0 ? (
+             <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-gray-500">No unified lab reports found</p>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredUnifiedReports.map((report) => (
+                <Card key={report.report_id} className="hover:shadow-md transition-shadow">
+               <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{report.sample_id}</CardTitle>
+                        <CardDescription>
+                          {report.project_name} - {report.borehole_no}
+                        </CardDescription>
+                      </div>
+                      <Badge className={getStatusColor(report.status)}>
+                        {report.status}
+                      </Badge>
+                    </div>
+               </CardHeader>
+               <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">Test Types:</span>
+                        <p className="text-gray-600">{report.test_types?.join(', ')}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Tested By:</span>
+                        <p className="text-gray-600">{report.tested_by}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Test Date:</span>
+                        <p className="text-gray-600">{formatDate(report.test_date)}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium">Client:</span>
+                        <p className="text-gray-600">{report.client}</p>
+                      </div>
+                             </div>
+                    <div className="flex gap-2 mt-4">
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                                 onClick={() => navigate(`/lab-reports/unified/${report.report_id}`)}
+                               >
+                        View Report
+                               </Button>
+                               <Button 
+                                 size="sm" 
+                                 variant="outline"
+                        onClick={() => navigate(`/lab-reports/unified/${report.report_id}/edit`)}
+                               >
+                        Edit Report
+                               </Button>
+                 </div>
+               </CardContent>
+             </Card>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="statistics" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader>
+                  <CardTitle className="text-lg">Total Requests</CardTitle>
+            </CardHeader>
+            <CardContent>
+                  <p className="text-3xl font-bold text-blue-600">{labRequests.length}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+                  <CardTitle className="text-lg">Total Reports</CardTitle>
+            </CardHeader>
+            <CardContent>
+                  <p className="text-3xl font-bold text-green-600">{labReports.length}</p>
+            </CardContent>
+          </Card>
+              <Card>
+          <CardHeader>
+                  <CardTitle className="text-lg">Unified Reports</CardTitle>
+          </CardHeader>
+          <CardContent>
+                  <p className="text-3xl font-bold text-purple-600">{unifiedReports.length}</p>
           </CardContent>
         </Card>
-
-        {/* Role-based Content */}
-        {getRoleBasedContent()}
-
-        {/* Lab Report View Modal */}
-        {selectedReport && (
-          <LabReportView
-            report={selectedReport}
-            onClose={() => setSelectedReport(null)}
-            onReview={handleReviewReport}
-            userRole={activeRole}
-          />
-        )}
-
-                 {/* Create Request Modal */}
-         {showCreateRequest && (
-           <Dialog open={showCreateRequest} onOpenChange={setShowCreateRequest}>
-             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-               <DialogHeader>
-                 <DialogTitle>Create Lab Test Request</DialogTitle>
-               </DialogHeader>
-               <LabRequestForm
-                 onSubmit={handleCreateRequest}
-                 onCancel={() => setShowCreateRequest(false)}
-                 isLoading={isCreatingRequest}
-               />
-             </DialogContent>
-           </Dialog>
-         )}
-
-         
+              <Card>
+          <CardHeader>
+                  <CardTitle className="text-lg">Pending</CardTitle>
+          </CardHeader>
+          <CardContent>
+                  <p className="text-3xl font-bold text-yellow-600">
+                    {labRequests.filter(r => r.status === 'Pending').length}
+                  </p>
+          </CardContent>
+        </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </ProtectedRoute>
   );

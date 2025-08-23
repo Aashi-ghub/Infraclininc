@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../utils/logger';
-import { validateToken } from '../utils/auth';
-import { createResponse, logRequest, logResponse } from '../utils/response';
+import { logger, logRequest, logResponse } from '../utils/logger';
+import { validateToken } from '../utils/validateInput';
+import { createResponse } from '../types/common';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

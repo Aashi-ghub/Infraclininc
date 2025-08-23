@@ -617,6 +617,10 @@ export const labReportApi = {
   deleteRequest: (id: string) => 
     apiClient.delete<ApiResponse<null>>(`/lab-requests/${id}`),
   
+  // Get final borelogs for lab requests (accessible by Project Managers)
+  getFinalBorelogs: () => 
+    apiClient.get<ApiResponse<any[]>>('/lab-requests/final-borelogs'),
+  
   // Lab Reports
   getReports: () => 
     apiClient.get<ApiResponse<LabReport[]>>('/lab-reports'),

@@ -315,6 +315,80 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
+    // Lab Requests endpoints
+    createLabRequest: {
+      handler: 'src/handlers/labRequests.createLabRequest',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/lab-requests',
+            cors: true
+          }
+        }
+      ]
+    },
+    listLabRequests: {
+      handler: 'src/handlers/labRequests.listLabRequests',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-requests',
+            cors: true
+          }
+        }
+      ]
+    },
+    getLabRequestById: {
+      handler: 'src/handlers/labRequests.getLabRequestById',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-requests/{id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateLabRequest: {
+      handler: 'src/handlers/labRequests.updateLabRequest',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/lab-requests/{id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteLabRequest: {
+      handler: 'src/handlers/labRequests.deleteLabRequest',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/lab-requests/{id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    getFinalBorelogs: {
+      handler: 'src/handlers/labRequests.getFinalBorelogs',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/lab-requests/final-borelogs',
+            cors: true
+          }
+        }
+      ]
+    },
+
     // Projects endpoints
     listProjects: {
       handler: 'src/handlers/projects.listProjects',
