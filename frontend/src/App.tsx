@@ -15,6 +15,7 @@ import BoreholeSummaryPage from "./pages/borelog/[id]";
 import ManageBorelogs from "./pages/borelog/manage";
 import CreateLabTest from "./pages/lab-tests/create";
 import LabTestsList from "./pages/lab-tests/list";
+import LabTestDetailPage from "./pages/lab-tests/[id]";
 import LabReportManagement from "./pages/lab-reports/index";
 import CreateLabReport from "./pages/lab-reports/create";
 import CreateLabRequest from "./pages/lab-reports/create-request";
@@ -192,6 +193,11 @@ const App = () => (
                     <Route path="/lab-tests/list" element={
                       <ProtectedRoute allowedRoles={['Admin']}>
                         <LabTestsList />
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/lab-tests/:id" element={
+                      <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer', 'Project Manager']}>
+                        <LabTestDetailPage />
                       </ProtectedRoute>
                     } />
                     

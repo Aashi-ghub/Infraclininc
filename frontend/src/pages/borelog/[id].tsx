@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Loader } from '@/components/Loader';
 import { Separator } from '@/components/ui/separator';
 import { MapPin, Calendar, Ruler, Droplets, FileText, Layers, TestTube } from 'lucide-react';
+import { WorkflowActions } from '@/components/WorkflowActions';
 
 export default function BoreholeSummaryPage() {
   const { id } = useParams<{ id: string }>();
@@ -91,13 +92,36 @@ export default function BoreholeSummaryPage() {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="secondary">
-                            <Link to={`/borelog-details/${id}`}>Add Geological Entry</Link>
+            <Link to={`/borelog-details/${id}`}>Add Geological Entry</Link>
           </Button>
           <Button asChild>
             <Link to={`/borelog/entry?borelog_id=${id}`}>Edit Borelog</Link>
           </Button>
         </div>
       </div>
+
+      {/* Workflow Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Workflow Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WorkflowActions
+            borelogId={id!}
+            projectName={borelogData.project?.name || ''}
+            boreholeNumber={latestVersion?.details?.number || latestVersion?.number || ''}
+            currentStatus={latestVersion?.status || 'draft'}
+            versionNumber={latestVersion?.version_no || 1}
+            onActionComplete={() => {
+              // Reload the page data when workflow action is completed
+              window.location.reload();
+            }}
+          />
+        </CardContent>
+      </Card>
 
       {/* Project Information */}
       <Card>

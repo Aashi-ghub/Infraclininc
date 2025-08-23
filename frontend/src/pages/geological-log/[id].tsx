@@ -15,6 +15,7 @@ import { RoleBasedComponent } from '@/components/RoleBasedComponent';
 import { Edit } from 'lucide-react';
 import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 import { BorelogImageManager } from '@/components/BorelogImageManager';
+import { WorkflowActions } from '@/components/WorkflowActions';
 
 export default function BorelogDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -203,6 +204,26 @@ export default function BorelogDetailPage() {
             </Button>
           </div>
         </div>
+
+        {/* Workflow Actions */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Workflow Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WorkflowActions
+              borelogId={id!}
+              projectName={effectiveLog?.project_name || ''}
+              boreholeNumber={effectiveLog?.borehole_number || ''}
+              currentStatus={effectiveLog?.status || 'draft'}
+              versionNumber={1}
+              onActionComplete={() => {
+                // Reload the page data when workflow action is completed
+                window.location.reload();
+              }}
+            />
+          </CardContent>
+        </Card>
 
         {/* Geological Log Details */}
         <Card className="mb-8">

@@ -10,9 +10,11 @@ import { useToast } from '@/hooks/use-toast';
 import { ProtectedRoute } from '@/lib/authComponents';
 import { LabRequest, LabReport } from '@/lib/types';
 import { labTestResultsApi, unifiedLabReportsApi, labReportApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 export default function LabReportManagement() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('requests');
   const [labRequests, setLabRequests] = useState<LabRequest[]>([]);
   const [labReports, setLabReports] = useState<LabReport[]>([]);
@@ -53,6 +55,50 @@ export default function LabReportManagement() {
       setIsLoading(false);
     }
   }, [toast]);
+
+  const handleDeleteRequest = async (requestId: string) => {
+    if (!confirm('Are you sure you want to delete this lab request?')) {
+      return;
+    }
+
+    try {
+      await labReportApi.deleteRequest(requestId);
+      toast({
+        title: 'Success',
+        description: 'Lab request deleted successfully',
+      });
+      loadData(); // Reload data
+    } catch (error) {
+      console.error('Error deleting lab request:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete lab request',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteUnifiedReport = async (reportId: string) => {
+    if (!confirm('Are you sure you want to delete this unified lab report?')) {
+      return;
+    }
+
+    try {
+      await unifiedLabReportsApi.delete(reportId);
+      toast({
+        title: 'Success',
+        description: 'Unified lab report deleted successfully',
+      });
+      loadData(); // Reload data
+    } catch (error) {
+      console.error('Error deleting unified lab report:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete unified lab report',
+        variant: 'destructive',
+      });
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -131,6 +177,11 @@ export default function LabReportManagement() {
             <p className="text-gray-600 mt-2">Manage lab test requests and reports</p>
           </div>
           <div className="flex gap-2">
+            {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
+              <Button onClick={() => navigate('/workflow/dashboard')}>
+                View Approved Borelogs
+              </Button>
+            )}
             <Button onClick={() => navigate('/lab-reports/create-request')}>
               Create Lab Request
             </Button>
@@ -237,6 +288,15 @@ export default function LabReportManagement() {
                       >
                         Create Unified Report
                   </Button>
+                  {user?.role === 'Admin' && (
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => handleDeleteRequest(request.id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -367,6 +427,15 @@ export default function LabReportManagement() {
                                >
                         Edit Report
                                </Button>
+                               {user?.role === 'Admin' && (
+                                 <Button 
+                                   size="sm" 
+                                   variant="destructive"
+                                   onClick={() => handleDeleteUnifiedReport(report.report_id)}
+                                 >
+                                   Delete
+                                 </Button>
+                               )}
                  </div>
                </CardContent>
              </Card>
@@ -413,6 +482,8 @@ export default function LabReportManagement() {
             </div>
           </TabsContent>
         </Tabs>
+
+
       </div>
     </ProtectedRoute>
   );

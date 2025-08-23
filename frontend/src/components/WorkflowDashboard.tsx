@@ -15,7 +15,6 @@ interface PendingReview {
   status: string;
   submitted_by: string;
   submitted_at: string;
-  created_at: string;
   submission_comments?: string;
   project_name: string;
   substructure_name?: string;
@@ -205,12 +204,17 @@ export function WorkflowDashboard() {
                       <TableCell>{review.substructure_name || 'N/A'}</TableCell>
                       <TableCell>{review.submitted_by_name || review.submitted_by}</TableCell>
                       <TableCell>
-                        {review.submitted_at ? 
-                          format(new Date(review.submitted_at), 'MMM dd, yyyy HH:mm') :
-                          review.created_at ? 
-                            format(new Date(review.created_at), 'MMM dd, yyyy HH:mm') :
-                            'N/A'
-                        }
+                        {(() => {
+                          try {
+                            if (review.submitted_at) {
+                              return format(new Date(review.submitted_at), 'MMM dd, yyyy HH:mm');
+                            } else {
+                              return 'N/A';
+                            }
+                          } catch (error) {
+                            return 'Invalid Date';
+                          }
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="max-w-[200px] truncate" title={review.submission_comments}>
@@ -266,32 +270,41 @@ export function WorkflowDashboard() {
                 <TableBody>
                   {labAssignments.map((assignment) => (
                     <TableRow key={assignment.id}>
-                      <TableCell>{assignment.project_name}</TableCell>
-                      <TableCell>{assignment.borehole_number}</TableCell>
-                      <TableCell>{assignment.sample_id}</TableCell>
-                      <TableCell>{assignment.test_type}</TableCell>
+                      <TableCell>{assignment.project_name || 'N/A'}</TableCell>
+                      <TableCell>{assignment.borehole_number || 'N/A'}</TableCell>
+                      <TableCell>{assignment.sample_id || 'N/A'}</TableCell>
+                      <TableCell>{assignment.test_type || 'N/A'}</TableCell>
                       <TableCell>
-                        <Badge variant={getPriorityVariant(assignment.priority)}>
-                          {assignment.priority}
+                        <Badge variant={getPriorityVariant(assignment.priority || 'unknown')}>
+                          {assignment.priority || 'Unknown'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(assignment.expected_completion_date), 'MMM dd, yyyy')}
+                        {assignment.expected_completion_date ? 
+                          (() => {
+                            try {
+                              return format(new Date(assignment.expected_completion_date), 'MMM dd, yyyy');
+                            } catch (error) {
+                              return 'Invalid Date';
+                            }
+                          })() : 
+                          'Not set'
+                        }
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(assignment.status)}>
-                          {assignment.status.replace('_', ' ')}
+                        <Badge variant={getStatusVariant(assignment.status || 'unknown')}>
+                          {assignment.status ? assignment.status.replace('_', ' ') : 'Unknown'}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <Button
                           size="sm"
                           onClick={() => {
-                            // Navigate to lab test page
+                            // Navigate to lab test detail page
                             window.location.href = `/lab-tests/${assignment.id}`;
                           }}
                         >
-                          {assignment.status === 'completed' ? 'View Results' : 'Update Progress'}
+                          {(assignment.status || '') === 'completed' ? 'View Results' : 'Update Progress'}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -404,23 +417,30 @@ export function WorkflowDashboard() {
                 <TableBody>
                   {submittedBorelogs.map((borelog) => (
                     <TableRow key={`${borelog.borelog_id}-${borelog.version_no}`}>
-                      <TableCell>{borelog.project_name}</TableCell>
+                      <TableCell>{borelog.project_name || 'N/A'}</TableCell>
                       <TableCell>{borelog.substructure_name || 'N/A'}</TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(borelog.status)}>
-                          {borelog.status.replace('_', ' ')}
+                        <Badge variant={getStatusVariant(borelog.status || 'unknown')}>
+                          {borelog.status ? borelog.status.replace('_', ' ') : 'Unknown'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {borelog.submitted_at ? 
-                          format(new Date(borelog.submitted_at), 'MMM dd, yyyy HH:mm') :
-                          borelog.created_at ? 
-                            format(new Date(borelog.created_at), 'MMM dd, yyyy HH:mm') :
-                            'N/A'
-                        }
+                        {(() => {
+                          try {
+                            if (borelog.submitted_at) {
+                              return format(new Date(borelog.submitted_at), 'MMM dd, yyyy HH:mm');
+                            } else if (borelog.created_at) {
+                              return format(new Date(borelog.created_at), 'MMM dd, yyyy HH:mm');
+                            } else {
+                              return 'N/A';
+                            }
+                          } catch (error) {
+                            return 'Invalid Date';
+                          }
+                        })()}
                       </TableCell>
                       <TableCell>
-                        <div className="max-w-[200px] truncate" title={borelog.review_comments}>
+                        <div className="max-w-[200px] truncate" title={borelog.review_comments || ''}>
                           {borelog.review_comments || 'No comments'}
                         </div>
                       </TableCell>
@@ -432,7 +452,7 @@ export function WorkflowDashboard() {
                             window.location.href = `/borelog/${borelog.borelog_id}`;
                           }}
                         >
-                          {borelog.status === 'returned_for_revision' ? 'Edit' : 'View'}
+                          {(borelog.status || '') === 'returned_for_revision' ? 'Edit' : 'View'}
                         </Button>
                       </TableCell>
                     </TableRow>
