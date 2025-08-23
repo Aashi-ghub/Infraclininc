@@ -78,13 +78,16 @@ export function FormActions({
           />
         )}
         
-        <Button
-          type="submit"
-          disabled={isSubmitting || !canEdit}
-        >
-          <Send className="h-4 w-4 mr-2" />
-          {isSubmitting ? 'Submitting...' : 'Submit for Review'}
-        </Button>
+        {/* Regular submit button - only show if no workflow actions */}
+        {(!borelogId || !projectName || !boreholeNumber || !currentStatus || !versionNumber) && (
+          <Button
+            type="submit"
+            disabled={isSubmitting || !canEdit}
+          >
+            <Send className="h-4 w-4 mr-2" />
+            {isSubmitting ? 'Submitting...' : 'Submit for Review'}
+          </Button>
+        )}
       </div>
     </div>
   );

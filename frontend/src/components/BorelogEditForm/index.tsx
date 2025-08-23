@@ -1201,6 +1201,15 @@ export function BorelogEditForm({
               onSave={handleSaveDraft}
               onShowVersionHistory={handleShowVersionHistory}
               showVersionHistory={showVersionHistory}
+              borelogId={borelogId}
+              projectName={borelogData?.project?.name || borelogData?.project_id}
+              boreholeNumber={form.getValues('borehole_number') || 'Unknown'}
+              currentStatus={activeVersionNo ? (versions.find(v => v.version_no === activeVersionNo)?.status || 'draft') : 'draft'}
+              versionNumber={form.getValues('version_number')}
+              onActionComplete={() => {
+                loadVersionHistory();
+                loadBorelogData();
+              }}
             />
           </div>
 

@@ -104,6 +104,14 @@ export function Navbar() {
                 <DropdownMenuSeparator />
                 {user.role === "Admin" && (
                   <DropdownMenuItem asChild>
+                    <Link to="/workflow/dashboard" className="flex items-center">
+                      <UserIcon className="mr-2 h-4 w-4" />
+                      Workflow Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {user.role === "Admin" && (
+                  <DropdownMenuItem asChild>
                     <Link to="/reviewer/dashboard" className="flex items-center">
                       <UserIcon className="mr-2 h-4 w-4" />
                       Review Dashboard

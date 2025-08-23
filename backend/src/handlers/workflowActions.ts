@@ -111,17 +111,33 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
 
     const borelog = borelogResult[0];
 
-    // Check if user has access to this project
-    const accessQuery = `
-      SELECT 1 FROM user_project_assignments 
-      WHERE project_id = $1 AND $2 = ANY(assignee)
-    `;
-    const accessResult = await db.query(accessQuery, [borelog.project_id, payload.userId]);
+    // Check if user has access to this borelog
+    let hasAccess = false;
     
-    if (accessResult.length === 0 && payload.role !== 'Admin') {
+    if (payload.role === 'Admin') {
+      hasAccess = true;
+    } else if (payload.role === 'Site Engineer') {
+      // For Site Engineers, check borelog assignments
+      const borelogAccessQuery = `
+        SELECT 1 FROM borelog_assignments 
+        WHERE borelog_id = $1 AND assigned_site_engineer = $2 AND status = 'active'
+      `;
+      const borelogAccessResult = await db.query(borelogAccessQuery, [borelogId, payload.userId]);
+      hasAccess = borelogAccessResult.length > 0;
+    } else {
+      // For other roles, check project assignments
+      const projectAccessQuery = `
+        SELECT 1 FROM user_project_assignments 
+        WHERE project_id = $1 AND $2 = ANY(assignee)
+      `;
+      const projectAccessResult = await db.query(projectAccessQuery, [borelog.project_id, payload.userId]);
+      hasAccess = projectAccessResult.length > 0;
+    }
+    
+    if (!hasAccess) {
       const response = createResponse(403, {
         success: false,
-        message: 'Access denied: User not assigned to this project',
+        message: 'Access denied: User not assigned to this borelog/project',
         error: 'Insufficient permissions'
       });
       logResponse(response, Date.now() - startTime);
@@ -133,11 +149,26 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
       UPDATE borelog_versions 
       SET status = 'submitted', 
           submitted_by = $1, 
-          submitted_at = NOW(),
-          submission_comments = $2
-      WHERE borelog_id = $3 AND version_no = $4
+          submitted_at = NOW()
+      WHERE borelog_id = $2 AND version_no = $3
     `;
-    await db.query(updateQuery, [payload.userId, comments, borelogId, version_number]);
+    await db.query(updateQuery, [payload.userId, borelogId, version_number]);
+
+    // Add submission comment to review comments table if provided
+    if (comments && comments.trim()) {
+      const commentQuery = `
+        INSERT INTO borelog_review_comments (
+          borelog_id, version_no, comment_type, comment_text, commented_by
+        ) VALUES ($1, $2, $3, $4, $5)
+      `;
+      await db.query(commentQuery, [
+        borelogId, 
+        version_number, 
+        'approval_comment', 
+        comments, 
+        payload.userId
+      ]);
+    }
 
     // Log the submission
     logger.info(`Borelog ${borelogId} submitted for review by user ${payload.userId}`, {
@@ -254,37 +285,34 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
     let updateFields: string;
     let updateParams: any[];
 
-    switch (action) {
-      case 'approve':
-        newStatus = 'approved';
-        updateFields = `
-          status = $1, 
-          approved_by = $2, 
-          approved_at = NOW(),
-          review_comments = $3
-        `;
-        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
-        break;
-      case 'reject':
-        newStatus = 'rejected';
-        updateFields = `
-          status = $1, 
-          rejected_by = $2, 
-          rejected_at = NOW(),
-          review_comments = $3
-        `;
-        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
-        break;
-      case 'return_for_revision':
-        newStatus = 'returned_for_revision';
-        updateFields = `
-          status = $1, 
-          returned_by = $2, 
-          returned_at = NOW(),
-          review_comments = $3
-        `;
-        updateParams = [newStatus, payload.userId, comments, borelogId, version_number];
-        break;
+         switch (action) {
+       case 'approve':
+         newStatus = 'approved';
+         updateFields = `
+           status = $1, 
+           reviewed_by = $2, 
+           reviewed_at = NOW()
+         `;
+         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         break;
+       case 'reject':
+         newStatus = 'rejected';
+         updateFields = `
+           status = $1, 
+           reviewed_by = $2, 
+           reviewed_at = NOW()
+         `;
+         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         break;
+       case 'return_for_revision':
+         newStatus = 'returned_for_revision';
+         updateFields = `
+           status = $1, 
+           reviewed_by = $2, 
+           reviewed_at = NOW()
+         `;
+         updateParams = [newStatus, payload.userId, borelogId, version_number];
+         break;
       default:
         const response = createResponse(400, {
           success: false,
@@ -295,12 +323,32 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
         return response;
     }
 
-    const updateQuery = `
-      UPDATE borelog_versions 
-      SET ${updateFields}
-      WHERE borelog_id = $4 AND version_no = $5
-    `;
-    await db.query(updateQuery, updateParams);
+         const updateQuery = `
+       UPDATE borelog_versions 
+       SET ${updateFields}
+       WHERE borelog_id = $3 AND version_no = $4
+     `;
+     await db.query(updateQuery, updateParams);
+
+     // Add review comment to review comments table
+     if (comments && comments.trim()) {
+       const commentType = action === 'approve' ? 'approval_comment' : 
+                          action === 'reject' ? 'rejection_reason' : 
+                          'correction_required';
+       
+       const commentQuery = `
+         INSERT INTO borelog_review_comments (
+           borelog_id, version_no, comment_type, comment_text, commented_by
+         ) VALUES ($1, $2, $3, $4, $5)
+       `;
+       await db.query(commentQuery, [
+         borelogId, 
+         version_number, 
+         commentType, 
+         comments, 
+         payload.userId
+       ]);
+     }
 
     // Log the review action
     logger.info(`Borelog ${borelogId} ${action} by user ${payload.userId}`, {
@@ -594,31 +642,25 @@ export const getWorkflowStatus = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-    // Get borelog and its latest version status
-    const statusQuery = `
-      SELECT 
-        b.borelog_id,
-        b.project_id,
-        b.substructure_id,
-        b.type,
-        bv.version_no,
-        bv.status,
-        bv.submitted_by,
-        bv.submitted_at,
-        bv.approved_by,
-        bv.approved_at,
-        bv.rejected_by,
-        bv.rejected_at,
-        bv.returned_by,
-        bv.returned_at,
-        bv.submission_comments,
-        bv.review_comments
-      FROM boreloge b
-      LEFT JOIN borelog_versions bv ON b.borelog_id = bv.borelog_id
-      WHERE b.borelog_id = $1
-      ORDER BY bv.version_no DESC
-      LIMIT 1
-    `;
+         // Get borelog and its latest version status
+     const statusQuery = `
+       SELECT 
+         b.borelog_id,
+         b.project_id,
+         b.substructure_id,
+         b.type,
+         bv.version_no,
+         bv.status,
+         bv.submitted_by,
+         bv.submitted_at,
+         bv.reviewed_by,
+         bv.reviewed_at
+       FROM boreloge b
+       LEFT JOIN borelog_versions bv ON b.borelog_id = bv.borelog_id
+       WHERE b.borelog_id = $1
+       ORDER BY bv.version_no DESC
+       LIMIT 1
+     `;
     const statusResult = await db.query(statusQuery, [borelogId]);
     
     if (statusResult.length === 0) {
@@ -651,26 +693,20 @@ export const getWorkflowStatus = async (event: APIGatewayProxyEvent): Promise<AP
     // For now, we'll return empty array
     const labTests = [];
 
-    const response = createResponse(200, {
-      success: true,
-      message: 'Workflow status retrieved successfully',
-      data: {
-        borelog_id: borelogId,
-        current_status: workflowStatus.status || 'draft',
-        version_number: workflowStatus.version_no,
-        submitted_by: workflowStatus.submitted_by,
-        submitted_at: workflowStatus.submitted_at,
-        approved_by: workflowStatus.approved_by,
-        approved_at: workflowStatus.approved_at,
-        rejected_by: workflowStatus.rejected_by,
-        rejected_at: workflowStatus.rejected_at,
-        returned_by: workflowStatus.returned_by,
-        returned_at: workflowStatus.returned_at,
-        submission_comments: workflowStatus.submission_comments,
-        review_comments: workflowStatus.review_comments,
-        lab_tests: labTests
-      }
-    });
+         const response = createResponse(200, {
+       success: true,
+       message: 'Workflow status retrieved successfully',
+       data: {
+         borelog_id: borelogId,
+         current_status: workflowStatus.status || 'draft',
+         version_number: workflowStatus.version_no,
+         submitted_by: workflowStatus.submitted_by,
+         submitted_at: workflowStatus.submitted_at,
+         reviewed_by: workflowStatus.reviewed_by,
+         reviewed_at: workflowStatus.reviewed_at,
+         lab_tests: labTests
+       }
+     });
 
     logResponse(response, Date.now() - startTime);
     return response;

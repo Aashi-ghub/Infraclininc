@@ -36,6 +36,12 @@ export function WorkflowActions({
   const [reviewComments, setReviewComments] = useState('');
 
   const handleSubmitForReview = async () => {
+    console.log('handleSubmitForReview called with:', {
+      borelogId,
+      versionNumber,
+      submitComments
+    });
+    
     if (!submitComments.trim()) {
       toast({
         title: 'Error',
@@ -47,6 +53,7 @@ export function WorkflowActions({
 
     try {
       setIsLoading(true);
+      console.log('Submitting for review...');
       await workflowApi.submitForReview(borelogId, {
         comments: submitComments,
         version_number: versionNumber
@@ -116,8 +123,14 @@ export function WorkflowActions({
   };
 
   const canSubmitForReview = () => {
-    return (user?.role === 'Site Engineer' || user?.role === 'Admin') && 
+    const canSubmit = (user?.role === 'Site Engineer' || user?.role === 'Admin') && 
            (currentStatus === 'draft' || currentStatus === 'returned_for_revision');
+    console.log('canSubmitForReview check:', {
+      userRole: user?.role,
+      currentStatus,
+      canSubmit
+    });
+    return canSubmit;
   };
 
   const canReview = () => {
@@ -130,7 +143,16 @@ export function WorkflowActions({
            currentStatus === 'approved';
   };
 
+  console.log('WorkflowActions render check:', {
+    canSubmitForReview: canSubmitForReview(),
+    canReview: canReview(),
+    canAssignLabTests: canAssignLabTests(),
+    userRole: user?.role,
+    currentStatus
+  });
+  
   if (!canSubmitForReview() && !canReview() && !canAssignLabTests()) {
+    console.log('WorkflowActions returning null - no actions available');
     return null;
   }
 
