@@ -145,7 +145,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         water_loss: detail.water_loss,
         borehole_diameter: detail.borehole_diameter,
         remarks: detail.remarks,
-        images: detail.images
+        images: detail.images,
+        substructure_id: detail.substructure_id,
+        project_id: detail.project_id
       }
     }));
 
@@ -163,6 +165,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         structure: {
           structure_type: borelogDetails[0].structure_type,
           description: borelogDetails[0].structure_description,
+          substructure_id: borelogDetails[0].substructure_id,
           substructure_type: borelogDetails[0].substructure_type,
           substructure_remark: borelogDetails[0].substructure_remark
         },

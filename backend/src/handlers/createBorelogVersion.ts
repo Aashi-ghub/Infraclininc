@@ -106,21 +106,47 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const borelogData = validationResult.data;
 
-    // Check if user has access to the project
-    const projectAccessQuery = `
-      SELECT 1 FROM user_project_assignments 
-      WHERE project_id = $1 AND $2 = ANY(assignee)
-    `;
-    const projectAccess = await db.query(projectAccessQuery, [borelogData.project_id, payload.userId]);
-    
-    if (projectAccess.length === 0 && payload.role !== 'Admin') {
-      const response = createResponse(403, {
-        success: false,
-        message: 'Access denied: User not assigned to this project',
-        error: 'Insufficient permissions'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
+    // Check if user has access to the project or borelog assignment
+    if (payload.role === 'Site Engineer') {
+      // For Site Engineers, check if they are assigned to this borelog
+      const assignmentQuery = `
+        SELECT 1 FROM borelog_assignments 
+        WHERE assigned_site_engineer = $1 
+        AND status = 'active'
+        AND (
+          borelog_id = $2 OR substructure_id = (
+            SELECT substructure_id FROM boreloge WHERE borelog_id = $2
+          )
+        )
+      `;
+      const assignmentCheck = await db.query(assignmentQuery, [payload.userId, borelogData.borelog_id]);
+      
+      if (assignmentCheck.length === 0) {
+        const response = createResponse(403, {
+          success: false,
+          message: 'Access denied: Borelog not assigned to you',
+          error: 'You can only edit borelogs that are assigned to you'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+    } else {
+      // For other roles, check project-level access
+      const projectAccessQuery = `
+        SELECT 1 FROM user_project_assignments 
+        WHERE project_id = $1 AND $2 = ANY(assignee)
+      `;
+      const projectAccess = await db.query(projectAccessQuery, [borelogData.project_id, payload.userId]);
+      
+      if (projectAccess.length === 0 && payload.role !== 'Admin') {
+        const response = createResponse(403, {
+          success: false,
+          message: 'Access denied: User not assigned to this project',
+          error: 'Insufficient permissions'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
     }
 
     // Check if the borelog exists

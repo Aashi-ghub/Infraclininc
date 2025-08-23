@@ -34,6 +34,8 @@ export default function ManageBorelogs() {
   const [showAssignments, setShowAssignments] = useState(false);
   const [selectedBorelogForAssignment, setSelectedBorelogForAssignment] = useState<string | null>(null);
 
+
+
   // Load projects
   useEffect(() => {
     const loadProjects = async () => {
@@ -91,21 +93,39 @@ export default function ManageBorelogs() {
         const response = await actualBorelogApi.getByProject(selectedProjectData.project_id);
         console.log('Borelogs response:', response);
         
+        let borelogs: any[] = [];
+        
         if (response.data && response.data.data && response.data.data.borelogs) {
           // Handle the new flat array format
-          const borelogs = response.data.data.borelogs;
-          setBorelogs(borelogs);
-          setFilteredBorelogs(borelogs);
+          borelogs = response.data.data.borelogs;
         } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
           // Handle the old flat array format (fallback)
-          const borelogs = response.data.data;
-          setBorelogs(borelogs);
-          setFilteredBorelogs(borelogs);
+          borelogs = response.data.data;
         } else {
           console.error('Unexpected response format:', response);
           setBorelogs([]);
           setFilteredBorelogs([]);
+          return;
         }
+
+        // Transform the data to ensure consistent structure
+        const transformedBorelogs = borelogs.map(borelog => ({
+          ...borelog,
+          // Ensure we have the basic fields
+          number: borelog.number || borelog.details?.number || `BH-${borelog.borelog_id?.slice(0, 8)}`,
+          structure_type: borelog.structure_type || borelog.structure?.type || 'Unknown',
+          substructure_type: borelog.substructure_type || borelog.substructure?.type || 'Unknown',
+          termination_depth: borelog.termination_depth || borelog.details?.termination_depth || 0,
+          version_no: borelog.version_no || 1,
+          created_by_name: borelog.created_by_name || borelog.created_by?.name || 'Unknown',
+          created_by_email: borelog.created_by_email || borelog.created_by?.email || '',
+          // Add project info for context
+          project_name: selectedProjectData.name,
+          project_location: selectedProjectData.location
+        }));
+
+        setBorelogs(transformedBorelogs);
+        setFilteredBorelogs(transformedBorelogs);
       } catch (error) {
         console.error('Failed to load borelogs:', error);
         toast({
@@ -157,9 +177,11 @@ export default function ManageBorelogs() {
 
     if (searchFilter.trim()) {
       filtered = filtered.filter(borelog =>
-        borelog.details?.number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        borelog.details?.coordinate?.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        (borelog.details?.termination_depth !== undefined && borelog.details.termination_depth.toString().includes(searchFilter.toLowerCase()))
+        borelog.number?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        borelog.structure_type?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        borelog.substructure_type?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        borelog.created_by_name?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        (borelog.termination_depth !== undefined && borelog.termination_depth.toString().includes(searchFilter.toLowerCase()))
       );
     }
 
@@ -197,11 +219,30 @@ export default function ManageBorelogs() {
           
           const response = await actualBorelogApi.getByProject(selectedProjectData.project_id);
           
+          let borelogs: any[] = [];
+          
           if (response.data && response.data.data && response.data.data.borelogs) {
-            const borelogs = response.data.data.borelogs;
-            setBorelogs(borelogs);
-            setFilteredBorelogs(borelogs);
+            borelogs = response.data.data.borelogs;
+          } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+            borelogs = response.data.data;
           }
+
+          // Transform the data to ensure consistent structure
+          const transformedBorelogs = borelogs.map(borelog => ({
+            ...borelog,
+            number: borelog.number || borelog.details?.number || `BH-${borelog.borelog_id?.slice(0, 8)}`,
+            structure_type: borelog.structure_type || borelog.structure?.type || 'Unknown',
+            substructure_type: borelog.substructure_type || borelog.substructure?.type || 'Unknown',
+            termination_depth: borelog.termination_depth || borelog.details?.termination_depth || 0,
+            version_no: borelog.version_no || 1,
+            created_by_name: borelog.created_by_name || borelog.created_by?.name || 'Unknown',
+            created_by_email: borelog.created_by_email || borelog.created_by?.email || '',
+            project_name: selectedProjectData.name,
+            project_location: selectedProjectData.location
+          }));
+
+          setBorelogs(transformedBorelogs);
+          setFilteredBorelogs(transformedBorelogs);
         } catch (error) {
           console.error('Failed to refresh borelogs:', error);
         } finally {
@@ -281,6 +322,8 @@ export default function ManageBorelogs() {
             </Button>
           </div>
         </div>
+
+
 
         {/* Filters */}
         <Card className="shadow-form mb-6">
@@ -425,10 +468,10 @@ export default function ManageBorelogs() {
                           <div className="flex items-center justify-between">
                             <div>
                               <h5 className="font-semibold">
-                                Borelog #{borelog.details?.number || 'N/A'}
+                                Borelog #{borelog.number}
                               </h5>
                               <p className="text-sm text-muted-foreground">
-                                {borelog.structure?.type || 'N/A'} - {borelog.substructure?.type || 'N/A'}
+                                {borelog.structure_type} - {borelog.substructure_type}
                               </p>
                             </div>
                             <Button variant="outline" size="sm">
@@ -512,29 +555,33 @@ export default function ManageBorelogs() {
                   <TableBody>
                     {filteredBorelogs.map((borelog) => (
                       <TableRow key={borelog.borelog_id}>
-                        <TableCell className="font-medium">{borelog.details?.number || 'N/A'}</TableCell>
+                        <TableCell className="font-medium">
+                          {borelog.number}
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-1">
                               <Building className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{borelog.structure?.type || 'N/A'}</span>
+                              <span className="text-sm">{borelog.structure_type}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">{borelog.substructure?.type || 'N/A'}</span>
+                              <span className="text-xs text-muted-foreground">{borelog.substructure_type}</span>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{borelog.details?.termination_depth || 'N/A'} m</TableCell>
+                        <TableCell>
+                          {borelog.termination_depth} m
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            v{borelog.version_no || '1'}
+                            v{borelog.version_no}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="text-sm font-medium">{borelog.created_by?.name || 'Unknown'}</span>
-                            <span className="text-xs text-muted-foreground">{borelog.created_by?.email || ''}</span>
+                            <span className="text-sm font-medium">{borelog.created_by_name}</span>
+                            <span className="text-xs text-muted-foreground">{borelog.created_by_email}</span>
                           </div>
                         </TableCell>
                         <TableCell>

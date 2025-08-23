@@ -222,6 +222,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    getBorelogBasicInfo: {
+      handler: 'src/handlers/getBorelogBasicInfo.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/borelog/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
     getBorelogBySubstructureId: {
       handler: 'src/handlers/getBorelogBySubstructureId.handler',
       // Explicitly set higher timeout for complex aggregation

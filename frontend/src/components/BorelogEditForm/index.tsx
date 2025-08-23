@@ -176,28 +176,70 @@ export function BorelogEditForm({
         console.log('Setting form values from borelog details array:', {
           project_id: firstVersion.project_id,
           structure_type: firstVersion.structure_type,
+          substructure_id: firstVersion.substructure_id,
           substructure_type: firstVersion.substructure_type,
           borelog_type: firstVersion.borelog_type
         });
         form.setValue('project_id', firstVersion.project_id || '');
         form.setValue('structure_id', firstVersion.structure_type || '');
-        form.setValue('substructure_id', firstVersion.substructure_type || '');
+        form.setValue('substructure_id', firstVersion.substructure_id || '');
         form.setValue('borehole_id', firstVersion.substructure_type || '');
         setBorelogType(firstVersion.borelog_type || 'Geological');
+        
+        console.log('Form values after setting (array case):', {
+          project_id: form.getValues('project_id'),
+          substructure_id: form.getValues('substructure_id'),
+          structure_id: form.getValues('structure_id'),
+          borehole_id: form.getValues('borehole_id')
+        });
       } else if (borelogData.version_history && Array.isArray(borelogData.version_history) && borelogData.version_history.length > 0) {
         // Handle case where data is an object with version_history array
         const firstVersion = borelogData.version_history[0];
         console.log('Setting form values from version history:', {
           project_id: borelogData.project?.project_id,
           structure_type: borelogData.structure?.structure_type,
+          substructure_id: borelogData.structure?.substructure_id,
           substructure_type: borelogData.structure?.substructure_type,
           borelog_type: borelogData.borelog_type
         });
         form.setValue('project_id', borelogData.project?.project_id || '');
         form.setValue('structure_id', borelogData.structure?.structure_type || '');
-        form.setValue('substructure_id', borelogData.structure?.substructure_type || '');
+        form.setValue('substructure_id', borelogData.structure?.substructure_id || '');
         form.setValue('borehole_id', borelogData.structure?.substructure_type || '');
         setBorelogType(borelogData.borelog_type || 'Geological');
+        
+        console.log('Form values after setting:', {
+          project_id: form.getValues('project_id'),
+          substructure_id: form.getValues('substructure_id'),
+          structure_id: form.getValues('structure_id'),
+          borehole_id: form.getValues('borehole_id')
+        });
+      }
+      
+      // If substructure_id is still empty, try to get it from the borelog table
+      if (!form.getValues('substructure_id') || form.getValues('substructure_id') === '') {
+        console.log('Substructure ID is empty, trying to get it from borelog table...');
+        try {
+          // For now, let's try to get it from the borelog table directly
+          // This is a temporary workaround until the backend changes are deployed
+          const borelogResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/dev'}/borelog/${borelogId}`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (borelogResponse.ok) {
+            const borelogData = await borelogResponse.json();
+            if (borelogData.data && borelogData.data.substructure_id) {
+              console.log('Found substructure_id from borelog endpoint:', borelogData.data.substructure_id);
+              form.setValue('substructure_id', borelogData.data.substructure_id);
+              form.setValue('project_id', borelogData.data.project_id);
+            }
+          }
+        } catch (error) {
+          console.error('Error getting substructure_id:', error);
+        }
       }
       
       // Load version history
@@ -1057,6 +1099,21 @@ export function BorelogEditForm({
       }
 
       console.log('Saving version with payload:', payload);
+      console.log('Payload validation check:', {
+        hasBorelogId: !!payload.borelog_id,
+        hasSubstructureId: !!payload.substructure_id,
+        hasProjectId: !!payload.project_id,
+        borelogId: payload.borelog_id,
+        substructureId: payload.substructure_id,
+        projectId: payload.project_id,
+        type: payload.type
+      });
+      console.log('Form values being used:', {
+        borelog_id: v.borelog_id,
+        substructure_id: v.substructure_id,
+        project_id: v.project_id,
+        version_number: v.version_number
+      });
       const response = await borelogApiV2.createVersion(payload);
       const newVersion = response.data.data;
       
@@ -1078,6 +1135,10 @@ export function BorelogEditForm({
       
     } catch (error: any) {
       console.error('Save error:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      console.error('Error message:', error.response?.data?.message);
+      console.error('Error details:', error.response?.data?.error);
       toast({
         title: 'Error',
         description: error.response?.data?.message || error.response?.data?.error || 'Failed to save draft.',
