@@ -60,6 +60,17 @@ interface JwtPayload {
   name?: string;
 }
 
+// Helper function to extract assignment_id from request ID
+const extractAssignmentId = (requestId: string): string | null => {
+  // Request ID format is: assignment_id-index (e.g., "7424ba93-9229-4f56-93aa-053840df0be6-0")
+  const parts = requestId.split('-');
+  if (parts.length < 2) {
+    return null;
+  }
+  // Remove the last part (index) and join the rest back together
+  return parts.slice(0, -1).join('-');
+};
+
 // Create new lab request
 export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -334,6 +345,17 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       });
     }
 
+    // Extract the actual assignment_id from the request ID
+    const assignmentId = extractAssignmentId(requestId);
+    
+    if (!assignmentId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid request ID format',
+        error: 'Request ID must be in format: assignment_id-index'
+      });
+    }
+
     const query = `
       SELECT 
         lta.*,
@@ -348,7 +370,7 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       WHERE lta.assignment_id = $1
     `;
 
-    const result = await db.query(query, [requestId]) as LabRequestDetailResult[];
+    const result = await db.query(query, [assignmentId]) as LabRequestDetailResult[];
     
     if (result.length === 0) {
       return createResponse(404, {
@@ -421,6 +443,17 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
+    // Extract the actual assignment_id from the request ID
+    const assignmentId = extractAssignmentId(requestId);
+    
+    if (!assignmentId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid request ID format',
+        error: 'Request ID must be in format: assignment_id-index'
+      });
+    }
+
     const body = JSON.parse(event.body || '{}');
     
     // Build update query dynamically
@@ -467,7 +500,7 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
     }
 
     paramCount++;
-    values.push(requestId);
+    values.push(assignmentId);
 
     const updateQuery = `
       UPDATE lab_test_assignments 
@@ -486,7 +519,7 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    logger.info('Lab request updated successfully', { requestId });
+    logger.info('Lab request updated successfully', { requestId, assignmentId });
 
     return createResponse(200, {
       success: true,
@@ -532,13 +565,24 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
+    // Extract the actual assignment_id from the request ID
+    const assignmentId = extractAssignmentId(requestId);
+    
+    if (!assignmentId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid request ID format',
+        error: 'Request ID must be in format: assignment_id-index'
+      });
+    }
+
     const deleteQuery = `
       DELETE FROM lab_test_assignments 
       WHERE assignment_id = $1
       RETURNING assignment_id
     `;
 
-    const result = await db.query(deleteQuery, [requestId]);
+    const result = await db.query(deleteQuery, [assignmentId]);
     
     if (result.length === 0) {
       return createResponse(404, {
@@ -548,7 +592,7 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    logger.info('Lab request deleted successfully', { requestId });
+    logger.info('Lab request deleted successfully', { requestId, assignmentId });
 
     return createResponse(200, {
       success: true,
