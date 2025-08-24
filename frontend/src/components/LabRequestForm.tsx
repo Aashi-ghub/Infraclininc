@@ -151,6 +151,16 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
       return;
     }
 
+    // For Admin and Project Manager, lab engineer assignment is required
+    if ((user?.role === 'Admin' || user?.role === 'Project Manager') && !formData.assigned_lab_engineer) {
+      toast({
+        title: 'Error',
+        description: 'Please select a lab engineer to assign the test to',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const selectedBorelog = borelogs.find(b => b.borelog_id === formData.borelog_id);
 
     // If assignment fields are filled, create assignment
@@ -263,10 +273,10 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
             <>
               {/* Lab Engineer Assignment */}
               <div className="space-y-2">
-                <Label htmlFor="assigned_lab_engineer">Assign to Lab Engineer</Label>
+                <Label htmlFor="assigned_lab_engineer">Assign to Lab Engineer *</Label>
                 <Select value={formData.assigned_lab_engineer || ''} onValueChange={(value) => setFormData(prev => ({ ...prev, assigned_lab_engineer: value }))}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select lab engineer (optional)" />
+                    <SelectValue placeholder="Select lab engineer (required)" />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingEngineers ? (
@@ -318,7 +328,7 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
           Cancel
         </Button>
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Creating...' : (formData.assigned_lab_engineer ? 'Create & Assign' : 'Create Lab Request')}
+          {isLoading ? 'Creating...' : (user?.role === 'Admin' || user?.role === 'Project Manager' ? 'Create & Assign' : 'Create Lab Request')}
         </Button>
       </div>
     </form>

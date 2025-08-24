@@ -472,38 +472,76 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
       return response;
     }
 
-    // Create lab test assignments
-    const assignments = [];
-    for (let i = 0; i < assignmentData.sample_ids.length; i++) {
-      const assignment = {
-        id: `lt-${Date.now()}-${i}`,
-        borelog_id: assignmentData.borelog_id,
-        sample_id: assignmentData.sample_ids[i],
-        test_type: assignmentData.test_types[i],
-        assigned_lab_engineer: assignmentData.assigned_lab_engineer,
-        priority: assignmentData.priority,
-        expected_completion_date: assignmentData.expected_completion_date,
-        status: 'assigned',
-        assigned_by: payload.userId,
-        assigned_at: new Date().toISOString()
-      };
-      assignments.push(assignment);
-    }
+    // Get the latest version number for the borelog
+    const versionQuery = `
+      SELECT COALESCE(MAX(version_no), 1) as latest_version
+      FROM borelog_versions 
+      WHERE borelog_id = $1
+    `;
+    const versionResult = await db.query(versionQuery, [assignmentData.borelog_id]);
+    const versionNo = versionResult[0]?.latest_version || 1;
 
-    // In a real implementation, you would save these to a lab_assignments table
-    // For now, we'll just return the assignments
+    // Create lab test assignment in the database
+    const insertQuery = `
+      INSERT INTO lab_test_assignments (
+        borelog_id, 
+        version_no, 
+        sample_ids, 
+        assigned_by, 
+        assigned_to, 
+        due_date, 
+        priority, 
+        notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING assignment_id
+    `;
+    
+    const insertResult = await db.query(insertQuery, [
+      assignmentData.borelog_id,
+      versionNo,
+      assignmentData.sample_ids,
+      payload.userId,
+      assignmentData.assigned_lab_engineer,
+      assignmentData.expected_completion_date,
+      assignmentData.priority,
+      'Lab test assignment created via workflow'
+    ]);
+
+    const assignmentId = insertResult[0].assignment_id;
+
+         // Create individual lab assignments for each sample
+     const individualAssignments = [];
+     for (let i = 0; i < assignmentData.sample_ids.length; i++) {
+       const individualAssignment = {
+         assignment_id: assignmentId,
+         borelog_id: assignmentData.borelog_id,
+         sample_id: assignmentData.sample_ids[i],
+         test_type: assignmentData.test_types[i],
+         assigned_lab_engineer: assignmentData.assigned_lab_engineer,
+         priority: assignmentData.priority,
+         expected_completion_date: assignmentData.expected_completion_date,
+         status: 'assigned',
+         assigned_by: payload.userId,
+         assigned_at: new Date().toISOString()
+       };
+       
+       individualAssignments.push(individualAssignment);
+     }
+
     logger.info(`Lab tests assigned for borelog ${assignmentData.borelog_id} by user ${payload.userId}`, {
       borelogId: assignmentData.borelog_id,
       assignedBy: payload.userId,
-      assignments: assignments.length
+      assignments: individualAssignments.length,
+      assignmentId: assignmentId
     });
 
     const response = createResponse(201, {
       success: true,
       message: 'Lab tests assigned successfully',
       data: {
-        assignments,
-        total_assigned: assignments.length
+        assignments: individualAssignments,
+        total_assigned: individualAssignments.length,
+        assignment_id: assignmentId
       }
     });
 

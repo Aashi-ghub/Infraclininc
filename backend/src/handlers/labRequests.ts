@@ -134,18 +134,27 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
       });
     }
 
-    // Build query based on user role
+    // Build query based on user role - simplified to avoid duplicates
     let query = `
       SELECT 
-        lta.*,
+        lta.assignment_id,
+        lta.borelog_id,
+        lta.sample_ids,
+        lta.assigned_to as assigned_lab_engineer,
+        lta.priority,
+        lta.due_date,
+        lta.assigned_at,
+        lta.assigned_by,
+        lta.notes,
         p.name as project_name,
-        bd.number as borehole_number,
-        u.name as assigned_by_name
+        (SELECT bd2.number FROM borelog_details bd2 WHERE bd2.borelog_id = lta.borelog_id ORDER BY bd2.version_no DESC LIMIT 1) as borehole_number,
+        u.name as assigned_by_name,
+        le.name as assigned_lab_engineer_name
       FROM lab_test_assignments lta
       LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
       LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN borelog_details bd ON lta.borelog_id = bd.borelog_id
       LEFT JOIN users u ON lta.assigned_by = u.user_id
+      LEFT JOIN users le ON lta.assigned_to = le.user_id
       WHERE 1=1
     `;
 
@@ -173,23 +182,58 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
 
     const result = await db.query(query, queryParams);
 
-    const labRequests = result.map(row => ({
-      id: row.assignment_id,
-      borelog_id: row.borelog_id,
-      sample_id: row.sample_ids ? row.sample_ids[0] : '', // Get first sample ID from array
-      test_type: 'Lab Test', // Default test type since it's not stored in the table
-      priority: row.priority,
-      due_date: row.due_date,
-      notes: row.notes,
-      requested_by: row.assigned_by_name,
-      requested_date: row.assigned_at,
-      status: 'assigned', // Default status
-      borelog: {
-        borehole_number: row.borehole_number,
-        project_name: row.project_name,
-        chainage: 'N/A'
+    // Create separate lab request entries for each sample ID in the array
+    const labRequests = [];
+    
+    result.forEach(row => {
+      const sampleIds = row.sample_ids || [];
+      
+      if (sampleIds.length === 0) {
+        // If no sample IDs, create one entry with empty sample ID
+        labRequests.push({
+          id: `${row.assignment_id}-0`,
+          assignment_id: row.assignment_id,
+          borelog_id: row.borelog_id,
+          sample_id: '',
+          test_type: 'Lab Test',
+          priority: row.priority,
+          due_date: row.due_date,
+          notes: row.notes,
+          requested_by: row.assigned_by_name,
+          requested_date: row.assigned_at,
+          status: 'assigned',
+          assigned_lab_engineer: row.assigned_lab_engineer_name,
+          borelog: {
+            borehole_number: row.borehole_number,
+            project_name: row.project_name,
+            chainage: 'N/A'
+          }
+        });
+      } else {
+        // Create separate entries for each sample ID
+        sampleIds.forEach((sampleId: string, index: number) => {
+          labRequests.push({
+            id: `${row.assignment_id}-${index}`,
+            assignment_id: row.assignment_id,
+            borelog_id: row.borelog_id,
+            sample_id: sampleId,
+            test_type: 'Lab Test',
+            priority: row.priority,
+            due_date: row.due_date,
+            notes: row.notes,
+            requested_by: row.assigned_by_name,
+            requested_date: row.assigned_at,
+            status: 'assigned',
+            assigned_lab_engineer: row.assigned_lab_engineer_name,
+            borelog: {
+              borehole_number: row.borehole_number,
+              project_name: row.project_name,
+              chainage: 'N/A'
+            }
+          });
+        });
       }
-    }));
+    });
 
     return createResponse(200, {
       success: true,
