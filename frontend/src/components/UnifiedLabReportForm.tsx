@@ -27,6 +27,7 @@ interface UnifiedLabReportFormProps {
   isLoading?: boolean;
   userRole?: UserRole;
   isReadOnly?: boolean;
+  requestId?: string; // Add requestId prop for version history
 }
 
 interface UnifiedFormData {
@@ -65,11 +66,12 @@ export default function UnifiedLabReportForm({
   onSaveDraft,
   isLoading = false,
   userRole = 'Lab Engineer',
-  isReadOnly = false 
+  isReadOnly = false,
+  requestId
 }: UnifiedLabReportFormProps) {
   const [formData, setFormData] = useState<UnifiedFormData>({
     lab_report_id: existingReport?.report_id || existingReport?.id || '',
-    lab_request_id: labRequest?.id || existingReport?.request_id || '',
+    lab_request_id: labRequest?.id || existingReport?.request_id || requestId || '',
     project_name: labRequest?.borelog?.project_name || existingReport?.borelog?.project_name || '',
     borehole_no: labRequest?.sample_id || existingReport?.sample_id || '',
     client: '',
@@ -99,24 +101,36 @@ export default function UnifiedLabReportForm({
 
   // Update form data when existingReport changes (e.g., after creation)
   useEffect(() => {
+    console.log('existingReport changed:', existingReport);
     if (existingReport) {
-      setFormData(prev => ({
-        ...prev,
-        lab_report_id: existingReport.report_id || existingReport.id || prev.lab_report_id,
-        lab_request_id: existingReport.request_id || existingReport.assignment_id || prev.lab_request_id,
-        project_name: existingReport.project_name || prev.project_name,
-        borehole_no: existingReport.borehole_no || existingReport.sample_id || prev.borehole_no,
-        client: existingReport.client || prev.client,
-        date: existingReport.test_date ? new Date(existingReport.test_date) : prev.date,
-        tested_by: existingReport.tested_by || prev.tested_by,
-        checked_by: existingReport.checked_by || prev.checked_by,
-        approved_by: existingReport.approved_by || prev.approved_by,
-        report_status: existingReport.status || prev.report_status,
-        soil_test_data: existingReport.soil_test_data || prev.soil_test_data,
-        rock_test_data: existingReport.rock_test_data || prev.rock_test_data,
-        soil_test_completed: existingReport.soil_test_data && existingReport.soil_test_data.length > 0,
-        rock_test_completed: existingReport.rock_test_data && existingReport.rock_test_data.length > 0
-      }));
+      console.log('Updating formData with existingReport:', {
+        report_id: existingReport.report_id,
+        id: existingReport.id,
+        current_lab_report_id: formData.lab_report_id
+      });
+      
+      setFormData(prev => {
+        const updated = {
+          ...prev,
+          lab_report_id: existingReport.report_id || existingReport.id || prev.lab_report_id,
+          lab_request_id: existingReport.request_id || existingReport.assignment_id || requestId || prev.lab_request_id,
+          project_name: existingReport.project_name || prev.project_name,
+          borehole_no: existingReport.borehole_no || existingReport.sample_id || prev.borehole_no,
+          client: existingReport.client || prev.client,
+          date: existingReport.test_date ? new Date(existingReport.test_date) : prev.date,
+          tested_by: existingReport.tested_by || prev.tested_by,
+          checked_by: existingReport.checked_by || prev.checked_by,
+          approved_by: existingReport.approved_by || prev.approved_by,
+          report_status: existingReport.status || prev.report_status,
+          soil_test_data: existingReport.soil_test_data || prev.soil_test_data,
+          rock_test_data: existingReport.rock_test_data || prev.rock_test_data,
+          soil_test_completed: existingReport.soil_test_data && existingReport.soil_test_data.length > 0,
+          rock_test_completed: existingReport.rock_test_data && existingReport.rock_test_data.length > 0
+        };
+        
+        console.log('Updated formData:', updated);
+        return updated;
+      });
     }
   }, [existingReport]);
 
@@ -199,22 +213,27 @@ export default function UnifiedLabReportForm({
   const completionStatus = getCompletionStatus();
 
   const loadVersionHistory = async () => {
+    console.log('loadVersionHistory called with formData:', formData);
+    console.log('lab_report_id:', formData.lab_report_id);
+    console.log('isValidUUID:', isValidUUID(formData.lab_report_id));
+    
     if (!formData.lab_report_id || !isValidUUID(formData.lab_report_id)) {
-      toast({
-        title: 'No Report ID',
-        description: 'Save a draft first to enable version history',
-        variant: 'destructive',
-      });
+      console.log('No valid report ID available for version history');
       return;
     }
 
     setLoadingVersions(true);
     try {
+      console.log('Making API call to get version history for report ID:', formData.lab_report_id);
       const response = await labReportVersionControlApi.getVersionHistory(formData.lab_report_id);
+      console.log('Version history API response:', response);
+      
       if (response.data?.success) {
         setVersions(response.data.data?.versions || []);
         setShowVersionHistory(true);
+        console.log('Versions set:', response.data.data?.versions);
       } else {
+        console.error('API returned error:', response.data);
         toast({
           title: 'Error',
           description: response.data?.message || 'Failed to load version history',
@@ -290,15 +309,17 @@ export default function UnifiedLabReportForm({
                 </>
               )}
               
-                             {/* Version History Button - Always show */}
-               <Button 
-                 variant="outline"
-                 onClick={handleVersionHistoryClick}
-                 disabled={loadingVersions}
-               >
-                 <History className="h-4 w-4 mr-2" />
-                 {loadingVersions ? 'Loading...' : showVersionHistory ? 'Hide History' : 'Version History'}
-               </Button>
+                             {/* Version History Button - Only show when there's a valid report ID */}
+              {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
+                <Button 
+                  variant="outline"
+                  onClick={handleVersionHistoryClick}
+                  disabled={loadingVersions}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  {loadingVersions ? 'Loading...' : showVersionHistory ? 'Hide History' : 'Version History'}
+                </Button>
+              )}
               
               <Button 
                 variant="outline"

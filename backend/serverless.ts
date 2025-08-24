@@ -1085,67 +1085,7 @@ const serverlessConfiguration: AWS = {
       ]
     },
     
-    // Lab Test Results endpoints
-    createLabTestResult: {
-      handler: 'src/handlers/labTestResults.createLabTestResult',
-      events: [
-        {
-          http: {
-            method: 'post',
-            path: '/lab-test-results',
-            cors: true
-          }
-        }
-      ]
-    },
-    getLabTestResult: {
-      handler: 'src/handlers/labTestResults.getLabTestResult',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/lab-test-results/{testId}',
-            cors: true
-          }
-        }
-      ]
-    },
-    updateLabTestResult: {
-      handler: 'src/handlers/labTestResults.updateLabTestResult',
-      events: [
-        {
-          http: {
-            method: 'put',
-            path: '/lab-test-results/{testId}',
-            cors: true
-          }
-        }
-      ]
-    },
-    getLabTestResults: {
-      handler: 'src/handlers/labTestResults.getLabTestResults',
-      events: [
-        {
-          http: {
-            method: 'get',
-            path: '/lab-test-results',
-            cors: true
-          }
-        }
-      ]
-    },
-    deleteLabTestResult: {
-      handler: 'src/handlers/labTestResults.deleteLabTestResult',
-      events: [
-        {
-          http: {
-            method: 'delete',
-            path: '/lab-test-results/{testId}',
-            cors: true
-          }
-        }
-      ]
-    },
+
     
     // Unified Lab Reports endpoints
     createUnifiedLabReport: {

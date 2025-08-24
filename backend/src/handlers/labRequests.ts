@@ -42,6 +42,7 @@ interface LabRequestDetailResult {
   project_name: string;
   borehole_number: string;
   assigned_by_name: string;
+  report_id?: string; // Optional since it might not exist for old records
 }
 
 interface FinalBorelogResult {
@@ -123,6 +124,7 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     const borelog = borelogResult[0];
     const requestId = uuidv4();
+    const reportId = uuidv4(); // Create report_id immediately
 
     // Create lab request record
     const createQuery = `
@@ -147,13 +149,49 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     const result = await db.query(createQuery, values) as LabAssignmentResult[];
     
-    logger.info('Lab request created successfully', { requestId, borelogId: body.borelog_id });
+    // Create initial unified lab report record (minimal record, will be updated by triggers)
+    const createReportQuery = `
+      INSERT INTO unified_lab_reports (
+        report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no, 
+        client, test_date, tested_by, checked_by, approved_by, test_types, 
+        soil_test_data, rock_test_data, status, remarks, created_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ON CONFLICT (report_id) DO NOTHING
+    `;
+    
+    await db.query(createReportQuery, [
+      reportId, requestId, body.borelog_id, body.sample_id, borelog.project_name, borelog.borehole_number,
+      body.client || '', new Date().toISOString(), 'TBD', 'TBD', 'TBD', JSON.stringify([body.test_type]),
+      JSON.stringify([]), JSON.stringify([]), 'draft', body.notes || '', payload.userId
+    ]);
+
+    // Create initial version record
+    const createVersionQuery = `
+      INSERT INTO lab_report_versions (
+        report_id, version_no, assignment_id, borelog_id, sample_id, project_name, borehole_no,
+        client, test_date, tested_by, checked_by, approved_by, test_types, 
+        soil_test_data, rock_test_data, status, remarks, created_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    `;
+
+    await db.query(createVersionQuery, [
+      reportId, 1, requestId, body.borelog_id, body.sample_id, borelog.project_name, borelog.borehole_number,
+      body.client || '', new Date().toISOString(), 'TBD', 'TBD', 'TBD', JSON.stringify([body.test_type]),
+      JSON.stringify([]), JSON.stringify([]), 'draft', body.notes || '', payload.userId
+    ]);
+    
+    logger.info('Lab request and initial report created successfully', { 
+      requestId, 
+      reportId, 
+      borelogId: body.borelog_id 
+    });
 
     return createResponse(201, {
       success: true,
       message: 'Lab request created successfully',
       data: {
         id: result[0].assignment_id,
+        report_id: reportId, // Include the report_id in response
         borelog_id: result[0].borelog_id,
         sample_id: result[0].sample_ids[0], // Get first sample ID from array
         test_type: body.test_type, // Keep the test_type from request
@@ -361,12 +399,14 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
         lta.*,
         p.name as project_name,
         bd.number as borehole_number,
-        u.name as assigned_by_name
+        u.name as assigned_by_name,
+        ulr.report_id
       FROM lab_test_assignments lta
       LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
       LEFT JOIN projects p ON b.project_id = p.project_id
       LEFT JOIN borelog_details bd ON lta.borelog_id = bd.borelog_id
       LEFT JOIN users u ON lta.assigned_by = u.user_id
+      LEFT JOIN unified_lab_reports ulr ON lta.assignment_id = ulr.assignment_id
       WHERE lta.assignment_id = $1
     `;
 
@@ -383,6 +423,7 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
     const row = result[0];
     const labRequest = {
       id: row.assignment_id,
+      report_id: row.report_id, // Include the report_id
       borelog_id: row.borelog_id,
       sample_id: row.sample_ids ? row.sample_ids[0] : '', // Get first sample ID from array
       test_type: 'Lab Test', // Default test type since it's not stored in the table

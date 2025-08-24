@@ -227,7 +227,7 @@ export default function LabReportManagement() {
 
           <TabsContent value="requests" className="space-y-4">
             {filteredRequests.length === 0 ? (
-            <Card>
+            <Card key="no-requests">
                 <CardContent className="text-center py-8">
                   <p className="text-gray-500">No lab requests found</p>
                 </CardContent>
@@ -306,7 +306,7 @@ export default function LabReportManagement() {
 
           <TabsContent value="reports" className="space-y-4">
             {filteredReports.length === 0 ? (
-              <Card>
+              <Card key="no-reports">
                 <CardContent className="text-center py-8">
                   <p className="text-gray-500">No lab reports found</p>
                 </CardContent>
@@ -372,7 +372,7 @@ export default function LabReportManagement() {
 
           <TabsContent value="unified" className="space-y-4">
             {filteredUnifiedReports.length === 0 ? (
-             <Card>
+             <Card key="no-unified-reports">
                 <CardContent className="text-center py-8">
                   <p className="text-gray-500">No unified lab reports found</p>
                 </CardContent>
@@ -445,7 +445,7 @@ export default function LabReportManagement() {
 
           <TabsContent value="statistics" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
+          <Card key="total-requests">
             <CardHeader>
                   <CardTitle className="text-lg">Total Requests</CardTitle>
             </CardHeader>
@@ -453,7 +453,7 @@ export default function LabReportManagement() {
                   <p className="text-3xl font-bold text-blue-600">{labRequests.length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card key="total-reports">
             <CardHeader>
                   <CardTitle className="text-lg">Total Reports</CardTitle>
             </CardHeader>
@@ -461,7 +461,7 @@ export default function LabReportManagement() {
                   <p className="text-3xl font-bold text-green-600">{labReports.length}</p>
             </CardContent>
           </Card>
-              <Card>
+              <Card key="unified-reports">
           <CardHeader>
                   <CardTitle className="text-lg">Unified Reports</CardTitle>
           </CardHeader>
@@ -469,7 +469,7 @@ export default function LabReportManagement() {
                   <p className="text-3xl font-bold text-purple-600">{unifiedReports.length}</p>
           </CardContent>
         </Card>
-              <Card>
+              <Card key="pending">
           <CardHeader>
                   <CardTitle className="text-lg">Pending</CardTitle>
           </CardHeader>

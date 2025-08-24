@@ -60,13 +60,14 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
     if (!finalReportId) {
       finalReportId = uuidv4();
       
-      // Create main report record
+      // Create minimal record in unified_lab_reports (will be updated by triggers)
       const createReportQuery = `
         INSERT INTO unified_lab_reports (
           report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no, 
           client, test_date, tested_by, checked_by, approved_by, test_types, 
           soil_test_data, rock_test_data, status, remarks, created_by_user_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        ON CONFLICT (report_id) DO NOTHING
       `;
       
       await db.query(createReportQuery, [
@@ -418,6 +419,13 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
 export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
+  
+  // Add debug logging
+  logger.info('getLabReportVersionHistory called with event:', {
+    path: event.path,
+    pathParameters: event.pathParameters,
+    headers: event.headers
+  });
 
   try {
     // Validate authentication
@@ -444,54 +452,38 @@ export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): P
       return response;
     }
 
-    // Check if user has access to this report - more flexible access control
-    const accessQuery = `
-      SELECT 1 FROM (
-        SELECT assignment_id FROM lab_report_versions WHERE report_id = $1
-        UNION
-        SELECT assignment_id FROM unified_lab_reports WHERE report_id = $1
-        UNION
-        SELECT created_by_user_id as assignment_id FROM unified_lab_reports WHERE report_id = $1
-      ) combined
-      WHERE combined.assignment_id = $2 OR $3 = 'Admin' OR $3 = 'Lab Engineer' OR $3 = 'Approval Engineer'
-    `;
-    const accessResult = await db.query(accessQuery, [reportId, payload.userId, payload.role]);
-    
-    if (accessResult.length === 0) {
+    // Simplified access control - allow access if user has appropriate role
+    if (!['Admin', 'Lab Engineer', 'Approval Engineer'].includes(payload.role)) {
       const response = createResponse(403, {
         success: false,
-        message: 'Access denied: User not assigned to this lab test',
-        error: 'Insufficient permissions'
+        message: 'Access denied: Insufficient permissions',
+        error: 'User role not authorized'
       });
       logResponse(response, Date.now() - startTime);
       return response;
     }
 
-    // Get version history with comments
+    // Get version history - simplified query without complex aggregation
     const historyQuery = `
       SELECT 
         lrv.*,
         u.name as created_by_name,
-        u2.name as returned_by_name,
-        array_agg(
-          json_build_object(
-            'comment_id', lrc.comment_id,
-            'comment_type', lrc.comment_type,
-            'comment_text', lrc.comment_text,
-            'commented_by', lrc.commented_by,
-            'commented_at', lrc.commented_at
-          )
-        ) FILTER (WHERE lrc.comment_id IS NOT NULL) as comments
+        u2.name as returned_by_name
       FROM lab_report_versions lrv
       LEFT JOIN users u ON lrv.created_by_user_id = u.user_id
       LEFT JOIN users u2 ON lrv.returned_by = u2.user_id
-      LEFT JOIN lab_report_review_comments lrc ON lrv.report_id = lrc.report_id AND lrv.version_no = lrc.version_no
       WHERE lrv.report_id = $1
-      GROUP BY lrv.report_id, lrv.version_no, u.name, u2.name
       ORDER BY lrv.version_no DESC
     `;
     
     const historyResult = await db.query(historyQuery, [reportId]);
+    
+    // Log the result for debugging
+    logger.info('Version history query result:', {
+      reportId,
+      resultCount: historyResult.length,
+      result: historyResult
+    });
 
     const response = createResponse(200, {
       success: true,
@@ -551,19 +543,12 @@ export const getLabReportVersion = async (event: APIGatewayProxyEvent): Promise<
       return response;
     }
 
-    // Check if user has access to this report
-    const accessQuery = `
-      SELECT 1 FROM lab_report_versions lrv
-      JOIN lab_test_assignments lta ON lrv.assignment_id = lta.assignment_id
-      WHERE lrv.report_id = $1 AND lrv.version_no = $2 AND (lta.assigned_to = $3 OR $4 = 'Admin')
-    `;
-    const accessResult = await db.query(accessQuery, [reportId, versionNo, payload.userId, payload.role]);
-    
-    if (accessResult.length === 0) {
+    // Simplified access control - allow access if user has appropriate role
+    if (!['Admin', 'Lab Engineer', 'Approval Engineer'].includes(payload.role)) {
       const response = createResponse(403, {
         success: false,
-        message: 'Access denied: User not assigned to this lab test',
-        error: 'Insufficient permissions'
+        message: 'Access denied: Insufficient permissions',
+        error: 'User role not authorized'
       });
       logResponse(response, Date.now() - startTime);
       return response;

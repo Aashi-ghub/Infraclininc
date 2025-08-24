@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, FileText, Download, Eye } from 'lucide-react';
-import { unifiedLabReportsApi, labReportApi } from '@/lib/api';
+import { unifiedLabReportsApi, labReportApi, labReportVersionControlApi } from '@/lib/api';
 
 // Helper function to validate UUID format
 const isValidUUID = (uuid: string): boolean => {
@@ -60,7 +60,20 @@ export default function UnifiedLabReportPage() {
     try {
       const response = await labReportApi.getRequestById(requestId!);
       if (response.data?.success) {
-        setLabRequest(response.data.data);
+        const labRequestData = response.data.data;
+        setLabRequest(labRequestData);
+        
+        // If the lab request has a report_id, set it as the existing report
+        // so that version buttons become visible
+        if (labRequestData.report_id) {
+          setExistingReport({
+            report_id: labRequestData.report_id,
+            id: labRequestData.report_id, // For compatibility
+            status: 'draft',
+            version_no: 1,
+            created_at: labRequestData.requested_date || new Date().toISOString()
+          });
+        }
       } else {
         console.error('Failed to load lab request:', response.data?.message);
         toast({
@@ -84,6 +97,7 @@ export default function UnifiedLabReportPage() {
   // Use actual lab request data or fallback to sample data
   const sampleLabRequest = labRequest || {
     id: requestId || 'LR-2024-001',
+    report_id: requestId ? `${requestId}-report` : 'LR-2024-001-report', // Generate a report_id for sample data
     borelog: {
       project_name: 'Highway Bridge Project - Phase 2',
       id: 'BL-2024-001'
@@ -105,33 +119,38 @@ export default function UnifiedLabReportPage() {
       const soilTestData = Array.isArray(reportData.soil_test_data) ? reportData.soil_test_data : [];
       const rockTestData = Array.isArray(reportData.rock_test_data) ? reportData.rock_test_data : [];
 
+      // Get the assignment_id and report_id from the lab request
+      const assignmentId = labRequest?.id || sampleLabRequest?.id || requestId;
+      const reportId = labRequest?.report_id || sampleLabRequest?.report_id;
+
       if (existingReport) {
-        // Update existing report
-        const response = await unifiedLabReportsApi.update(existingReport.report_id, {
-          soil_test_data: soilTestData,
-          rock_test_data: rockTestData,
-          test_types: testTypes,
-          status: 'submitted',
-          remarks: reportData.review_comments || ''
-        });
+        // Submit existing report for review using version control API
+        const submitData = {
+          report_id: existingReport.report_id || existingReport.id,
+          version_no: existingReport.version_no || 1,
+          submission_comments: reportData.review_comments || ''
+        };
+        
+        const response = await labReportVersionControlApi.submitForReview(submitData);
         
         if (response.data.success) {
           toast({
             title: 'Success',
-            description: 'Unified lab report updated and submitted successfully!',
+            description: 'Unified lab report submitted for review successfully!',
           });
           navigate('/lab-reports');
         } else {
-          throw new Error(response.data.message || 'Failed to update report');
+          throw new Error(response.data.message || 'Failed to submit report');
         }
       } else {
-        // Create new report
+        // Create new report and submit using version control API
         const createData = {
-          assignment_id: isValidUUID(requestId || '') ? requestId : '00000000-0000-0000-0000-000000000001',
-          borelog_id: '00000000-0000-0000-0000-000000000002',
-          sample_id: reportData.borehole_no,
-          project_name: reportData.project_name,
-          borehole_no: reportData.borehole_no,
+          report_id: reportId, // Use report_id from lab request if available
+          assignment_id: assignmentId,
+          borelog_id: labRequest?.borelog_id || sampleLabRequest?.borelog_id || '',
+          sample_id: labRequest?.sample_id || reportData.borehole_no,
+          project_name: labRequest?.borelog?.project_name || reportData.project_name,
+          borehole_no: labRequest?.borelog?.borehole_number || reportData.borehole_no,
           client: reportData.client,
           test_date: reportData.date.toISOString(),
           tested_by: reportData.tested_by,
@@ -140,22 +159,43 @@ export default function UnifiedLabReportPage() {
           test_types: testTypes,
           soil_test_data: soilTestData,
           rock_test_data: rockTestData,
-          status: 'submitted',
           remarks: reportData.review_comments || ''
         };
         
-        const response = await unifiedLabReportsApi.create(createData);
+        const response = await labReportVersionControlApi.saveDraft(createData);
         
         if (response.data.success) {
+          // Create a mock existing report object with the data from version control API
+          const mockExistingReport = {
+            report_id: response.data.data.report_id,
+            id: response.data.data.report_id, // For compatibility
+            status: response.data.data.status,
+            version_no: response.data.data.version_no,
+            created_at: response.data.data.created_at
+          };
+          
           // Update the existing report with the actual UUID from the backend
-          setExistingReport(response.data.data);
-          // Update the URL to include the report_id so the component knows it's in edit mode
-          navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
-          toast({
-            title: 'Success',
-            description: 'Unified lab report created and submitted successfully!',
-          });
-          // Don't navigate away, stay on the form to allow further editing
+          setExistingReport(mockExistingReport);
+          
+          // Now submit for review
+          const submitData = {
+            report_id: response.data.data.report_id,
+            version_no: response.data.data.version_no,
+            submission_comments: reportData.review_comments || ''
+          };
+          
+          const submitResponse = await labReportVersionControlApi.submitForReview(submitData);
+          
+          if (submitResponse.data.success) {
+            // Update the URL to include the report_id so the component knows it's in edit mode
+            navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
+            toast({
+              title: 'Success',
+              description: 'Unified lab report created and submitted for review successfully!',
+            });
+          } else {
+            throw new Error(submitResponse.data.message || 'Failed to submit report');
+          }
         } else {
           throw new Error(response.data.message || 'Failed to create report');
         }
@@ -184,28 +224,15 @@ export default function UnifiedLabReportPage() {
       const soilTestData = Array.isArray(reportData.soil_test_data) ? reportData.soil_test_data : [];
       const rockTestData = Array.isArray(reportData.rock_test_data) ? reportData.rock_test_data : [];
 
+      // Get the assignment_id and report_id from the lab request
+      const assignmentId = labRequest?.id || sampleLabRequest?.id || requestId;
+      const reportId = labRequest?.report_id || sampleLabRequest?.report_id;
+
       if (existingReport) {
-        // Update existing report as draft
-        const response = await unifiedLabReportsApi.update(existingReport.report_id, {
-          soil_test_data: soilTestData,
-          rock_test_data: rockTestData,
-          test_types: testTypes,
-          status: 'draft',
-          remarks: reportData.review_comments || ''
-        });
-        
-        if (response.data.success) {
-          toast({
-            title: 'Draft Saved',
-            description: 'Unified lab report draft has been updated successfully.',
-          });
-        } else {
-          throw new Error(response.data.message || 'Failed to save draft');
-        }
-      } else {
-        // Create new draft
-        const createData = {
-          assignment_id: isValidUUID(requestId || '') ? requestId : null,
+        // Update existing draft using version control API
+        const updateData = {
+          report_id: existingReport.report_id || existingReport.id,
+          assignment_id: assignmentId,
           borelog_id: labRequest?.borelog_id || sampleLabRequest?.borelog_id || '',
           sample_id: labRequest?.sample_id || reportData.borehole_no,
           project_name: labRequest?.borelog?.project_name || reportData.project_name,
@@ -218,15 +245,61 @@ export default function UnifiedLabReportPage() {
           test_types: testTypes,
           soil_test_data: soilTestData,
           rock_test_data: rockTestData,
-          status: 'draft',
           remarks: reportData.review_comments || ''
         };
         
-        const response = await unifiedLabReportsApi.create(createData);
+        const response = await labReportVersionControlApi.saveDraft(updateData);
         
         if (response.data.success) {
+          // Update the existing report with the new version info
+          const updatedExistingReport = {
+            ...existingReport,
+            version_no: response.data.data.version_no,
+            status: response.data.data.status
+          };
+          setExistingReport(updatedExistingReport);
+          
+          toast({
+            title: 'Draft Saved',
+            description: `Unified lab report draft has been saved as version ${response.data.data.version_no}.`,
+          });
+        } else {
+          throw new Error(response.data.message || 'Failed to save draft');
+        }
+      } else {
+        // Create new draft using version control API
+        const createData = {
+          report_id: reportId, // Use report_id from lab request if available
+          assignment_id: assignmentId,
+          borelog_id: labRequest?.borelog_id || sampleLabRequest?.borelog_id || '',
+          sample_id: labRequest?.sample_id || reportData.borehole_no,
+          project_name: labRequest?.borelog?.project_name || reportData.project_name,
+          borehole_no: labRequest?.borelog?.borehole_number || reportData.borehole_no,
+          client: reportData.client,
+          test_date: reportData.date.toISOString(),
+          tested_by: reportData.tested_by,
+          checked_by: reportData.checked_by,
+          approved_by: reportData.approved_by,
+          test_types: testTypes,
+          soil_test_data: soilTestData,
+          rock_test_data: rockTestData,
+          remarks: reportData.review_comments || ''
+        };
+        
+        const response = await labReportVersionControlApi.saveDraft(createData);
+        
+        if (response.data.success) {
+          // Create a mock existing report object with the data from version control API
+          const mockExistingReport = {
+            report_id: response.data.data.report_id,
+            id: response.data.data.report_id, // For compatibility
+            status: response.data.data.status,
+            version_no: response.data.data.version_no,
+            created_at: response.data.data.created_at
+          };
+          
           // Update the existing report with the actual UUID from the backend
-          setExistingReport(response.data.data);
+          setExistingReport(mockExistingReport);
           // Update the URL to include the report_id so the component knows it's in edit mode
           navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
           toast({
@@ -263,6 +336,7 @@ export default function UnifiedLabReportPage() {
          isLoading={isLoading}
          userRole="Lab Engineer"
          isReadOnly={false}
+         requestId={requestId} // Pass the requestId so the form can use it for version history
        />
     </div>
   );
