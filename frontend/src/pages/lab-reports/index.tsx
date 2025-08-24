@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ProtectedRoute } from '@/lib/authComponents';
 import { LabRequest, LabReport } from '@/lib/types';
-import { labTestResultsApi, unifiedLabReportsApi, labReportApi } from '@/lib/api';
+import { unifiedLabReportsApi, labReportApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function LabReportManagement() {

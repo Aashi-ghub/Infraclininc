@@ -3,6 +3,7 @@ import { checkRole } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { validateToken } from '../utils/validateInput';
 
 // Get all unified lab reports (with optional filters)
 export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -351,6 +352,264 @@ export const deleteUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
     });
   } catch (error) {
     logger.error('Error deleting unified lab report:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Approve unified lab report and create final report
+export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Approval Engineer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const reportId = event.pathParameters?.reportId;
+    if (!reportId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Report ID is required'
+      });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { customer_notes } = body;
+
+    // Get user info from token
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = await validateToken(authHeader!) as JwtPayload;
+    if (!payload) {
+      return createResponse(401, {
+        success: false,
+        message: 'Unauthorized: Invalid token',
+        error: 'Invalid token'
+      });
+    }
+
+    // First, get the current report
+    const reportQuery = 'SELECT * FROM unified_lab_reports WHERE report_id = $1';
+    const reportResult = await db.query(reportQuery, [reportId]);
+
+    if (reportResult.length === 0) {
+      return createResponse(404, {
+        success: false,
+        message: 'Unified lab report not found'
+      });
+    }
+
+    const report = reportResult[0];
+
+    // Check if report is in submitted status
+    if (report.status !== 'submitted') {
+      return createResponse(400, {
+        success: false,
+        message: 'Only submitted reports can be approved',
+        error: 'Invalid report status'
+      });
+    }
+
+    // Get the latest version number
+    const versionQuery = 'SELECT MAX(version_no) as latest_version FROM lab_report_versions WHERE report_id = $1';
+    const versionResult = await db.query(versionQuery, [reportId]);
+    const latestVersion = versionResult[0]?.latest_version || 1;
+
+    // Begin transaction
+    await db.query('BEGIN');
+
+    try {
+      // Update the unified lab report status to approved
+      const updateQuery = `
+        UPDATE unified_lab_reports 
+        SET 
+          status = 'approved',
+          approved_at = NOW(),
+          updated_at = NOW()
+        WHERE report_id = $1
+        RETURNING *
+      `;
+      
+      await db.query(updateQuery, [reportId]);
+
+      // Create final report entry
+      const finalReportQuery = `
+        INSERT INTO final_lab_reports (
+          original_report_id,
+          assignment_id,
+          borelog_id,
+          sample_id,
+          project_name,
+          borehole_no,
+          client,
+          test_date,
+          tested_by,
+          checked_by,
+          approved_by,
+          test_types,
+          soil_test_data,
+          rock_test_data,
+          final_version_no,
+          approval_date,
+          approved_by_user_id,
+          customer_notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        RETURNING *
+      `;
+
+      const finalReportValues = [
+        reportId,
+        report.assignment_id,
+        report.borelog_id,
+        report.sample_id,
+        report.project_name,
+        report.borehole_no,
+        report.client,
+        report.test_date,
+        report.tested_by,
+        report.checked_by,
+        report.approved_by,
+        report.test_types,
+        report.soil_test_data,
+        report.rock_test_data,
+        latestVersion,
+        new Date().toISOString(),
+        payload.userId,
+        customer_notes || null
+      ];
+
+      const finalReportResult = await db.query(finalReportQuery, finalReportValues);
+
+      // Commit transaction
+      await db.query('COMMIT');
+
+      logger.info('Lab report approved and final report created', { 
+        reportId, 
+        finalReportId: finalReportResult[0].final_report_id,
+        approvedBy: payload.userId 
+      });
+
+      return createResponse(200, {
+        success: true,
+        message: 'Unified lab report approved successfully',
+        data: {
+          report: report,
+          final_report: finalReportResult[0]
+        }
+      });
+
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      throw error;
+    }
+
+  } catch (error) {
+    logger.error('Error approving unified lab report:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get final lab reports (customer accessible)
+export const getFinalLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer', 'Customer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const queryParams = event.queryStringParameters || {};
+    const { project_name, borehole_no, sample_id, approved_by } = queryParams;
+
+    let query = 'SELECT * FROM final_lab_reports_view WHERE 1=1';
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (project_name) {
+      query += ` AND project_name ILIKE $${paramCount}`;
+      values.push(`%${project_name}%`);
+      paramCount++;
+    }
+
+    if (borehole_no) {
+      query += ` AND borehole_no ILIKE $${paramCount}`;
+      values.push(`%${borehole_no}%`);
+      paramCount++;
+    }
+
+    if (sample_id) {
+      query += ` AND sample_id ILIKE $${paramCount}`;
+      values.push(`%${sample_id}%`);
+      paramCount++;
+    }
+
+    if (approved_by) {
+      query += ` AND approved_by_name ILIKE $${paramCount}`;
+      values.push(`%${approved_by}%`);
+      paramCount++;
+    }
+
+    query += ' ORDER BY approval_date DESC';
+
+    const result = await db.query(query, values);
+
+    return createResponse(200, {
+      success: true,
+      message: 'Final lab reports retrieved successfully',
+      data: result
+    });
+  } catch (error) {
+    logger.error('Error getting final lab reports:', error);
+    return createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get final lab report by ID (customer accessible)
+export const getFinalLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    // Check if user has appropriate role
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer', 'Customer'])(event);
+    if (authError !== null) {
+      return authError;
+    }
+
+    const finalReportId = event.pathParameters?.finalReportId;
+    if (!finalReportId) {
+      return createResponse(400, {
+        success: false,
+        message: 'Final Report ID is required'
+      });
+    }
+
+    const query = 'SELECT * FROM final_lab_reports_view WHERE final_report_id = $1';
+    const result = await db.query(query, [finalReportId]);
+
+    if (result.length === 0) {
+      return createResponse(404, {
+        success: false,
+        message: 'Final lab report not found'
+      });
+    }
+
+    return createResponse(200, {
+      success: true,
+      message: 'Final lab report retrieved successfully',
+      data: result[0]
+    });
+  } catch (error) {
+    logger.error('Error getting final lab report:', error);
     return createResponse(500, {
       success: false,
       message: 'Internal server error',

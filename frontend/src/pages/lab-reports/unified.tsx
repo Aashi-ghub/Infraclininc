@@ -149,6 +149,8 @@ export default function UnifiedLabReportPage() {
         if (response.data.success) {
           // Update the existing report with the actual UUID from the backend
           setExistingReport(response.data.data);
+          // Update the URL to include the report_id so the component knows it's in edit mode
+          navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
           toast({
             title: 'Success',
             description: 'Unified lab report created and submitted successfully!',
@@ -223,6 +225,10 @@ export default function UnifiedLabReportPage() {
         const response = await unifiedLabReportsApi.create(createData);
         
         if (response.data.success) {
+          // Update the existing report with the actual UUID from the backend
+          setExistingReport(response.data.data);
+          // Update the URL to include the report_id so the component knows it's in edit mode
+          navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
           toast({
             title: 'Draft Saved',
             description: 'Unified lab report draft has been created successfully.',

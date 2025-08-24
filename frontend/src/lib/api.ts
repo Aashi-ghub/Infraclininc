@@ -484,46 +484,7 @@ export const boreholesApi = {
     apiClient.delete<ApiResponse<null>>(`/boreholes/${id}`),
 };
 
-// Lab Test Results API
-export const labTestResultsApi = {
-  // Create new lab test result
-  create: (data: {
-    assignment_id: string;
-    sample_id: string;
-    test_type: string;
-    test_date: string;
-    results: any;
-    technician: string;
-    status: 'draft' | 'submitted' | 'approved' | 'rejected';
-    remarks?: string;
-  }) =>
-    apiClient.post<ApiResponse<any>>('/lab-test-results', data),
 
-  // Get lab test result by ID
-  getById: (testId: string) =>
-    apiClient.get<ApiResponse<any>>(`/lab-test-results/${testId}`),
-
-  // Update lab test result
-  update: (testId: string, data: {
-    results?: any;
-    status?: 'draft' | 'submitted' | 'approved' | 'rejected';
-    remarks?: string;
-  }) =>
-    apiClient.put<ApiResponse<any>>(`/lab-test-results/${testId}`, data),
-
-  // Get all lab test results with optional filters
-  getAll: (params?: {
-    status?: string;
-    technician?: string;
-    sample_id?: string;
-    test_type?: string;
-  }) =>
-    apiClient.get<ApiResponse<any[]>>('/lab-test-results', { params }),
-
-  // Delete lab test result
-  delete: (testId: string) =>
-    apiClient.delete<ApiResponse<null>>(`/lab-test-results/${testId}`),
-};
 
 // Unified Lab Reports API
 export const unifiedLabReportsApi = {
