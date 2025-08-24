@@ -10,7 +10,7 @@ import { LabRequest, LabReport, UserRole } from '@/lib/types';
 import SoilLabReportForm from './SoilLabReportForm';
 import RockLabReportForm from './RockLabReportForm';
 import { exportUnifiedLabReportToExcel, UnifiedLabReportData } from '@/lib/labReportExporter';
-import { LabReportVersionControl } from './LabReportVersionControl';
+import { labReportVersionControlApi } from '@/lib/api';
 
 // Helper function to validate UUID format
 const isValidUUID = (uuid: string): boolean => {
@@ -92,6 +92,9 @@ export default function UnifiedLabReportForm({
   const [activeTab, setActiveTab] = useState('general');
   const [currentVersion, setCurrentVersion] = useState(1);
   const [currentStatus, setCurrentStatus] = useState('draft');
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
   const { toast } = useToast();
 
   // Update form data when existingReport changes (e.g., after creation)
@@ -195,23 +198,246 @@ export default function UnifiedLabReportForm({
 
   const completionStatus = getCompletionStatus();
 
+  const loadVersionHistory = async () => {
+    if (!formData.lab_report_id || !isValidUUID(formData.lab_report_id)) {
+      toast({
+        title: 'No Report ID',
+        description: 'Save a draft first to enable version history',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoadingVersions(true);
+    try {
+      const response = await labReportVersionControlApi.getVersionHistory(formData.lab_report_id);
+      if (response.data?.success) {
+        setVersions(response.data.data?.versions || []);
+        setShowVersionHistory(true);
+      } else {
+        toast({
+          title: 'Error',
+          description: response.data?.message || 'Failed to load version history',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading version history:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load version history',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleVersionHistoryClick = () => {
+    if (showVersionHistory) {
+      setShowVersionHistory(false);
+    } else {
+      loadVersionHistory();
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Action Buttons - Moved to Top */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div className="flex gap-2 items-center">
+              <Button variant="outline" onClick={onCancel}>
+                Cancel
+              </Button>
+              {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
+                <Badge variant={formData.report_status === 'Approved' ? 'default' : 'secondary'}>
+                  {formData.report_status}
+                </Badge>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {/* Main Form Actions */}
+              {!isReadOnly && (
+                <>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      // Call the onSaveDraft prop if available, otherwise use onSubmit with draft status
+                      if (onSaveDraft) {
+                        onSaveDraft(formData);
+                      } else {
+                        onSubmit({ ...formData, status: 'draft' });
+                      }
+                    }}
+                    disabled={isLoading}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Draft
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      // Call onSubmit with submitted status
+                      onSubmit({ ...formData, status: 'submitted' });
+                    }}
+                    disabled={isLoading}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Submit for Review
+                  </Button>
+                </>
+              )}
+              
+                             {/* Version History Button - Always show */}
+               <Button 
+                 variant="outline"
+                 onClick={handleVersionHistoryClick}
+                 disabled={loadingVersions}
+               >
+                 <History className="h-4 w-4 mr-2" />
+                 {loadingVersions ? 'Loading...' : showVersionHistory ? 'Hide History' : 'Version History'}
+               </Button>
+              
+              <Button 
+                variant="outline"
+                onClick={handleExportToExcel}
+                disabled={!formData.soil_test_completed && !formData.rock_test_completed}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export to Excel
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  // Preview functionality
+                  toast({
+                    title: 'Preview',
+                    description: 'Preview functionality will be implemented here.',
+                  });
+                }}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Preview Report
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+             </Card>
 
-             {/* Version Control - Only show when we have a valid UUID */}
-       {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
-         <LabReportVersionControl
-           reportId={formData.lab_report_id}
-           currentVersion={currentVersion}
-           currentStatus={currentStatus}
-           onVersionChange={setCurrentVersion}
-           onStatusChange={setCurrentStatus}
-           isReadOnly={isReadOnly}
-           formData={formData}
-         />
+       {/* Version History Section */}
+       {showVersionHistory && (
+         <Card>
+           <CardHeader>
+             <CardTitle className="flex items-center gap-2">
+               <History className="h-5 w-5" />
+               Version History
+             </CardTitle>
+           </CardHeader>
+           <CardContent>
+             {versions.length === 0 ? (
+               <div className="text-center py-8 text-gray-500">
+                 <FileText className="h-12 w-12 mx-auto mb-4" />
+                 <p>No versions found</p>
+                 <p className="text-sm">Save a draft to create your first version</p>
+               </div>
+             ) : (
+               <div className="space-y-4">
+                 {versions.map((version) => (
+                   <div key={version.version_no} className="border rounded-lg p-4">
+                     <div className="flex items-center justify-between mb-2">
+                       <div className="flex items-center gap-2">
+                         <Badge variant="outline">Version {version.version_no}</Badge>
+                         <Badge 
+                           variant={
+                             version.status === 'approved' ? 'default' : 
+                             version.status === 'rejected' ? 'destructive' : 
+                             version.status === 'submitted' ? 'secondary' : 'outline'
+                           }
+                         >
+                           {version.status}
+                         </Badge>
+                         {version.version_no === currentVersion && (
+                           <Badge variant="secondary">Current</Badge>
+                         )}
+                       </div>
+                       <div className="text-sm text-gray-500">
+                         {new Date(version.created_at).toLocaleString()}
+                       </div>
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-2">
+                       <div className="flex items-center gap-2">
+                         <span className="font-medium">Created by:</span>
+                         {version.created_by_name || 'Unknown'}
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <span className="font-medium">Test Types:</span>
+                         {version.test_types?.join(', ') || 'None'}
+                       </div>
+                     </div>
+
+                     {/* Status-specific timestamps */}
+                     {version.submitted_at && (
+                       <div className="text-sm text-blue-600">
+                         Submitted: {new Date(version.submitted_at).toLocaleString()}
+                       </div>
+                     )}
+                     {version.approved_at && (
+                       <div className="text-sm text-green-600">
+                         Approved: {new Date(version.approved_at).toLocaleString()}
+                       </div>
+                     )}
+                     {version.rejected_at && (
+                       <div className="text-sm text-red-600">
+                         Rejected: {new Date(version.rejected_at).toLocaleString()}
+                       </div>
+                     )}
+                     {version.returned_at && (
+                       <div className="text-sm text-orange-600">
+                         Returned: {new Date(version.returned_at).toLocaleString()}
+                       </div>
+                     )}
+
+                     {/* Comments */}
+                     {(version.review_comments || version.rejection_reason || version.comments?.length > 0) && (
+                       <div className="mt-3 pt-3 border-t">
+                         <div className="flex items-center gap-2 mb-2">
+                           <span className="font-medium">Comments</span>
+                         </div>
+                         <div className="space-y-2">
+                           {version.review_comments && (
+                             <div className="text-sm bg-gray-50 p-2 rounded">
+                               {version.review_comments}
+                             </div>
+                           )}
+                           {version.rejection_reason && (
+                             <div className="text-sm bg-red-50 p-2 rounded text-red-700">
+                               <strong>Rejection Reason:</strong> {version.rejection_reason}
+                             </div>
+                           )}
+                           {version.comments?.map((comment: any, index: number) => (
+                             <div key={index} className="text-sm bg-blue-50 p-2 rounded">
+                               <div className="font-medium">{comment.comment_type?.replace('_', ' ').toUpperCase()}</div>
+                               <div>{comment.comment_text}</div>
+                               <div className="text-xs text-gray-500 mt-1">
+                                 {comment.commented_by} - {new Date(comment.commented_at).toLocaleString()}
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 ))}
+               </div>
+             )}
+           </CardContent>
+         </Card>
        )}
 
-      {/* Progress Indicator */}
+       {/* Progress Indicator */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
@@ -368,95 +594,7 @@ export default function UnifiedLabReportForm({
         </CardContent>
       </Card>
 
-             {/* Action Buttons */}
-       <Card>
-         <CardContent className="pt-6">
-           <div className="flex justify-between items-center">
-             <div className="flex gap-2 items-center">
-               <Button variant="outline" onClick={onCancel}>
-                 Cancel
-               </Button>
-               {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
-                 <Badge variant={formData.report_status === 'Approved' ? 'default' : 'secondary'}>
-                   {formData.report_status}
-                 </Badge>
-               )}
-             </div>
-             <div className="flex gap-2">
-               {/* Main Form Actions */}
-               {!isReadOnly && (
-                 <>
-                   <Button 
-                     variant="outline"
-                     onClick={() => {
-                       // Call the onSaveDraft prop if available, otherwise use onSubmit with draft status
-                       if (onSaveDraft) {
-                         onSaveDraft(formData);
-                       } else {
-                         onSubmit({ ...formData, status: 'draft' });
-                       }
-                     }}
-                     disabled={isLoading}
-                   >
-                     <Save className="h-4 w-4 mr-2" />
-                     Save Draft
-                   </Button>
-                   <Button 
-                     variant="outline"
-                     onClick={() => {
-                       // Call onSubmit with submitted status
-                       onSubmit({ ...formData, status: 'submitted' });
-                     }}
-                     disabled={isLoading}
-                   >
-                     <Send className="h-4 w-4 mr-2" />
-                     Submit for Review
-                   </Button>
-                 </>
-               )}
-               
-               {/* Version History Button - Only show when we have a valid UUID */}
-               {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
-                 <Button 
-                   variant="outline"
-                   onClick={() => {
-                     // This will be handled by LabReportVersionControl
-                     toast({
-                       title: 'Version History',
-                       description: 'Use the Version History button in the version control panel above.',
-                     });
-                   }}
-                 >
-                   <History className="h-4 w-4 mr-2" />
-                   Version History
-                 </Button>
-               )}
-               
-               <Button 
-                 variant="outline"
-                 onClick={handleExportToExcel}
-                 disabled={!formData.soil_test_completed && !formData.rock_test_completed}
-               >
-                 <Download className="h-4 w-4 mr-2" />
-                 Export to Excel
-               </Button>
-               <Button 
-                 variant="outline"
-                 onClick={() => {
-                   // Preview functionality
-                   toast({
-                     title: 'Preview',
-                     description: 'Preview functionality will be implemented here.',
-                   });
-                 }}
-               >
-                 <Eye className="h-4 w-4 mr-2" />
-                 Preview Report
-               </Button>
-             </div>
-           </div>
-         </CardContent>
-       </Card>
+
     </div>
   );
 }

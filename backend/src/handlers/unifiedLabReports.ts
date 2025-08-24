@@ -141,6 +141,7 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
     // Log the received data for debugging
     logger.info('Received unified lab report data:', {
+      assignment_id,
       test_types,
       soil_test_data,
       rock_test_data,
@@ -148,6 +149,41 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
       test_types_type: typeof test_types,
       is_test_types_array: Array.isArray(test_types)
     });
+
+    // Handle assignment_id - always try to find a valid assignment
+    let validAssignmentId = null;
+    
+    // First, check if the provided assignment_id is valid (not a dummy UUID)
+    if (assignment_id && 
+        assignment_id !== '00000000-0000-0000-0000-000000000001' && 
+        assignment_id !== '00000000-0000-0000-0000-000000000002') {
+      // Check if this is a valid assignment_id
+      const assignmentCheck = await db.query(
+        'SELECT assignment_id FROM lab_test_assignments WHERE assignment_id = $1',
+        [assignment_id]
+      );
+      
+      if (assignmentCheck.length > 0) {
+        validAssignmentId = assignment_id;
+        logger.info('Found valid assignment_id from provided value:', assignment_id);
+      }
+    }
+    
+    // If no valid assignment found from provided assignment_id, try to find by borelog_id
+    if (!validAssignmentId) {
+      logger.info('Looking for assignment by borelog_id:', borelog_id);
+      const borelogAssignment = await db.query(
+        'SELECT assignment_id FROM lab_test_assignments WHERE borelog_id = $1 LIMIT 1',
+        [borelog_id]
+      );
+      
+      if (borelogAssignment.length > 0) {
+        validAssignmentId = (borelogAssignment[0] as any).assignment_id;
+        logger.info('Found assignment_id by borelog_id:', validAssignmentId);
+      } else {
+        logger.info('No assignment found for borelog_id:', borelog_id);
+      }
+    }
 
     // Ensure arrays are properly formatted for JSONB
     // Always ensure we have valid arrays, even if the input is null/undefined
@@ -161,6 +197,9 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
     // Log the formatted data
     logger.info('Formatted data:', {
+      originalAssignmentId: assignment_id,
+      validAssignmentId,
+      borelog_id,
       formattedTestTypes,
       formattedSoilData,
       formattedRockData,
@@ -177,7 +216,7 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
     `;
 
     const values = [
-      assignment_id || null, // Allow null for drafts
+      validAssignmentId, // Use validated assignment_id
       borelog_id,
       sample_id, 
       borehole_no, 

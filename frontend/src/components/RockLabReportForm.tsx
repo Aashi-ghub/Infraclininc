@@ -67,10 +67,7 @@ interface FormData {
   rock_test_data: RockTestData[];
 
   // Review Section
-  reviewed_by?: string;
-  review_comments?: string;
-  approval_status?: 'Approved' | 'Rejected';
-  approval_date?: Date;
+
 }
 
 const testMethods = [
@@ -128,11 +125,7 @@ export default function RockLabReportForm({
         result: 'Pass'
       }
     ],
-    reviewed_by: existingReport?.approved_by || '',
-    review_comments: existingReport?.rejection_comments || '',
-    approval_status: existingReport?.status === 'Approved' ? 'Approved' : 
-                    existingReport?.status === 'Rejected' ? 'Rejected' : undefined,
-    approval_date: existingReport?.approved_at ? new Date(existingReport.approved_at) : undefined
+    
   });
 
 
@@ -720,70 +713,7 @@ export default function RockLabReportForm({
                </div>
              </div>
 
-            {/* Review Section - Only for Approval Engineers */}
-            {userRole === 'Approval Engineer' && (
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-medium mb-4">Review Section</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="reviewed_by">Reviewed By</Label>
-                    <Input
-                      id="reviewed_by"
-                      value={formData.reviewed_by || 'Prof. David Wilson'}
-                      disabled
-                      className="bg-gray-50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="approval_status">Approval Status</Label>
-                    <Select 
-                      value={formData.approval_status || ''} 
-                      onValueChange={(value) => handleInputChange('approval_status', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Approved">Approved</SelectItem>
-                        <SelectItem value="Rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="approval_date">Approval Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start text-left font-normal"
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.approval_date ? format(formData.approval_date, 'PPP') : 'Pick a date'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={formData.approval_date}
-                          onSelect={(date) => handleInputChange('approval_date', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="review_comments">Review Comments</Label>
-                    <Textarea
-                      id="review_comments"
-                      placeholder="Enter review comments, feedback, or rejection reasons..."
-                      value={formData.review_comments || ''}
-                      onChange={(e) => handleInputChange('review_comments', e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+
 
             {/* Form Actions */}
             <Separator />

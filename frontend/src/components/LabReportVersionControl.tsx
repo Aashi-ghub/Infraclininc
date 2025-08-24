@@ -91,8 +91,13 @@ export function LabReportVersionControl({
   }, [reportId]);
 
   const loadVersionHistory = async () => {
-    // Don't try to load version history if reportId is not a valid UUID
-    if (!reportId || !isValidUUID(reportId)) {
+    // Don't try to load version history if reportId is not provided
+    if (!reportId) {
+      return;
+    }
+    
+    // If reportId is not a valid UUID yet, don't try to load version history
+    if (!isValidUUID(reportId)) {
       return;
     }
     
@@ -344,7 +349,13 @@ export function LabReportVersionControl({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2">
+          {!reportId || !isValidUUID(reportId) ? (
+            <div className="text-center py-4 text-gray-500">
+              <FileText className="h-8 w-8 mx-auto mb-2" />
+              <p>Save a draft first to enable version control</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
             {/* Current Version Info */}
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <FileText className="h-4 w-4" />
@@ -575,7 +586,9 @@ export function LabReportVersionControl({
                 </div>
               </DialogContent>
             </Dialog>
-          </div>
+          )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

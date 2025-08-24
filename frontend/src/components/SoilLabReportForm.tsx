@@ -90,10 +90,7 @@ interface FormData {
     ucs_count: number;
     triaxial_test_count: number;
   };
-  reviewed_by?: string;
-  review_comments?: string;
-  approval_status?: 'Approved' | 'Rejected';
-  approval_date?: Date;
+
 }
 
 const soilTypes = [
@@ -156,11 +153,7 @@ export default function SoilLabReportForm({
       ucs_count: 0,
       triaxial_test_count: 0
     },
-    reviewed_by: existingReport?.approved_by || '',
-    review_comments: existingReport?.rejection_comments || '',
-    approval_status: existingReport?.status === 'Approved' ? 'Approved' : 
-                    existingReport?.status === 'Rejected' ? 'Rejected' : undefined,
-    approval_date: existingReport?.approved_at ? new Date(existingReport.approved_at) : undefined
+
   });
 
   const { toast } = useToast();
@@ -782,69 +775,7 @@ export default function SoilLabReportForm({
         </CardContent>
       </Card>
 
-      {/* Review & Approval */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Review & Approval</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="reviewed_by">Reviewed By</Label>
-            <Input
-              id="reviewed_by"
-              value={formData.reviewed_by}
-              onChange={(e) => handleInputChange('reviewed_by', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter reviewer name"
-            />
-          </div>
-          <div>
-            <Label htmlFor="review_comments">Review Comments</Label>
-            <Textarea
-              id="review_comments"
-              value={formData.review_comments}
-              onChange={(e) => handleInputChange('review_comments', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter review comments"
-            />
-          </div>
-          <div>
-            <Label htmlFor="approval_status">Approval Status</Label>
-            <Select
-              value={formData.approval_status}
-              onValueChange={(value) => handleInputChange('approval_status', value)}
-              disabled={isReadOnly}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Approved">Approved</SelectItem>
-                <SelectItem value="Rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="approval_date">Approval Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start text-left font-normal" disabled={isReadOnly}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {formData.approval_date ? format(formData.approval_date, 'PPP') : 'Pick a date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={formData.approval_date}
-                  onSelect={(date) => handleInputChange('approval_date', date)}
-                  disabled={isReadOnly}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-        </CardContent>
-      </Card>
+
     </div>
   );
 }

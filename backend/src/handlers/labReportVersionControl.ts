@@ -444,11 +444,16 @@ export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): P
       return response;
     }
 
-    // Check if user has access to this report
+    // Check if user has access to this report - more flexible access control
     const accessQuery = `
-      SELECT 1 FROM lab_report_versions lrv
-      JOIN lab_test_assignments lta ON lrv.assignment_id = lta.assignment_id
-      WHERE lrv.report_id = $1 AND (lta.assigned_to = $2 OR $3 = 'Admin')
+      SELECT 1 FROM (
+        SELECT assignment_id FROM lab_report_versions WHERE report_id = $1
+        UNION
+        SELECT assignment_id FROM unified_lab_reports WHERE report_id = $1
+        UNION
+        SELECT created_by_user_id as assignment_id FROM unified_lab_reports WHERE report_id = $1
+      ) combined
+      WHERE combined.assignment_id = $2 OR $3 = 'Admin' OR $3 = 'Lab Engineer' OR $3 = 'Approval Engineer'
     `;
     const accessResult = await db.query(accessQuery, [reportId, payload.userId, payload.role]);
     
