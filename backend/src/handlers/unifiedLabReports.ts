@@ -1,9 +1,16 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { checkRole } from '../utils/validateInput';
+import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
-import { validateToken } from '../utils/validateInput';
+
+// Type definitions
+interface JwtPayload {
+  userId: string;
+  email: string;
+  role: string;
+  name?: string;
+}
 
 // Get all unified lab reports (with optional filters)
 export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -402,7 +409,7 @@ export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Prom
       });
     }
 
-    const report = reportResult[0];
+    const report = reportResult[0] as any;
 
     // Check if report is in submitted status
     if (report.status !== 'submitted') {
@@ -416,7 +423,7 @@ export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Prom
     // Get the latest version number
     const versionQuery = 'SELECT MAX(version_no) as latest_version FROM lab_report_versions WHERE report_id = $1';
     const versionResult = await db.query(versionQuery, [reportId]);
-    const latestVersion = versionResult[0]?.latest_version || 1;
+    const latestVersion = (versionResult[0] as any)?.latest_version || 1;
 
     // Begin transaction
     await db.query('BEGIN');
@@ -488,8 +495,8 @@ export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Prom
 
       logger.info('Lab report approved and final report created', { 
         reportId, 
-        finalReportId: finalReportResult[0].final_report_id,
-        approvedBy: payload.userId 
+        finalReportId: (finalReportResult[0] as any).final_report_id,
+        approvedBy: payload.userId
       });
 
       return createResponse(200, {

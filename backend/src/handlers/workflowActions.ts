@@ -82,7 +82,7 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
       const response = createResponse(400, {
         success: false,
         message: 'Validation error',
-        error: validationResult.error.errors
+        error: validationResult.error.errors.map((err: any) => err.message).join(', ')
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -109,7 +109,7 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
       return response;
     }
 
-    const borelog = borelogResult[0];
+    const borelog = borelogResult[0] as any;
 
     // Check if user has access to this borelog
     let hasAccess = false;
@@ -130,7 +130,7 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
         SELECT 1 FROM user_project_assignments 
         WHERE project_id = $1 AND $2 = ANY(assignee)
       `;
-      const projectAccessResult = await db.query(projectAccessQuery, [borelog.project_id, payload.userId]);
+      const projectAccessResult = await db.query(projectAccessQuery, [(borelog as any).project_id, payload.userId]);
       hasAccess = projectAccessResult.length > 0;
     }
     
@@ -252,7 +252,7 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
       const response = createResponse(400, {
         success: false,
         message: 'Validation error',
-        error: validationResult.error.errors
+        error: validationResult.error.errors.map((err: any) => err.message).join(', ')
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -279,7 +279,7 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
       return response;
     }
 
-    const borelog = borelogResult[0];
+    const borelog = borelogResult[0] as any;
 
     // Update borelog version status based on action
     let newStatus: string;
@@ -426,7 +426,7 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
       const response = createResponse(400, {
         success: false,
         message: 'Validation error',
-        error: validationResult.error.errors
+        error: validationResult.error.errors.map((err: any) => err.message).join(', ')
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -453,14 +453,14 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
       return response;
     }
 
-    const borelog = borelogResult[0];
+    const borelog = borelogResult[0] as any;
 
     // Check if user has access to this project
     const accessQuery = `
       SELECT 1 FROM user_project_assignments 
       WHERE project_id = $1 AND $2 = ANY(assignee)
     `;
-    const accessResult = await db.query(accessQuery, [borelog.project_id, payload.userId]);
+    const accessResult = await db.query(accessQuery, [(borelog as any).project_id, payload.userId]);
     
     if (accessResult.length === 0 && payload.role !== 'Admin') {
       const response = createResponse(403, {
@@ -479,7 +479,7 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
       WHERE borelog_id = $1
     `;
     const versionResult = await db.query(versionQuery, [assignmentData.borelog_id]);
-    const versionNo = versionResult[0]?.latest_version || 1;
+    const versionNo = (versionResult[0] as any)?.latest_version || 1;
 
     // Create lab test assignment in the database
     const insertQuery = `
@@ -507,7 +507,7 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
       'Lab test assignment created via workflow'
     ]);
 
-    const assignmentId = insertResult[0].assignment_id;
+    const assignmentId = (insertResult[0] as any).assignment_id;
 
          // Create individual lab assignments for each sample
      const individualAssignments = [];
@@ -595,7 +595,7 @@ export const submitLabTestResults = async (event: APIGatewayProxyEvent): Promise
       const response = createResponse(400, {
         success: false,
         message: 'Validation error',
-        error: validationResult.error.errors
+        error: validationResult.error.errors.map((err: any) => err.message).join(', ')
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -715,7 +715,7 @@ export const getWorkflowStatus = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-    const workflowStatus = statusResult[0];
+    const workflowStatus = statusResult[0] as any;
 
     // Get lab test assignments for this borelog
     const labTestsQuery = `

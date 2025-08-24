@@ -13,7 +13,7 @@ const pool = new Pool({
 export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin', 'Lab Engineer'])(event);
+    const authError = await checkRole(['Admin', 'Lab Engineer'])(event);
     if (authError) {
       return authError;
     }
@@ -112,7 +112,7 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
 export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin', 'Lab Engineer', 'Project Manager'])(event);
+    const authError = await checkRole(['Admin', 'Lab Engineer', 'Project Manager'])(event);
     if (authError) {
       return authError;
     }

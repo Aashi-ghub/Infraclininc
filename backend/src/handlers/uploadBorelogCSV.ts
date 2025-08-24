@@ -144,14 +144,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   try {
     // Only Project Manager and Admin can upload CSV
-    const authError = checkRole(['Admin', 'Project Manager'])(event);
+    const authError = await checkRole(['Admin', 'Project Manager'])(event);
     if (authError) {
       return authError;
     }
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = validateToken(authHeader!);
+    const payload = await validateToken(authHeader!);
     if (!payload) {
       const response = createResponse(401, {
         success: false,
@@ -200,7 +200,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       
       logger.info(`Parsed ${parsedData.length} rows from CSV`);
       if (parsedData.length > 0) {
-        logger.info('Available columns in first row:', Object.keys(parsedData[0]));
+        logger.info('Available columns in first row:', Object.keys(parsedData[0] as any));
         logger.info('First row sample:', parsedData[0]);
       } else {
         logger.warn('No rows parsed from CSV');
@@ -229,16 +229,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         const csvValidation = NewBorelogCSVSchema.safeParse(row);
         if (!csvValidation.success) {
           logger.error(`Validation failed for row ${rowNumber}:`, {
-            availableColumns: Object.keys(row),
+            availableColumns: Object.keys(row as any),
             expectedColumns: Object.keys(NewBorelogCSVSchema.shape),
             validationErrors: csvValidation.error.errors
           });
           
           errors.push({
             row: rowNumber,
-            borehole_number: row.borehole_number || 'Unknown',
+            borehole_number: (row as any).borehole_number || 'Unknown',
             errors: csvValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`),
-            availableColumns: Object.keys(row)
+            availableColumns: Object.keys(row as any)
           });
           continue;
         }
@@ -277,9 +277,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           water_samples_count: csvData.water_samples_count ? parseInt(csvData.water_samples_count) : 0,
           version_number: csvData.version_number ? parseInt(csvData.version_number) : 1,
           status: mapStatusValue(csvData.status), // Map status to valid enum
-          edited_by: csvData.edited_by || payload.userId,
+          edited_by: csvData.edited_by || (await payload).userId,
           editor_name: csvData.editor_name,
-          created_by_user_id: payload.userId
+          created_by_user_id: (await payload).userId
         };
 
         // Validate foreign keys before attempting to create

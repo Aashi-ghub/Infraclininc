@@ -19,7 +19,7 @@ interface ScalarStratumData {
   borehole_diameter?: number;
 }
 
-interface StratumLayer {
+export interface StratumLayer {
   id: string;
   description: string;
   depth_from_m: number | null;

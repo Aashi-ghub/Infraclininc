@@ -63,13 +63,33 @@ interface JwtPayload {
 
 // Helper function to extract assignment_id from request ID
 const extractAssignmentId = (requestId: string): string | null => {
-  // Request ID format is: assignment_id-index (e.g., "7424ba93-9229-4f56-93aa-053840df0be6-0")
-  const parts = requestId.split('-');
-  if (parts.length < 2) {
+  // Request ID format can be either:
+  // 1. assignment_id-index (e.g., "7424ba93-9229-4f56-93aa-053840df0be6-0")
+  // 2. assignment_id (e.g., "f8bf2120-9a88-456d-a462-0f7535a949b5")
+  
+  if (!requestId || typeof requestId !== 'string') {
     return null;
   }
-  // Remove the last part (index) and join the rest back together
-  return parts.slice(0, -1).join('-');
+  
+  const parts = requestId.split('-');
+  
+  // If it's a complete UUID (5 parts), return it as is
+  if (parts.length === 5) {
+    return requestId;
+  }
+  
+  // If it has more than 5 parts, it's in format assignment_id-index
+  if (parts.length > 5) {
+    // Remove the last part (index) and join the rest back together
+    const assignmentId = parts.slice(0, -1).join('-');
+    // Verify that the extracted part is a valid UUID (5 parts)
+    if (assignmentId.split('-').length === 5) {
+      return assignmentId;
+    }
+  }
+  
+  // Invalid format
+  return null;
 };
 
 // Create new lab request
@@ -122,7 +142,7 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    const borelog = borelogResult[0];
+    const borelog = borelogResult[0] as any;
     const requestId = uuidv4();
     const reportId = uuidv4(); // Create report_id immediately
 
@@ -383,14 +403,24 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       });
     }
 
-    // Extract the actual assignment_id from the request ID
+    // Extract the actual assignment_id from the request ID first
     const assignmentId = extractAssignmentId(requestId);
     
     if (!assignmentId) {
       return createResponse(400, {
         success: false,
         message: 'Invalid request ID format',
-        error: 'Request ID must be in format: assignment_id-index'
+        error: 'Request ID must be either a valid UUID or in format: assignment_id-index'
+      });
+    }
+
+    // Validate the extracted assignment_id is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(assignmentId)) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid assignment ID format',
+        error: `Assignment ID must be a valid UUID. Received: ${assignmentId}`
       });
     }
 
@@ -398,21 +428,38 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       SELECT 
         lta.*,
         p.name as project_name,
-        bd.number as borehole_number,
-        u.name as assigned_by_name,
+        COALESCE(bd.number, 'N/A') as borehole_number,
+        COALESCE(u.name, 'Unknown') as assigned_by_name,
         ulr.report_id
       FROM lab_test_assignments lta
       LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
       LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN borelog_details bd ON lta.borelog_id = bd.borelog_id
+      LEFT JOIN (
+        SELECT DISTINCT ON (borelog_id) borelog_id, number
+        FROM borelog_details 
+        ORDER BY borelog_id, version_no DESC
+      ) bd ON lta.borelog_id = bd.borelog_id
       LEFT JOIN users u ON lta.assigned_by = u.user_id
       LEFT JOIN unified_lab_reports ulr ON lta.assignment_id = ulr.assignment_id
       WHERE lta.assignment_id = $1
     `;
 
-    const result = await db.query(query, [assignmentId]) as LabRequestDetailResult[];
+    logger.info('Executing lab request query:', { assignmentId, query });
     
-    if (result.length === 0) {
+    let result;
+    try {
+      result = await db.query(query, [assignmentId]) as LabRequestDetailResult[];
+    } catch (dbError) {
+      logger.error('Database query error in getLabRequestById:', dbError);
+      return createResponse(500, {
+        success: false,
+        message: 'Database query error',
+        error: 'Failed to execute database query'
+      });
+    }
+    
+    if (!result || result.length === 0) {
+      logger.info('Lab request not found:', { assignmentId });
       return createResponse(404, {
         success: false,
         message: 'Lab request not found',
@@ -421,6 +468,14 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
     }
 
     const row = result[0];
+    logger.info('Lab request data retrieved:', { 
+      assignment_id: row.assignment_id,
+      borelog_id: row.borelog_id,
+      project_name: row.project_name,
+      borehole_number: row.borehole_number,
+      report_id: row.report_id
+    });
+    
     const labRequest = {
       id: row.assignment_id,
       report_id: row.report_id, // Include the report_id
@@ -491,7 +546,17 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       return createResponse(400, {
         success: false,
         message: 'Invalid request ID format',
-        error: 'Request ID must be in format: assignment_id-index'
+        error: 'Request ID must be either a valid UUID or in format: assignment_id-index'
+      });
+    }
+
+    // Validate the extracted assignment_id is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(assignmentId)) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid assignment ID format',
+        error: `Assignment ID must be a valid UUID. Received: ${assignmentId}`
       });
     }
 
@@ -613,7 +678,17 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       return createResponse(400, {
         success: false,
         message: 'Invalid request ID format',
-        error: 'Request ID must be in format: assignment_id-index'
+        error: 'Request ID must be either a valid UUID or in format: assignment_id-index'
+      });
+    }
+
+    // Validate the extracted assignment_id is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(assignmentId)) {
+      return createResponse(400, {
+        success: false,
+        message: 'Invalid assignment ID format',
+        error: `Assignment ID must be a valid UUID. Received: ${assignmentId}`
       });
     }
 

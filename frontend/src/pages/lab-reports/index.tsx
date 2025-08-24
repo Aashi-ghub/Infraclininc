@@ -233,8 +233,8 @@ export default function LabReportManagement() {
                 </CardContent>
               </Card>
             ) : (
-              filteredRequests.map((request) => (
-                <Card key={request.id} className="hover:shadow-md transition-shadow">
+              filteredRequests.map((request, index) => (
+                <Card key={request.id || `request-${index}`} className="hover:shadow-md transition-shadow">
               <CardHeader>
                     <div className="flex justify-between items-start">
                       <div>
@@ -312,8 +312,8 @@ export default function LabReportManagement() {
                 </CardContent>
               </Card>
             ) : (
-              filteredReports.map((report) => (
-                <Card key={report.id} className="hover:shadow-md transition-shadow">
+              filteredReports.map((report, index) => (
+                <Card key={report.id || `report-${index}`} className="hover:shadow-md transition-shadow">
                   <CardHeader>
                     <div className="flex justify-between items-start">
                     <div>
@@ -378,8 +378,8 @@ export default function LabReportManagement() {
                 </CardContent>
               </Card>
             ) : (
-              filteredUnifiedReports.map((report) => (
-                <Card key={report.report_id} className="hover:shadow-md transition-shadow">
+              filteredUnifiedReports.map((report, index) => (
+                <Card key={report.report_id || `unified-report-${index}`} className="hover:shadow-md transition-shadow">
                <CardHeader>
                     <div className="flex justify-between items-start">
                       <div>

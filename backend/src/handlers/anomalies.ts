@@ -12,7 +12,7 @@ const pool = new Pool({
 export const listAnomalies = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
+    const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
     if (authError) {
       return authError;
     }
@@ -105,7 +105,7 @@ export const listAnomalies = async (event: APIGatewayProxyEvent): Promise<APIGat
 export const createAnomaly = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin', 'Engineer'])(event);
+    const authError = await checkRole(['Admin', 'Engineer'])(event);
     if (authError) {
       return authError;
     }
@@ -158,7 +158,7 @@ export const createAnomaly = async (event: APIGatewayProxyEvent): Promise<APIGat
 export const updateAnomaly = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
-    const authError = checkRole(['Admin'])(event);
+    const authError = await checkRole(['Admin'])(event);
     if (authError) {
       return authError;
     }

@@ -9,8 +9,21 @@ import { unifiedLabReportsApi, labReportApi, labReportVersionControlApi } from '
 
 // Helper function to validate UUID format
 const isValidUUID = (uuid: string): boolean => {
+  // Check for complete UUID format (5 parts)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(uuid);
+  if (uuidRegex.test(uuid)) {
+    return true;
+  }
+  
+  // Check for assignment_id-index format (6+ parts)
+  const parts = uuid.split('-');
+  if (parts.length >= 6) {
+    // Check if the first 5 parts form a valid UUID
+    const assignmentId = parts.slice(0, -1).join('-');
+    return uuidRegex.test(assignmentId);
+  }
+  
+  return false;
 };
 
 export default function UnifiedLabReportPage() {
@@ -58,6 +71,17 @@ export default function UnifiedLabReportPage() {
   const loadLabRequest = async () => {
     setIsLoading(true);
     try {
+      // Validate UUID format before making API call
+      if (!isValidUUID(requestId!)) {
+        console.error('Invalid UUID format:', requestId);
+        toast({
+          title: 'Error',
+          description: 'Invalid request ID format. Please check the URL.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const response = await labReportApi.getRequestById(requestId!);
       if (response.data?.success) {
         const labRequestData = response.data.data;
@@ -106,6 +130,29 @@ export default function UnifiedLabReportPage() {
     requested_by: 'Dr. Sarah Johnson',
     test_type: 'Comprehensive Soil & Rock Tests'
   };
+
+  // If we have an invalid UUID, show a helpful message
+  if (requestId && !isValidUUID(requestId)) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="max-w-md mx-auto text-center">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Invalid Request ID</h2>
+            <p className="text-red-600 mb-4">
+              The request ID in the URL is not in the correct format. 
+              Please check the URL and try again.
+            </p>
+            <p className="text-sm text-red-500 mb-4">
+              Received: <code className="bg-red-100 px-2 py-1 rounded">{requestId}</code>
+            </p>
+            <Button onClick={() => navigate('/lab-reports')} variant="outline">
+              Back to Lab Reports
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (reportData: any) => {
     setIsLoading(true);

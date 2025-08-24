@@ -347,9 +347,9 @@ export async function updateGeologicalLog(borelog_id: string, data: Partial<Geol
     // Add each field that needs to be updated
     for (const [key, value] of Object.entries(data)) {
       // Special handling for coordinate field
-      if (key === 'coordinate' && value) {
+      if (key === 'coordinate' && value && typeof value === 'object' && 'coordinates' in value) {
         updateFields.push(`coordinate = ST_SetSRID(ST_Point($${paramIndex}, $${paramIndex + 1}), 4326)`);
-        values.push(value.coordinates[0], value.coordinates[1]);
+        values.push((value as any).coordinates[0], (value as any).coordinates[1]);
         paramIndex += 2;
       }
       // Special handling for size_of_core_pieces_distribution field

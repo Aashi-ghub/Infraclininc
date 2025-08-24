@@ -27,33 +27,42 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
     const body = JSON.parse(event.body || '{}');
     const { report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no, client, test_date, tested_by, checked_by, approved_by, test_types, soil_test_data, rock_test_data, remarks } = body;
 
-    // Validate required fields
-    if (!assignment_id || !borelog_id || !sample_id || !project_name || !borehole_no || !test_date || !tested_by || !checked_by || !approved_by || !test_types) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Missing required fields',
-        error: 'All required fields must be provided'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
+    // Log the received data for debugging
+    logger.info('Received saveLabReportDraft request:', {
+      assignment_id,
+      borelog_id,
+      sample_id,
+      project_name,
+      borehole_no,
+      test_date,
+      tested_by,
+      checked_by,
+      approved_by,
+      test_types,
+      report_id
+    });
+
+    // For drafts, all fields are optional - only validate assignment_id if provided
+    if (assignment_id) {
+      // Check if user has access to this assignment
+      const assignmentQuery = `
+        SELECT 1 FROM lab_test_assignments 
+        WHERE assignment_id = $1 AND assigned_to = $2
+      `;
+      const assignmentResult = await db.query(assignmentQuery, [assignment_id, payload.userId]);
+      
+      if (assignmentResult.length === 0 && payload.role !== 'Admin') {
+        const response = createResponse(403, {
+          success: false,
+          message: 'Access denied: User not assigned to this lab test',
+          error: 'Insufficient permissions'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
     }
 
-    // Check if user has access to this assignment
-    const assignmentQuery = `
-      SELECT 1 FROM lab_test_assignments 
-      WHERE assignment_id = $1 AND assigned_to = $2
-    `;
-    const assignmentResult = await db.query(assignmentQuery, [assignment_id, payload.userId]);
-    
-    if (assignmentResult.length === 0 && payload.role !== 'Admin') {
-      const response = createResponse(403, {
-        success: false,
-        message: 'Access denied: User not assigned to this lab test',
-        error: 'Insufficient permissions'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
+
 
     // Get or create report_id
     let finalReportId = report_id;
@@ -71,9 +80,9 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
       `;
       
       await db.query(createReportQuery, [
-        finalReportId, assignment_id, borelog_id, sample_id, project_name, borehole_no,
-        client, test_date, tested_by, checked_by, approved_by, JSON.stringify(test_types),
-        JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks, payload.userId
+        finalReportId, assignment_id || null, borelog_id || null, sample_id || null, project_name || null, borehole_no || null,
+        client || null, test_date || null, tested_by || null, checked_by || null, approved_by || null, JSON.stringify(test_types || []),
+        JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks || null, payload.userId
       ]);
     }
 
@@ -92,9 +101,9 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
     `;
 
     await db.query(createVersionQuery, [
-      finalReportId, nextVersion, assignment_id, borelog_id, sample_id, project_name, borehole_no,
-      client, test_date, tested_by, checked_by, approved_by, JSON.stringify(test_types),
-      JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks, payload.userId
+      finalReportId, nextVersion, assignment_id || null, borelog_id || null, sample_id || null, project_name || null, borehole_no || null,
+      client || null, test_date || null, tested_by || null, checked_by || null, approved_by || null, JSON.stringify(test_types || []),
+      JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks || null, payload.userId
     ]);
 
     logger.info(`Lab report draft saved by user ${payload.userId}`, {

@@ -17,14 +17,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   try {
     // Only Admin can create projects
-    const authError = checkRole(['Admin'])(event);
+    const authError = await checkRole(['Admin'])(event);
     if (authError) {
       return authError;
     }
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = validateToken(authHeader!);
+    const payload = await validateToken(authHeader!);
     if (!payload) {
       const response = createResponse(401, {
         success: false,

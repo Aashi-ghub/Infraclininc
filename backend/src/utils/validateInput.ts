@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { logger } from './logger';
+import { APIGatewayProxyResult } from 'aws-lambda';
 
 // Add JWT validation imports
 import jwt from 'jsonwebtoken';
@@ -53,7 +54,7 @@ export const hasRole = (userRole: UserRole, requiredRoles: UserRole[]): boolean 
 
 // RBAC middleware function
 export const checkRole = (requiredRoles: UserRole[]) => {
-  return async (event: any) => {
+  return async (event: any): Promise<APIGatewayProxyResult | null> => {
     // Extract authorization header
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
     

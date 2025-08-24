@@ -559,6 +559,14 @@ export const labReportVersionControlApi = {
   // Get specific version
   getVersion: (reportId: string, versionNo: number) => 
     apiClient.get<ApiResponse<any>>(`/lab-reports/${reportId}/version/${versionNo}`),
+
+  // Load specific version data
+  loadVersion: (reportId: string, versionNo: number) => 
+    apiClient.get<ApiResponse<any>>(`/lab-reports/${reportId}/version/${versionNo}/data`),
+
+  // Get modified fields for a version
+  getModifiedFields: (reportId: string, versionNo: number) => 
+    apiClient.get<ApiResponse<any>>(`/lab-reports/${reportId}/version/${versionNo}/changes`),
 };
 
 // Lab Report Management API

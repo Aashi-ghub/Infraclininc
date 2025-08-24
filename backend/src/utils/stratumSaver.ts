@@ -22,7 +22,7 @@ export async function saveStratumData(
       const layerOrder = layerIndex + 1;
 
       // Insert stratum layer
-      const layerResult = await client.query(
+      await client.query(
         `INSERT INTO stratum_layers (
           id,
           borelog_id,

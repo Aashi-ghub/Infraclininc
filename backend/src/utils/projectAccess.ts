@@ -39,7 +39,7 @@ export const checkProjectAccess = (options: ProjectAccessOptions = {}) => {
         const projectQuery = `SELECT project_id FROM projects WHERE name = $1`;
         const projectResult = await db.query(projectQuery, [projectName]);
         if (projectResult.length > 0) {
-          projectId = projectResult[0].project_id;
+          projectId = (projectResult[0] as any).project_id;
         }
       }
 
@@ -146,7 +146,7 @@ export const getAssignedBorelogsForSiteEngineer = async (userId: string): Promis
     `;
     
     const result = await db.query(query, [userId]);
-    return result.map(row => row.borelog_id).filter(Boolean);
+    return result.map((row: any) => row.borelog_id).filter(Boolean);
   } catch (error) {
     logger.error('Error getting assigned borelogs for site engineer:', error);
     return [];
@@ -165,7 +165,7 @@ export const getAssignedSubstructuresForSiteEngineer = async (userId: string): P
     `;
     
     const result = await db.query(query, [userId]);
-    return result.map(row => row.substructure_id);
+    return result.map((row: any) => row.substructure_id);
   } catch (error) {
     logger.error('Error getting assigned substructures for site engineer:', error);
     return [];
@@ -244,10 +244,10 @@ export const getProjectDetailsForSiteEngineer = async (userId: string, projectId
     
     // Group assignments by borelog
     const projectInfo = {
-      project_id: result[0].project_id,
-      name: result[0].name,
-      location: result[0].location,
-      created_at: result[0].created_at,
+      project_id: (result[0] as any).project_id,
+      name: (result[0] as any).name,
+      location: (result[0] as any).location,
+      created_at: (result[0] as any).created_at,
       assignments: result.map((row: any) => ({
         assignment_id: row.assignment_id,
         assigned_at: row.assigned_at,

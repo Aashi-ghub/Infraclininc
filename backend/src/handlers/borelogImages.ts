@@ -14,7 +14,7 @@ const UploadImageSchema = z.object({
 export const uploadImage = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Only Project Manager, Site Engineer, and Admin can upload images
-    const authError = checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
+    const authError = await checkRole(['Admin', 'Project Manager', 'Site Engineer'])(event);
     if (authError) {
       return authError;
     }
@@ -93,7 +93,7 @@ export const getImages = async (event: APIGatewayProxyEvent): Promise<APIGateway
 export const deleteImage = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Only Project Manager and Admin can delete images
-    const authError = checkRole(['Admin', 'Project Manager'])(event);
+    const authError = await checkRole(['Admin', 'Project Manager'])(event);
     if (authError) {
       return authError;
     }

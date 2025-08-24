@@ -14,8 +14,21 @@ import { labReportVersionControlApi } from '@/lib/api';
 
 // Helper function to validate UUID format
 const isValidUUID = (uuid: string): boolean => {
+  // Check for complete UUID format (5 parts)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(uuid);
+  if (uuidRegex.test(uuid)) {
+    return true;
+  }
+  
+  // Check for assignment_id-index format (6+ parts)
+  const parts = uuid.split('-');
+  if (parts.length >= 6) {
+    // Check if the first 5 parts form a valid UUID
+    const assignmentId = parts.slice(0, -1).join('-');
+    return uuidRegex.test(assignmentId);
+  }
+  
+  return false;
 };
 
 interface UnifiedLabReportFormProps {

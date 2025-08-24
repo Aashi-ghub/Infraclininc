@@ -26,14 +26,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   try {
     // Only Approval Engineer and Admin can approve borelogs
-    const authError = checkRole(['Admin', 'Approval Engineer'])(event);
+    const authError = await checkRole(['Admin', 'Approval Engineer'])(event);
     if (authError) {
       return authError;
     }
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = validateToken(authHeader!);
+    const payload = await validateToken(authHeader!);
     if (!payload) {
       const response = createResponse(401, {
         success: false,
