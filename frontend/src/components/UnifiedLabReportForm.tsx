@@ -12,6 +12,12 @@ import RockLabReportForm from './RockLabReportForm';
 import { exportUnifiedLabReportToExcel, UnifiedLabReportData } from '@/lib/labReportExporter';
 import { LabReportVersionControl } from './LabReportVersionControl';
 
+// Helper function to validate UUID format
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 interface UnifiedLabReportFormProps {
   labRequest?: LabRequest;
   existingReport?: LabReport;
@@ -62,7 +68,7 @@ export default function UnifiedLabReportForm({
   isReadOnly = false 
 }: UnifiedLabReportFormProps) {
   const [formData, setFormData] = useState<UnifiedFormData>({
-    lab_report_id: existingReport?.id || `ULR-${Date.now()}`,
+    lab_report_id: existingReport?.report_id || existingReport?.id || '',
     lab_request_id: labRequest?.id || existingReport?.request_id || '',
     project_name: labRequest?.borelog?.project_name || existingReport?.borelog?.project_name || '',
     borehole_no: labRequest?.sample_id || existingReport?.sample_id || '',
@@ -87,6 +93,29 @@ export default function UnifiedLabReportForm({
   const [currentVersion, setCurrentVersion] = useState(1);
   const [currentStatus, setCurrentStatus] = useState('draft');
   const { toast } = useToast();
+
+  // Update form data when existingReport changes (e.g., after creation)
+  useEffect(() => {
+    if (existingReport) {
+      setFormData(prev => ({
+        ...prev,
+        lab_report_id: existingReport.report_id || existingReport.id || prev.lab_report_id,
+        lab_request_id: existingReport.request_id || existingReport.assignment_id || prev.lab_request_id,
+        project_name: existingReport.project_name || prev.project_name,
+        borehole_no: existingReport.borehole_no || existingReport.sample_id || prev.borehole_no,
+        client: existingReport.client || prev.client,
+        date: existingReport.test_date ? new Date(existingReport.test_date) : prev.date,
+        tested_by: existingReport.tested_by || prev.tested_by,
+        checked_by: existingReport.checked_by || prev.checked_by,
+        approved_by: existingReport.approved_by || prev.approved_by,
+        report_status: existingReport.status || prev.report_status,
+        soil_test_data: existingReport.soil_test_data || prev.soil_test_data,
+        rock_test_data: existingReport.rock_test_data || prev.rock_test_data,
+        soil_test_completed: existingReport.soil_test_data && existingReport.soil_test_data.length > 0,
+        rock_test_completed: existingReport.rock_test_data && existingReport.rock_test_data.length > 0
+      }));
+    }
+  }, [existingReport]);
 
   const handleSoilFormSubmit = (soilData: any) => {
     setFormData(prev => ({
@@ -169,8 +198,8 @@ export default function UnifiedLabReportForm({
   return (
     <div className="space-y-6">
 
-             {/* Version Control */}
-       {formData.lab_report_id && (
+             {/* Version Control - Only show when we have a valid UUID */}
+       {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
          <LabReportVersionControl
            reportId={formData.lab_report_id}
            currentVersion={currentVersion}
@@ -251,7 +280,15 @@ export default function UnifiedLabReportForm({
                   <div className="space-y-3">
                     <div>
                       <label className="text-sm font-medium">Report ID</label>
-                      <p className="text-sm text-muted-foreground mt-1">{formData.lab_report_id}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {formData.lab_report_id ? 
+                          (isValidUUID(formData.lab_report_id) ? 
+                            formData.lab_report_id : 
+                            'Will be assigned after saving'
+                          ) : 
+                          'Not assigned yet'
+                        }
+                      </p>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Status</label>

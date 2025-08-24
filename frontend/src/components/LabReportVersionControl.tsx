@@ -26,6 +26,12 @@ import { useToast } from '@/hooks/use-toast';
 import { labReportVersionControlApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
+// Helper function to validate UUID format
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 interface LabReportVersionControlProps {
   reportId: string;
   currentVersion?: number;
@@ -85,6 +91,11 @@ export function LabReportVersionControl({
   }, [reportId]);
 
   const loadVersionHistory = async () => {
+    // Don't try to load version history if reportId is not a valid UUID
+    if (!reportId || !isValidUUID(reportId)) {
+      return;
+    }
+    
     try {
       const response = await labReportVersionControlApi.getVersionHistory(reportId);
       if (response.success) {
@@ -106,6 +117,16 @@ export function LabReportVersionControl({
       toast({
         title: 'Error',
         description: 'No form data available to save',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Don't try to save draft if reportId is not a valid UUID
+    if (!reportId || !isValidUUID(reportId)) {
+      toast({
+        title: 'Error',
+        description: 'Please save the report first before creating versions',
         variant: 'destructive',
       });
       return;
@@ -165,6 +186,16 @@ export function LabReportVersionControl({
 
   // Handle submission for review
   const handleSubmitForReview = async () => {
+    // Don't try to submit if reportId is not a valid UUID
+    if (!reportId || !isValidUUID(reportId)) {
+      toast({
+        title: 'Error',
+        description: 'Please save the report first before submitting for review',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await labReportVersionControlApi.submitForReview({
@@ -199,6 +230,16 @@ export function LabReportVersionControl({
 
   // Handle review actions
   const handleReview = async () => {
+    // Don't try to review if reportId is not a valid UUID
+    if (!reportId || !isValidUUID(reportId)) {
+      toast({
+        title: 'Error',
+        description: 'Invalid report ID',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await labReportVersionControlApi.review(reportId, {
@@ -234,6 +275,16 @@ export function LabReportVersionControl({
 
   // Load specific version
   const handleLoadVersion = async (versionNo: number) => {
+    // Don't try to load version if reportId is not a valid UUID
+    if (!reportId || !isValidUUID(reportId)) {
+      toast({
+        title: 'Error',
+        description: 'Invalid report ID',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       const response = await labReportVersionControlApi.getVersion(reportId, versionNo);
       if (response.success) {

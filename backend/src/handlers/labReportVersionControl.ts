@@ -1,14 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { validateToken } from '../utils/validateInput';
 import { createResponse } from '../types/common';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+import * as db from '../db';
 
 // Save draft version of lab report
 export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -48,9 +43,9 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
       SELECT 1 FROM lab_test_assignments 
       WHERE assignment_id = $1 AND assigned_to = $2
     `;
-    const assignmentResult = await pool.query(assignmentQuery, [assignment_id, payload.userId]);
+    const assignmentResult = await db.query(assignmentQuery, [assignment_id, payload.userId]);
     
-    if (assignmentResult.rows.length === 0 && payload.role !== 'Admin') {
+    if (assignmentResult.length === 0 && payload.role !== 'Admin') {
       const response = createResponse(403, {
         success: false,
         message: 'Access denied: User not assigned to this lab test',
@@ -74,7 +69,7 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       `;
       
-      await pool.query(createReportQuery, [
+      await db.query(createReportQuery, [
         finalReportId, assignment_id, borelog_id, sample_id, project_name, borehole_no,
         client, test_date, tested_by, checked_by, approved_by, JSON.stringify(test_types),
         JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks, payload.userId
@@ -83,8 +78,8 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
 
     // Get next version number
     const versionQuery = `SELECT get_next_lab_report_version($1) as next_version`;
-    const versionResult = await pool.query(versionQuery, [finalReportId]);
-    const nextVersion = versionResult.rows[0].next_version;
+    const versionResult = await db.query(versionQuery, [finalReportId]);
+    const nextVersion = (versionResult[0] as any).next_version;
 
     // Create new version
     const createVersionQuery = `
@@ -95,7 +90,7 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     `;
 
-    await pool.query(createVersionQuery, [
+    await db.query(createVersionQuery, [
       finalReportId, nextVersion, assignment_id, borelog_id, sample_id, project_name, borehole_no,
       client, test_date, tested_by, checked_by, approved_by, JSON.stringify(test_types),
       JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks, payload.userId
@@ -175,9 +170,9 @@ export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Pro
       JOIN lab_test_assignments lta ON lrv.assignment_id = lta.assignment_id
       WHERE lrv.report_id = $1 AND lrv.version_no = $2
     `;
-    const accessResult = await pool.query(accessQuery, [report_id, version_no]);
+    const accessResult = await db.query(accessQuery, [report_id, version_no]);
     
-    if (accessResult.rows.length === 0) {
+    if (accessResult.length === 0) {
       const response = createResponse(404, {
         success: false,
         message: 'Lab report version not found',
@@ -187,7 +182,7 @@ export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Pro
       return response;
     }
 
-    const reportVersion = accessResult.rows[0];
+    const reportVersion = accessResult[0] as any;
     
     if (reportVersion.assigned_to !== payload.userId && payload.role !== 'Admin') {
       const response = createResponse(403, {
@@ -206,7 +201,7 @@ export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Pro
           submitted_at = NOW()
       WHERE report_id = $1 AND version_no = $2
     `;
-    await pool.query(updateQuery, [report_id, version_no]);
+    await db.query(updateQuery, [report_id, version_no]);
 
     // Add submission comment if provided
     if (submission_comments && submission_comments.trim()) {
@@ -215,7 +210,7 @@ export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Pro
           report_id, version_no, comment_type, comment_text, commented_by
         ) VALUES ($1, $2, $3, $4, $5)
       `;
-      await pool.query(commentQuery, [
+      await db.query(commentQuery, [
         report_id, 
         version_no, 
         'approval_comment', 
@@ -307,9 +302,9 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
       SELECT * FROM lab_report_versions 
       WHERE report_id = $1 AND version_no = $2
     `;
-    const reportResult = await pool.query(reportQuery, [reportId, version_no]);
+    const reportResult = await db.query(reportQuery, [reportId, version_no]);
     
-    if (reportResult.rows.length === 0) {
+    if (reportResult.length === 0) {
       const response = createResponse(404, {
         success: false,
         message: 'Lab report version not found',
@@ -319,7 +314,7 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
       return response;
     }
 
-    const reportVersion = reportResult.rows[0];
+    const reportVersion = reportResult[0] as any;
 
     // Update version status based on action
     let updateFields: string;
@@ -351,6 +346,8 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
         `;
         updateParams = ['returned_for_revision', reportId, version_no, payload.userId, review_comments || null];
         break;
+      default:
+        throw new Error('Invalid action');
     }
 
     const updateQuery = `
@@ -358,7 +355,7 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
       SET ${updateFields}
       WHERE report_id = $2 AND version_no = $3
     `;
-    await pool.query(updateQuery, updateParams);
+    await db.query(updateQuery, updateParams);
 
     // Add review comment
     if (review_comments && review_comments.trim()) {
@@ -371,7 +368,7 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
           report_id, version_no, comment_type, comment_text, commented_by
         ) VALUES ($1, $2, $3, $4, $5)
       `;
-      await pool.query(commentQuery, [
+      await db.query(commentQuery, [
         reportId, 
         version_no, 
         commentType, 
@@ -453,9 +450,9 @@ export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): P
       JOIN lab_test_assignments lta ON lrv.assignment_id = lta.assignment_id
       WHERE lrv.report_id = $1 AND (lta.assigned_to = $2 OR $3 = 'Admin')
     `;
-    const accessResult = await pool.query(accessQuery, [reportId, payload.userId, payload.role]);
+    const accessResult = await db.query(accessQuery, [reportId, payload.userId, payload.role]);
     
-    if (accessResult.rows.length === 0) {
+    if (accessResult.length === 0) {
       const response = createResponse(403, {
         success: false,
         message: 'Access denied: User not assigned to this lab test',
@@ -489,14 +486,14 @@ export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): P
       ORDER BY lrv.version_no DESC
     `;
     
-    const historyResult = await pool.query(historyQuery, [reportId]);
+    const historyResult = await db.query(historyQuery, [reportId]);
 
     const response = createResponse(200, {
       success: true,
       message: 'Lab report version history retrieved successfully',
       data: {
         report_id: reportId,
-        versions: historyResult.rows
+        versions: historyResult
       }
     });
 
@@ -555,9 +552,9 @@ export const getLabReportVersion = async (event: APIGatewayProxyEvent): Promise<
       JOIN lab_test_assignments lta ON lrv.assignment_id = lta.assignment_id
       WHERE lrv.report_id = $1 AND lrv.version_no = $2 AND (lta.assigned_to = $3 OR $4 = 'Admin')
     `;
-    const accessResult = await pool.query(accessQuery, [reportId, versionNo, payload.userId, payload.role]);
+    const accessResult = await db.query(accessQuery, [reportId, versionNo, payload.userId, payload.role]);
     
-    if (accessResult.rows.length === 0) {
+    if (accessResult.length === 0) {
       const response = createResponse(403, {
         success: false,
         message: 'Access denied: User not assigned to this lab test',
@@ -590,9 +587,9 @@ export const getLabReportVersion = async (event: APIGatewayProxyEvent): Promise<
       GROUP BY lrv.report_id, lrv.version_no, u.name, u2.name
     `;
     
-    const versionResult = await pool.query(versionQuery, [reportId, versionNo]);
+    const versionResult = await db.query(versionQuery, [reportId, versionNo]);
 
-    if (versionResult.rows.length === 0) {
+    if (versionResult.length === 0) {
       const response = createResponse(404, {
         success: false,
         message: 'Lab report version not found',
@@ -605,7 +602,7 @@ export const getLabReportVersion = async (event: APIGatewayProxyEvent): Promise<
     const response = createResponse(200, {
       success: true,
       message: 'Lab report version retrieved successfully',
-      data: versionResult.rows[0]
+      data: versionResult[0]
     });
 
     logResponse(response, Date.now() - startTime);

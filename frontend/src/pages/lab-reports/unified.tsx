@@ -104,11 +104,13 @@ export default function UnifiedLabReportPage() {
         const response = await unifiedLabReportsApi.create(createData);
         
         if (response.data.success) {
+          // Update the existing report with the actual UUID from the backend
+          setExistingReport(response.data.data);
           toast({
             title: 'Success',
             description: 'Unified lab report created and submitted successfully!',
           });
-          navigate('/lab-reports');
+          // Don't navigate away, stay on the form to allow further editing
         } else {
           throw new Error(response.data.message || 'Failed to create report');
         }
