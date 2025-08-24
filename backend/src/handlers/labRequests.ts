@@ -5,6 +5,61 @@ import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
 
+// Type definitions for database results
+interface BorelogResult {
+  borelog_id: string;
+  project_name: string;
+  borehole_number: string;
+  chainage_km?: string;
+}
+
+interface LabAssignmentResult {
+  assignment_id: string;
+  borelog_id: string;
+  sample_ids: string[];
+  assigned_to: string;
+  priority: string;
+  due_date: string | null;
+  assigned_at: string;
+  assigned_by: string;
+  notes: string | null;
+  project_name: string;
+  borehole_number: string;
+  assigned_by_name: string;
+  assigned_lab_engineer_name: string;
+}
+
+interface LabRequestDetailResult {
+  assignment_id: string;
+  borelog_id: string;
+  sample_ids: string[];
+  assigned_to: string;
+  priority: string;
+  due_date: string | null;
+  assigned_at: string;
+  assigned_by: string;
+  notes: string | null;
+  project_name: string;
+  borehole_number: string;
+  assigned_by_name: string;
+}
+
+interface FinalBorelogResult {
+  borelog_id: string;
+  borehole_number: string;
+  created_at: string;
+  project_name: string;
+  project_location: string;
+  version_no: number;
+}
+
+interface JwtPayload {
+  userId: string;
+  email: string;
+  role: string;
+  name?: string;
+}
+
 // Create new lab request
 export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -16,7 +71,7 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -45,7 +100,7 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
       WHERE b.borelog_id = $1
     `;
-    const borelogResult = await db.query(borelogQuery, [body.borelog_id]);
+    const borelogResult = await db.query(borelogQuery, [body.borelog_id]) as BorelogResult[];
     
     if (borelogResult.length === 0) {
       return createResponse(404, {
@@ -79,7 +134,7 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
       body.notes || null
     ];
 
-    const result = await db.query(createQuery, values);
+    const result = await db.query(createQuery, values) as LabAssignmentResult[];
     
     logger.info('Lab request created successfully', { requestId, borelogId: body.borelog_id });
 
@@ -125,7 +180,7 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -180,12 +235,12 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
 
     query += ` ORDER BY lta.assigned_at DESC`;
 
-    const result = await db.query(query, queryParams);
+    const result = await db.query(query, queryParams) as LabAssignmentResult[];
 
     // Create separate lab request entries for each sample ID in the array
-    const labRequests = [];
+    const labRequests: any[] = [];
     
-    result.forEach(row => {
+    result.forEach((row: LabAssignmentResult) => {
       const sampleIds = row.sample_ids || [];
       
       if (sampleIds.length === 0) {
@@ -261,7 +316,7 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -293,7 +348,7 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
       WHERE lta.assignment_id = $1
     `;
 
-    const result = await db.query(query, [requestId]);
+    const result = await db.query(query, [requestId]) as LabRequestDetailResult[];
     
     if (result.length === 0) {
       return createResponse(404, {
@@ -348,7 +403,7 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -459,7 +514,7 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -521,7 +576,7 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
 
     // Get user info from token
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    const payload = await validateToken(authHeader!);
+    const payload = await validateToken(authHeader!) as JwtPayload;
     if (!payload) {
       return createResponse(401, {
         success: false,
@@ -572,7 +627,7 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
 
     let result;
     try {
-      result = await db.query(query, queryParams);
+      result = await db.query(query, queryParams) as FinalBorelogResult[];
     } catch (dbError) {
       logger.error('Database query error in getFinalBorelogs:', dbError);
       return createResponse(500, {
@@ -591,7 +646,7 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    const finalBorelogs = result.map(row => ({
+    const finalBorelogs = result.map((row: FinalBorelogResult) => ({
       borelog_id: row.borelog_id,
       borehole_number: row.borehole_number,
       project_name: row.project_name,
