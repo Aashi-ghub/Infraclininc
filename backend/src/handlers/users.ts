@@ -19,8 +19,8 @@ export const listUsers = async (event: APIGatewayProxyEvent): Promise<APIGateway
   logRequest(event, { awsRequestId: 'local' });
 
   try {
-    // Only Admin can list all users
-    const authError = checkRole(['Admin'])(event);
+    // Allow Admin and Project Manager to list users
+    const authError = await checkRole(['Admin', 'Project Manager'])(event);
     if (authError) {
       return authError;
     }
@@ -66,13 +66,66 @@ export const listUsers = async (event: APIGatewayProxyEvent): Promise<APIGateway
   }
 };
 
+export const getLabEngineers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  logRequest(event, { awsRequestId: 'local' });
+
+  try {
+    // Allow Admin and Project Manager to get lab engineers
+    const authError = await checkRole(['Admin', 'Project Manager'])(event);
+    if (authError) {
+      return authError;
+    }
+
+    // Query lab engineers from database
+    const rows = await db.query<User>(
+      `SELECT 
+        user_id,
+        name,
+        email,
+        role,
+        organisation_id,
+        customer_id,
+        created_at
+      FROM users
+      WHERE role = 'Lab Engineer'
+      ORDER BY name ASC`
+    );
+
+    const labEngineers = rows.map(user => ({
+      ...user,
+      created_at: new Date(user.created_at)
+    }));
+
+    const response = createResponse(200, {
+      success: true,
+      message: 'Lab engineers retrieved successfully',
+      data: labEngineers
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  } catch (error) {
+    logger.error('Error retrieving lab engineers:', error);
+    
+    const response = createResponse(500, {
+      success: false,
+      message: 'Internal server error',
+      error: 'Failed to retrieve lab engineers'
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+  }
+};
+
 export const getUserById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
   try {
     // Only Admin can get user details
-    const authError = checkRole(['Admin'])(event);
+    const authError = await checkRole(['Admin'])(event);
     if (authError) {
       return authError;
     }

@@ -125,11 +125,9 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
   const loadLabEngineers = async () => {
     setIsLoadingEngineers(true);
     try {
-      const response = await userApi.list();
+      const response = await userApi.getLabEngineers();
       if (response.data?.success) {
-        const allUsers = response.data.data || [];
-        const engineers = allUsers.filter((user: any) => user.role === 'Lab Engineer');
-        setLabEngineers(engineers);
+        setLabEngineers(response.data.data || []);
       }
     } catch (error) {
       console.error('Error fetching lab engineers:', error);
@@ -196,7 +194,7 @@ export default function LabRequestForm({ onSubmit, onCancel, isLoading = false }
       borelog_id: formData.borelog_id,
       sample_id: formData.sample_id,
       test_type: 'Standard Lab Test', // Default test type
-      priority: 'medium', // Default priority
+      priority: 'Medium', // Default priority
       due_date: formData.due_date || undefined,
       notes: formData.notes,
       requested_by: user?.name || user?.email || 'Unknown',

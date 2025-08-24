@@ -260,6 +260,7 @@ export const borelogAssignmentApi = {
 export const userApi = {
   list: () => apiClient.get('/users'),
   getById: (id: string) => apiClient.get(`/users/${id}`),
+  getLabEngineers: () => apiClient.get('/users/lab-engineers'),
 };
 
 export const authApi = {

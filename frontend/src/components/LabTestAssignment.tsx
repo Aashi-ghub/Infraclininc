@@ -53,11 +53,8 @@ export function LabTestAssignment({
 
   const loadLabEngineers = async () => {
     try {
-      const response = await userApi.list();
-      const engineers = response.data.data.filter(
-        (user: User) => user.role === 'Lab Engineer'
-      );
-      setLabEngineers(engineers);
+      const response = await userApi.getLabEngineers();
+      setLabEngineers(response.data.data || []);
     } catch (error) {
       console.error('Failed to load lab engineers:', error);
       toast({

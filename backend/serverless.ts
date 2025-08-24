@@ -652,6 +652,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    getLabEngineers: {
+      handler: 'src/handlers/users.getLabEngineers',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/users/lab-engineers',
+            cors: true
+          }
+        }
+      ]
+    },
     
     // Anomalies endpoints
     listAnomalies: {

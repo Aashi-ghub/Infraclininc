@@ -134,11 +134,9 @@ export default function CreateLabTest() {
   const fetchLabEngineers = async () => {
     setIsLoadingEngineers(true);
     try {
-      const response = await userApi.list();
+      const response = await userApi.getLabEngineers();
       if (response.data?.success) {
-        const allUsers = response.data.data || [];
-        const engineers = allUsers.filter((user: any) => user.role === 'Lab Engineer');
-        setLabEngineers(engineers);
+        setLabEngineers(response.data.data || []);
       }
     } catch (error) {
       console.error('Error fetching lab engineers:', error);
