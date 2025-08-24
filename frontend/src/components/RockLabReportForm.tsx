@@ -151,6 +151,18 @@ export default function RockLabReportForm({
     }));
   };
 
+  // Helper function to safely parse float values
+  const safeParseFloat = (value: string): number => {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Helper function to safely parse integer values
+  const safeParseInt = (value: string): number => {
+    const parsed = parseInt(value);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const addTestDataRow = () => {
     const newRow: RockTestData = {
       sample_no: `${formData.rock_test_data.length + 1}`,
@@ -350,7 +362,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.depth_m}
-                              onChange={(e) => handleTestDataChange(index, 'depth_m', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'depth_m', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -376,7 +388,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.length_mm}
-                              onChange={(e) => handleTestDataChange(index, 'length_mm', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'length_mm', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -386,7 +398,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.diameter_mm}
-                              onChange={(e) => handleTestDataChange(index, 'diameter_mm', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'diameter_mm', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -396,7 +408,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.weight_g}
-                              onChange={(e) => handleTestDataChange(index, 'weight_g', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'weight_g', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -406,7 +418,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.001"
                               value={row.density_g_cm3}
-                              onChange={(e) => handleTestDataChange(index, 'density_g_cm3', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'density_g_cm3', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -416,7 +428,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.moisture_content_percent}
-                              onChange={(e) => handleTestDataChange(index, 'moisture_content_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'moisture_content_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -426,7 +438,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.water_absorption_percent}
-                              onChange={(e) => handleTestDataChange(index, 'water_absorption_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'water_absorption_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -436,7 +448,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.porosity_percent}
-                              onChange={(e) => handleTestDataChange(index, 'porosity_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'porosity_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -503,7 +515,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.weight_in_air_g}
-                              onChange={(e) => handleTestDataChange(index, 'weight_in_air_g', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'weight_in_air_g', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -513,7 +525,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.weight_in_water_g}
-                              onChange={(e) => handleTestDataChange(index, 'weight_in_water_g', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'weight_in_water_g', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -523,7 +535,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.weight_saturated_g}
-                              onChange={(e) => handleTestDataChange(index, 'weight_saturated_g', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'weight_saturated_g', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -533,7 +545,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.001"
                               value={row.density_g_cm3}
-                              onChange={(e) => handleTestDataChange(index, 'density_g_cm3', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'density_g_cm3', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -543,7 +555,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.moisture_content_percent}
-                              onChange={(e) => handleTestDataChange(index, 'moisture_content_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'moisture_content_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -553,7 +565,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.water_absorption_percent}
-                              onChange={(e) => handleTestDataChange(index, 'water_absorption_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'water_absorption_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -563,7 +575,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.porosity_percent}
-                              onChange={(e) => handleTestDataChange(index, 'porosity_percent', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'porosity_percent', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -573,7 +585,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.volume_water_displaced_cm3}
-                              onChange={(e) => handleTestDataChange(index, 'volume_water_displaced_cm3', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'volume_water_displaced_cm3', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -620,7 +632,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.length_mm}
-                              onChange={(e) => handleTestDataChange(index, 'length_mm', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'length_mm', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -630,7 +642,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.diameter_mm}
-                              onChange={(e) => handleTestDataChange(index, 'diameter_mm', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'diameter_mm', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -640,7 +652,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.failure_load_kn}
-                              onChange={(e) => handleTestDataChange(index, 'failure_load_kn', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'failure_load_kn', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -650,7 +662,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.point_load_index_mpa}
-                              onChange={(e) => handleTestDataChange(index, 'point_load_index_mpa', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'point_load_index_mpa', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -660,7 +672,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.1"
                               value={row.uniaxial_compressive_strength_mpa}
-                              onChange={(e) => handleTestDataChange(index, 'uniaxial_compressive_strength_mpa', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'uniaxial_compressive_strength_mpa', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -670,7 +682,7 @@ export default function RockLabReportForm({
                               type="number"
                               step="0.01"
                               value={row.brazilian_tensile_strength_mpa}
-                              onChange={(e) => handleTestDataChange(index, 'brazilian_tensile_strength_mpa', parseFloat(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'brazilian_tensile_strength_mpa', safeParseFloat(e.target.value))}
                               disabled={isReadOnly}
                               className="w-20"
                             />
@@ -679,7 +691,7 @@ export default function RockLabReportForm({
                             <Input
                               type="number"
                               value={row.test_count}
-                              onChange={(e) => handleTestDataChange(index, 'test_count', parseInt(e.target.value))}
+                              onChange={(e) => handleTestDataChange(index, 'test_count', safeParseInt(e.target.value))}
                               disabled={isReadOnly}
                               className="w-16"
                             />

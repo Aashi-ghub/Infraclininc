@@ -189,6 +189,18 @@ export default function SoilLabReportForm({
     }));
   };
 
+  // Helper function to safely parse float values
+  const safeParseFloat = (value: string): number => {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Helper function to safely parse integer values
+  const safeParseInt = (value: string): number => {
+    const parsed = parseInt(value);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const addTestDataRow = () => {
     const newRow: SoilTestData = {
       sample_no: `Sample ${formData.soil_test_data.length + 1}`,
@@ -314,7 +326,7 @@ export default function SoilLabReportForm({
               type="number"
               step="0.001"
               value={formData.coordinates_e}
-              onChange={(e) => handleInputChange('coordinates_e', parseFloat(e.target.value))}
+              onChange={(e) => handleInputChange('coordinates_e', safeParseFloat(e.target.value))}
               disabled={isReadOnly}
               placeholder="E.g., 529303.065"
             />
@@ -326,7 +338,7 @@ export default function SoilLabReportForm({
               type="number"
               step="0.001"
               value={formData.coordinates_n}
-              onChange={(e) => handleInputChange('coordinates_n', parseFloat(e.target.value))}
+              onChange={(e) => handleInputChange('coordinates_n', safeParseFloat(e.target.value))}
               disabled={isReadOnly}
               placeholder="E.g., 2469991.452"
             />
@@ -358,7 +370,7 @@ export default function SoilLabReportForm({
               type="number"
               step="0.001"
               value={formData.chainage_km}
-              onChange={(e) => handleInputChange('chainage_km', parseFloat(e.target.value))}
+              onChange={(e) => handleInputChange('chainage_km', safeParseFloat(e.target.value))}
               disabled={isReadOnly}
               placeholder="E.g., 2325"
             />
@@ -380,7 +392,7 @@ export default function SoilLabReportForm({
               type="number"
               step="0.01"
               value={formData.standing_water_level}
-              onChange={(e) => handleInputChange('standing_water_level', parseFloat(e.target.value))}
+              onChange={(e) => handleInputChange('standing_water_level', safeParseFloat(e.target.value))}
               disabled={isReadOnly}
               placeholder="E.g., 1.20"
             />
@@ -493,7 +505,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="0.01"
                         value={sample.sample_depth}
-                        onChange={(e) => handleTestDataChange(index, 'sample_depth', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'sample_depth', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="Depth"
                       />
@@ -503,7 +515,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="1"
                         value={sample.observed_n_value || ''}
-                        onChange={(e) => handleTestDataChange(index, 'observed_n_value', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'observed_n_value', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="N Value"
                       />
@@ -513,7 +525,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="1"
                         value={sample.corrected_n_value || ''}
-                        onChange={(e) => handleTestDataChange(index, 'corrected_n_value', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'corrected_n_value', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="N Value"
                       />
@@ -549,7 +561,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="0.01"
                         value={sample.moisture_content}
-                        onChange={(e) => handleTestDataChange(index, 'moisture_content', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'moisture_content', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="MC %"
                       />
@@ -559,7 +571,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="0.001"
                         value={sample.bulk_density}
-                        onChange={(e) => handleTestDataChange(index, 'bulk_density', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'bulk_density', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="γb"
                       />
@@ -569,7 +581,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="0.001"
                         value={sample.dry_density}
-                        onChange={(e) => handleTestDataChange(index, 'dry_density', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'dry_density', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="γd"
                       />
@@ -579,7 +591,7 @@ export default function SoilLabReportForm({
                         type="number"
                         step="0.01"
                         value={sample.specific_gravity}
-                        onChange={(e) => handleTestDataChange(index, 'specific_gravity', parseFloat(e.target.value))}
+                        onChange={(e) => handleTestDataChange(index, 'specific_gravity', safeParseFloat(e.target.value))}
                         disabled={isReadOnly}
                         placeholder="G"
                       />
@@ -617,7 +629,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.nmc_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  nmc_count: parseInt(e.target.value)
+                  nmc_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -629,7 +641,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.dry_density_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  dry_density_count: parseInt(e.target.value)
+                  dry_density_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -641,7 +653,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.liquid_limit_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  liquid_limit_count: parseInt(e.target.value)
+                  liquid_limit_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -653,7 +665,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.plastic_limit_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  plastic_limit_count: parseInt(e.target.value)
+                  plastic_limit_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -665,7 +677,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.shrinkage_limit_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  shrinkage_limit_count: parseInt(e.target.value)
+                  shrinkage_limit_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -677,7 +689,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.specific_gravity_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  specific_gravity_count: parseInt(e.target.value)
+                  specific_gravity_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -689,7 +701,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.sieve_analysis_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  sieve_analysis_count: parseInt(e.target.value)
+                  sieve_analysis_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -701,7 +713,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.hydrometer_test_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  hydrometer_test_count: parseInt(e.target.value)
+                  hydrometer_test_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -713,7 +725,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.direct_shear_test_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  direct_shear_test_count: parseInt(e.target.value)
+                  direct_shear_test_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -725,7 +737,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.natural_density_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  natural_density_count: parseInt(e.target.value)
+                  natural_density_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -737,7 +749,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.consolidation_test_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  consolidation_test_count: parseInt(e.target.value)
+                  consolidation_test_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -749,7 +761,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.ucs_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  ucs_count: parseInt(e.target.value)
+                  ucs_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />
@@ -761,7 +773,7 @@ export default function SoilLabReportForm({
                 value={formData.test_summary.triaxial_test_count}
                 onChange={(e) => handleInputChange('test_summary', {
                   ...formData.test_summary,
-                  triaxial_test_count: parseInt(e.target.value)
+                  triaxial_test_count: safeParseInt(e.target.value)
                 })}
                 disabled={isReadOnly}
               />

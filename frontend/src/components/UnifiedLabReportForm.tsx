@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Save, Send, Download, Eye, FlaskConical, Mountain, FileText, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Send, Download, Eye, FlaskConical, Mountain, FileText, CheckCircle, AlertCircle, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { LabRequest, LabReport, UserRole } from '@/lib/types';
 import SoilLabReportForm from './SoilLabReportForm';
@@ -368,41 +368,95 @@ export default function UnifiedLabReportForm({
         </CardContent>
       </Card>
 
-      {/* Action Buttons */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-center">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onCancel}>
-                Cancel
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline"
-                onClick={handleExportToExcel}
-                disabled={!formData.soil_test_completed && !formData.rock_test_completed}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export to Excel
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  // Preview functionality
-                  toast({
-                    title: 'Preview',
-                    description: 'Preview functionality will be implemented here.',
-                  });
-                }}
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                Preview Report
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+             {/* Action Buttons */}
+       <Card>
+         <CardContent className="pt-6">
+           <div className="flex justify-between items-center">
+             <div className="flex gap-2 items-center">
+               <Button variant="outline" onClick={onCancel}>
+                 Cancel
+               </Button>
+               {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
+                 <Badge variant={formData.report_status === 'Approved' ? 'default' : 'secondary'}>
+                   {formData.report_status}
+                 </Badge>
+               )}
+             </div>
+             <div className="flex gap-2">
+               {/* Main Form Actions */}
+               {!isReadOnly && (
+                 <>
+                   <Button 
+                     variant="outline"
+                     onClick={() => {
+                       // Call the onSaveDraft prop if available, otherwise use onSubmit with draft status
+                       if (onSaveDraft) {
+                         onSaveDraft(formData);
+                       } else {
+                         onSubmit({ ...formData, status: 'draft' });
+                       }
+                     }}
+                     disabled={isLoading}
+                   >
+                     <Save className="h-4 w-4 mr-2" />
+                     Save Draft
+                   </Button>
+                   <Button 
+                     variant="outline"
+                     onClick={() => {
+                       // Call onSubmit with submitted status
+                       onSubmit({ ...formData, status: 'submitted' });
+                     }}
+                     disabled={isLoading}
+                   >
+                     <Send className="h-4 w-4 mr-2" />
+                     Submit for Review
+                   </Button>
+                 </>
+               )}
+               
+               {/* Version History Button - Only show when we have a valid UUID */}
+               {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
+                 <Button 
+                   variant="outline"
+                   onClick={() => {
+                     // This will be handled by LabReportVersionControl
+                     toast({
+                       title: 'Version History',
+                       description: 'Use the Version History button in the version control panel above.',
+                     });
+                   }}
+                 >
+                   <History className="h-4 w-4 mr-2" />
+                   Version History
+                 </Button>
+               )}
+               
+               <Button 
+                 variant="outline"
+                 onClick={handleExportToExcel}
+                 disabled={!formData.soil_test_completed && !formData.rock_test_completed}
+               >
+                 <Download className="h-4 w-4 mr-2" />
+                 Export to Excel
+               </Button>
+               <Button 
+                 variant="outline"
+                 onClick={() => {
+                   // Preview functionality
+                   toast({
+                     title: 'Preview',
+                     description: 'Preview functionality will be implemented here.',
+                   });
+                 }}
+               >
+                 <Eye className="h-4 w-4 mr-2" />
+                 Preview Report
+               </Button>
+             </div>
+           </div>
+         </CardContent>
+       </Card>
     </div>
   );
 }

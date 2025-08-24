@@ -121,17 +121,78 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
     }
 
     const body = JSON.parse(event.body || '{}');
-    const { sample_id, borehole_no, project_name, test_types, soil_test_data, rock_test_data, tested_by, status, remarks } = body;
+    const { 
+      assignment_id,
+      borelog_id,
+      sample_id, 
+      borehole_no, 
+      project_name, 
+      client,
+      test_date,
+      tested_by,
+      checked_by,
+      approved_by,
+      test_types, 
+      soil_test_data, 
+      rock_test_data, 
+      status, 
+      remarks 
+    } = body;
+
+    // Log the received data for debugging
+    logger.info('Received unified lab report data:', {
+      test_types,
+      soil_test_data,
+      rock_test_data,
+      status,
+      test_types_type: typeof test_types,
+      is_test_types_array: Array.isArray(test_types)
+    });
+
+    // Ensure arrays are properly formatted for JSONB
+    // Always ensure we have valid arrays, even if the input is null/undefined
+    // Convert to JSON string to ensure proper JSONB format
+    const formattedTestTypes = Array.isArray(test_types) ? JSON.stringify(test_types) : '[]';
+    const formattedSoilData = Array.isArray(soil_test_data) ? JSON.stringify(soil_test_data) : '[]';
+    const formattedRockData = Array.isArray(rock_test_data) ? JSON.stringify(rock_test_data) : '[]';
+    
+    // Additional validation: ensure status is valid
+    const validStatus = status && ['draft', 'submitted', 'approved', 'rejected'].includes(status) ? status : 'draft';
+
+    // Log the formatted data
+    logger.info('Formatted data:', {
+      formattedTestTypes,
+      formattedSoilData,
+      formattedRockData,
+      status: validStatus
+    });
 
     const query = `
       INSERT INTO unified_lab_reports (
-        sample_id, borehole_no, project_name, test_types, 
-        soil_test_data, rock_test_data, tested_by, status, remarks
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        assignment_id, borelog_id, sample_id, borehole_no, project_name, client,
+        test_date, tested_by, checked_by, approved_by, test_types, 
+        soil_test_data, rock_test_data, status, remarks
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
     `;
 
-    const values = [sample_id, borehole_no, project_name, test_types, soil_test_data, rock_test_data, tested_by, status || 'draft', remarks];
+    const values = [
+      assignment_id || null, // Allow null for drafts
+      borelog_id,
+      sample_id, 
+      borehole_no, 
+      project_name, 
+      client,
+      test_date,
+      tested_by,
+      checked_by,
+      approved_by,
+      formattedTestTypes, 
+      formattedSoilData, 
+      formattedRockData, 
+      validStatus, 
+      remarks
+    ];
 
     const result = await db.query(query, values);
 
@@ -170,6 +231,12 @@ export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
     const body = JSON.parse(event.body || '{}');
     const { soil_test_data, rock_test_data, test_types, status, remarks, rejection_reason } = body;
 
+    // Ensure arrays are properly formatted for JSONB
+    // Convert to JSON string to ensure proper JSONB format
+    const formattedTestTypes = Array.isArray(test_types) ? JSON.stringify(test_types) : undefined;
+    const formattedSoilData = Array.isArray(soil_test_data) ? JSON.stringify(soil_test_data) : undefined;
+    const formattedRockData = Array.isArray(rock_test_data) ? JSON.stringify(rock_test_data) : undefined;
+
     const query = `
       UPDATE unified_lab_reports 
       SET 
@@ -184,7 +251,7 @@ export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
       RETURNING *
     `;
 
-    const values = [reportId, soil_test_data, rock_test_data, test_types, status, remarks, rejection_reason];
+    const values = [reportId, formattedSoilData, formattedRockData, formattedTestTypes, status, remarks, rejection_reason];
 
     const result = await db.query(query, values);
 

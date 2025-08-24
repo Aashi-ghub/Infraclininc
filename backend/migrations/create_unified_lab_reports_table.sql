@@ -105,9 +105,24 @@ CREATE TRIGGER trigger_update_unified_lab_reports_updated_at
 CREATE OR REPLACE FUNCTION validate_unified_lab_report_data()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Ensure test_types is not null and is a valid JSONB array
+  IF NEW.test_types IS NULL OR jsonb_typeof(NEW.test_types) != 'array' THEN
+    RAISE EXCEPTION 'test_types must be a valid JSONB array';
+  END IF;
+  
   -- Ensure at least one test type is specified
   IF jsonb_array_length(NEW.test_types) = 0 THEN
     RAISE EXCEPTION 'At least one test type must be specified';
+  END IF;
+  
+  -- Ensure soil_test_data is not null and is a valid JSONB array
+  IF NEW.soil_test_data IS NULL OR jsonb_typeof(NEW.soil_test_data) != 'array' THEN
+    RAISE EXCEPTION 'soil_test_data must be a valid JSONB array';
+  END IF;
+  
+  -- Ensure rock_test_data is not null and is a valid JSONB array
+  IF NEW.rock_test_data IS NULL OR jsonb_typeof(NEW.rock_test_data) != 'array' THEN
+    RAISE EXCEPTION 'rock_test_data must be a valid JSONB array';
   END IF;
   
   -- Ensure soil test data is provided if Soil is in test_types
