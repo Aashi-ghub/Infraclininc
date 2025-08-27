@@ -173,7 +173,7 @@ export default function EnhancedUnifiedLabReportForm({
   }, []);
 
   // Load version history
-  const loadVersionHistory = async () => {
+  const loadVersionHistory = async (autoApplyLatest?: boolean) => {
     const currentReportId = form.watch('lab_report_id');
     if (!currentReportId || !isValidUUID(currentReportId)) return;
     
@@ -182,9 +182,15 @@ export default function EnhancedUnifiedLabReportForm({
       console.log('Version history response:', response.data);
       
       if (response.data?.success) {
-        const versionHistory = response.data.data?.versions || [];
-        console.log('Setting versions:', versionHistory);
+        const versionHistory = (response.data.data?.versions || []).slice();
+        // Ensure latest first
+        versionHistory.sort((a: any, b: any) => b.version_no - a.version_no);
+        console.log('Setting versions (sorted desc):', versionHistory);
         setVersions(versionHistory);
+        
+        if (autoApplyLatest && versionHistory.length > 0) {
+          await applyVersionToForm(versionHistory[0]);
+        }
       }
     } catch (error) {
       console.error('Error loading version history:', error);
@@ -195,7 +201,8 @@ export default function EnhancedUnifiedLabReportForm({
   const loadInitialData = async () => {
     try {
       setIsLoadingData(true);
-      await loadVersionHistory();
+      // Auto-apply latest on initial load
+      await loadVersionHistory(true);
       
       // Set original values for change tracking
       setOriginalValues(form.getValues());
@@ -551,8 +558,8 @@ export default function EnhancedUnifiedLabReportForm({
         setOriginalValues(form.getValues());
         setModifiedFields(new Set());
         
-        // Reload version history
-        await loadVersionHistory();
+        // Reload version history and auto-apply latest
+        await loadVersionHistory(true);
         
         // Call the original onSaveDraft callback if provided
         if (onSaveDraft) {
@@ -756,7 +763,7 @@ export default function EnhancedUnifiedLabReportForm({
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Review Comments</label>
+                      <label className="block text sm font-medium text-gray-700">Review Comments</label>
                       <textarea
                         {...form.register('review_comments')}
                         rows={3}

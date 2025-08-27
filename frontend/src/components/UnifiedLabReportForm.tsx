@@ -147,6 +147,14 @@ export default function UnifiedLabReportForm({
     }
   }, [existingReport]);
 
+  // Auto-load latest version when we have a valid report id
+  useEffect(() => {
+    if (formData.lab_report_id && isValidUUID(formData.lab_report_id)) {
+      loadVersionHistory(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.lab_report_id]);
+
   const handleSoilFormSubmit = (soilData: any) => {
     setFormData(prev => ({
       ...prev,
@@ -170,8 +178,6 @@ export default function UnifiedLabReportForm({
       description: 'Rock test data has been saved successfully.',
     });
   };
-
-
 
   const handleExportToExcel = () => {
     if (!formData.soil_test_completed && !formData.rock_test_completed) {
@@ -225,10 +231,50 @@ export default function UnifiedLabReportForm({
 
   const completionStatus = getCompletionStatus();
 
-  const loadVersionHistory = async () => {
+  const applyVersionToForm = (version: any) => {
+    // Prefer version.details if provided by API
+    const details = version?.details || version;
+
+    setFormData(prev => ({
+      ...prev,
+      project_name: details.project_name ?? prev.project_name,
+      borehole_no: details.borehole_no ?? details.sample_id ?? prev.borehole_no,
+      client: details.client ?? prev.client,
+      date: details.test_date ? new Date(details.test_date) : prev.date,
+      tested_by: details.tested_by ?? prev.tested_by,
+      checked_by: details.checked_by ?? prev.checked_by,
+      approved_by: details.approved_by ?? prev.approved_by,
+      soil_test_data: Array.isArray(details.soil_test_data) ? details.soil_test_data : prev.soil_test_data,
+      rock_test_data: Array.isArray(details.rock_test_data) ? details.rock_test_data : prev.rock_test_data,
+      soil_test_completed: Array.isArray(details.soil_test_data) ? details.soil_test_data.length > 0 : prev.soil_test_completed,
+      rock_test_completed: Array.isArray(details.rock_test_data) ? details.rock_test_data.length > 0 : prev.rock_test_completed,
+      report_status: version.status ? (version.status as any) : prev.report_status
+    }));
+    if (version.version_no) setCurrentVersion(version.version_no);
+    if (version.status) setCurrentStatus(version.status);
+  };
+
+  const loadSpecificVersion = async (version: any) => {
+    try {
+      // If the version object already contains details, use it directly.
+      if (version?.details) {
+        applyVersionToForm(version);
+      } else if (formData.lab_report_id) {
+        // Fallback: fetch version data from the API
+        const res = await labReportVersionControlApi.getVersion(formData.lab_report_id, version.version_no);
+        const data = res.data?.data || res.data;
+        applyVersionToForm({ ...data, version_no: version.version_no, status: version.status });
+      }
+      toast({ title: 'Version Loaded', description: `Loaded Version ${version.version_no}` });
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load version.' });
+    }
+  };
+
+  const loadVersionHistory = async (autoApplyLatest?: boolean) => {
     console.log('loadVersionHistory called with formData:', formData);
     console.log('lab_report_id:', formData.lab_report_id);
-    console.log('isValidUUID:', isValidUUID(formData.lab_report_id));
+    console.log('isValidUUID:', isValidUUID(formData.lab_report_id!));
     
     if (!formData.lab_report_id || !isValidUUID(formData.lab_report_id)) {
       console.log('No valid report ID available for version history');
@@ -242,9 +288,15 @@ export default function UnifiedLabReportForm({
       console.log('Version history API response:', response);
       
       if (response.data?.success) {
-        setVersions(response.data.data?.versions || []);
+        const list = (response.data.data?.versions || []).slice();
+        // Sort latest first
+        list.sort((a: any, b: any) => b.version_no - a.version_no);
+        setVersions(list);
         setShowVersionHistory(true);
-        console.log('Versions set:', response.data.data?.versions);
+        console.log('Versions set (sorted desc):', list);
+        if (autoApplyLatest && list.length > 0) {
+          applyVersionToForm(list[0]);
+        }
       } else {
         console.error('API returned error:', response.data);
         toast({
@@ -322,7 +374,7 @@ export default function UnifiedLabReportForm({
                 </>
               )}
               
-                             {/* Version History Button - Only show when there's a valid report ID */}
+              {/* Version History Button - Only show when there's a valid report ID */}
               {formData.lab_report_id && isValidUUID(formData.lab_report_id) && (
                 <Button 
                   variant="outline"
@@ -358,120 +410,136 @@ export default function UnifiedLabReportForm({
             </div>
           </div>
         </CardContent>
-             </Card>
+      </Card>
 
-       {/* Version History Section */}
-       {showVersionHistory && (
-         <Card>
-           <CardHeader>
-             <CardTitle className="flex items-center gap-2">
-               <History className="h-5 w-5" />
-               Version History
-             </CardTitle>
-           </CardHeader>
-           <CardContent>
-             {versions.length === 0 ? (
-               <div className="text-center py-8 text-gray-500">
-                 <FileText className="h-12 w-12 mx-auto mb-4" />
-                 <p>No versions found</p>
-                 <p className="text-sm">Save a draft to create your first version</p>
-               </div>
-             ) : (
-               <div className="space-y-4">
-                 {versions.map((version) => (
-                   <div key={version.version_no} className="border rounded-lg p-4">
-                     <div className="flex items-center justify-between mb-2">
-                       <div className="flex items-center gap-2">
-                         <Badge variant="outline">Version {version.version_no}</Badge>
-                         <Badge 
-                           variant={
-                             version.status === 'approved' ? 'default' : 
-                             version.status === 'rejected' ? 'destructive' : 
-                             version.status === 'submitted' ? 'secondary' : 'outline'
-                           }
-                         >
-                           {version.status}
-                         </Badge>
-                         {version.version_no === currentVersion && (
-                           <Badge variant="secondary">Current</Badge>
-                         )}
-                       </div>
-                       <div className="text-sm text-gray-500">
-                         {new Date(version.created_at).toLocaleString()}
-                       </div>
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-2">
-                       <div className="flex items-center gap-2">
-                         <span className="font-medium">Created by:</span>
-                         {version.created_by_name || 'Unknown'}
-                       </div>
-                       <div className="flex items-center gap-2">
-                         <span className="font-medium">Test Types:</span>
-                         {version.test_types?.join(', ') || 'None'}
-                       </div>
-                     </div>
+      {/* Version History Section */}
+      {showVersionHistory && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Version History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {versions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="h-12 w-12 mx-auto mb-4" />
+                <p>No versions found</p>
+                <p className="text-sm">Save a draft to create your first version</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {versions.map((version) => (
+                  <div key={version.version_no} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">Version {version.version_no}</Badge>
+                        <Badge 
+                          variant={
+                            version.status === 'approved' ? 'default' : 
+                            version.status === 'rejected' ? 'destructive' : 
+                            version.status === 'submitted' ? 'secondary' : 'outline'
+                          }
+                        >
+                          {version.status}
+                        </Badge>
+                        {version.version_no === currentVersion && (
+                          <Badge variant="secondary">Current</Badge>
+                        )}
+                        {version.version_no === (versions[0]?.version_no ?? version.version_no) && (
+                          <Badge variant="default">Latest</Badge>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(version.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Created by:</span>
+                        {version.created_by_name || 'Unknown'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Test Types:</span>
+                        {version.test_types?.join(', ') || 'None'}
+                      </div>
+                    </div>
 
-                     {/* Status-specific timestamps */}
-                     {version.submitted_at && (
-                       <div className="text-sm text-blue-600">
-                         Submitted: {new Date(version.submitted_at).toLocaleString()}
-                       </div>
-                     )}
-                     {version.approved_at && (
-                       <div className="text-sm text-green-600">
-                         Approved: {new Date(version.approved_at).toLocaleString()}
-                       </div>
-                     )}
-                     {version.rejected_at && (
-                       <div className="text-sm text-red-600">
-                         Rejected: {new Date(version.rejected_at).toLocaleString()}
-                       </div>
-                     )}
-                     {version.returned_at && (
-                       <div className="text-sm text-orange-600">
-                         Returned: {new Date(version.returned_at).toLocaleString()}
-                       </div>
-                     )}
+                    {/* Status-specific timestamps */}
+                    {version.submitted_at && (
+                      <div className="text-sm text-blue-600">
+                        Submitted: {new Date(version.submitted_at).toLocaleString()}
+                      </div>
+                    )}
+                    {version.approved_at && (
+                      <div className="text-sm text-green-600">
+                        Approved: {new Date(version.approved_at).toLocaleString()}
+                      </div>
+                    )}
+                    {version.rejected_at && (
+                      <div className="text-sm text-red-600">
+                        Rejected: {new Date(version.rejected_at).toLocaleString()}
+                      </div>
+                    )}
+                    {version.returned_at && (
+                      <div className="text-sm text-orange-600">
+                        Returned: {new Date(version.returned_at).toLocaleString()}
+                      </div>
+                    )}
 
-                     {/* Comments */}
-                     {(version.review_comments || version.rejection_reason || version.comments?.length > 0) && (
-                       <div className="mt-3 pt-3 border-t">
-                         <div className="flex items-center gap-2 mb-2">
-                           <span className="font-medium">Comments</span>
-                         </div>
-                         <div className="space-y-2">
-                           {version.review_comments && (
-                             <div className="text-sm bg-gray-50 p-2 rounded">
-                               {version.review_comments}
-                             </div>
-                           )}
-                           {version.rejection_reason && (
-                             <div className="text-sm bg-red-50 p-2 rounded text-red-700">
-                               <strong>Rejection Reason:</strong> {version.rejection_reason}
-                             </div>
-                           )}
-                           {version.comments?.map((comment: any, index: number) => (
-                             <div key={index} className="text-sm bg-blue-50 p-2 rounded">
-                               <div className="font-medium">{comment.comment_type?.replace('_', ' ').toUpperCase()}</div>
-                               <div>{comment.comment_text}</div>
-                               <div className="text-xs text-gray-500 mt-1">
-                                 {comment.commented_by} - {new Date(comment.commented_at).toLocaleString()}
-                               </div>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                 ))}
-               </div>
-             )}
-           </CardContent>
-         </Card>
-       )}
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadSpecificVersion(version)}
+                        disabled={version.version_no === currentVersion}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        {version.version_no === currentVersion ? 'Current' : 'Load'}
+                      </Button>
+                    </div>
 
-       {/* Progress Indicator */}
+                    {/* Comments */}
+                    {(version.review_comments || version.rejection_reason || version.comments?.length > 0) && (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium">Comments</span>
+                        </div>
+                        <div className="space-y-2">
+                          {version.review_comments && (
+                            <div className="text-sm bg-gray-50 p-2 rounded">
+                              {version.review_comments}
+                            </div>
+                          )}
+                          {version.rejection_reason && (
+                            <div className="text-sm bg-red-50 p-2 rounded text-red-700">
+                              <strong>Rejection Reason:</strong> {version.rejection_reason}
+                            </div>
+                          )}
+                          {version.comments?.map((comment: any, index: number) => (
+                            <div key={index} className="text-sm bg-blue-50 p-2 rounded">
+                              <div className="font-medium">{comment.comment_type?.replace('_', ' ').toUpperCase()}</div>
+                              <div>{comment.comment_text}</div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {comment.commented_by} - {new Date(comment.commented_at).toLocaleString()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Progress Indicator */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">

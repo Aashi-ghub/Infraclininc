@@ -128,3 +128,9 @@ COMMENT ON FUNCTION get_next_lab_report_version IS 'Gets the next version number
 COMMENT ON FUNCTION update_main_lab_report IS 'Updates the main lab report with the latest version number';
 
 COMMIT;
+
+
+
+
+
+

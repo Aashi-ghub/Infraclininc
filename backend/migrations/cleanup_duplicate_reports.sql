@@ -52,3 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_lab_report_versions_version_no ON lab_report_vers
 CREATE INDEX IF NOT EXISTS idx_unified_lab_reports_assignment_id ON unified_lab_reports (assignment_id);
 
 COMMIT;
+
+
+
+
+
+

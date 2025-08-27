@@ -147,3 +147,9 @@ COMMENT ON FUNCTION create_initial_lab_report_version IS 'Creates the initial ve
 COMMENT ON FUNCTION create_lab_report_version_on_update IS 'Creates a new version when a unified lab report is updated with changes';
 
 COMMIT;
+
+
+
+
+
+
