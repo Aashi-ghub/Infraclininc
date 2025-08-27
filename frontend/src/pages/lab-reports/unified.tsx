@@ -199,6 +199,11 @@ export default function UnifiedLabReportPage() {
           project_name: labRequest?.borelog?.project_name || reportData.project_name,
           borehole_no: labRequest?.borelog?.borehole_number || reportData.borehole_no,
           client: reportData.client,
+          location: reportData.location,
+          section_name: reportData.section_name,
+          chainage_km: reportData.chainage_km,
+          coordinates_e: reportData.coordinates_e,
+          coordinates_n: reportData.coordinates_n,
           test_date: reportData.date.toISOString(),
           tested_by: reportData.tested_by,
           checked_by: reportData.checked_by,
@@ -261,6 +266,11 @@ export default function UnifiedLabReportPage() {
 
   const handleSaveDraft = async (reportData: any) => {
     try {
+      console.log('[Unified] handleSaveDraft received data:', {
+        soil_len: Array.isArray(reportData.soil_test_data) ? reportData.soil_test_data.length : 'n/a',
+        rock_len: Array.isArray(reportData.rock_test_data) ? reportData.rock_test_data.length : 'n/a',
+        soil_sample0: reportData.soil_test_data?.[0],
+      });
       // Determine test types based on completed tests
       // For drafts, we can have empty test types, but we must ensure it's always an array
       const testTypes = [];
@@ -268,8 +278,8 @@ export default function UnifiedLabReportPage() {
       if (reportData.rock_test_completed) testTypes.push('Rock');
       
       // Ensure we always have valid arrays
-      const soilTestData = Array.isArray(reportData.soil_test_data) ? reportData.soil_test_data : [];
-      const rockTestData = Array.isArray(reportData.rock_test_data) ? reportData.rock_test_data : [];
+      const soilTestData = Array.isArray(reportData.soil_test_data) ? JSON.parse(JSON.stringify(reportData.soil_test_data)) : [];
+      const rockTestData = Array.isArray(reportData.rock_test_data) ? JSON.parse(JSON.stringify(reportData.rock_test_data)) : [];
 
       // Get the assignment_id and report_id from the lab request
       const assignmentId = labRequest?.id || sampleLabRequest?.id || requestId;
@@ -285,6 +295,11 @@ export default function UnifiedLabReportPage() {
           project_name: labRequest?.borelog?.project_name || reportData.project_name,
           borehole_no: labRequest?.borelog?.borehole_number || reportData.borehole_no,
           client: reportData.client,
+          location: reportData.location,
+          section_name: reportData.section_name,
+          chainage_km: reportData.chainage_km,
+          coordinates_e: reportData.coordinates_e,
+          coordinates_n: reportData.coordinates_n,
           test_date: reportData.date.toISOString(),
           tested_by: reportData.tested_by,
           checked_by: reportData.checked_by,
@@ -295,6 +310,7 @@ export default function UnifiedLabReportPage() {
           remarks: reportData.review_comments || ''
         };
         
+        console.log('[Unified] Saving existing draft with payload:', updateData);
         const response = await labReportVersionControlApi.saveDraft(updateData);
         
         if (response.data.success) {
@@ -308,7 +324,7 @@ export default function UnifiedLabReportPage() {
           
           toast({
             title: 'Draft Saved',
-            description: `Unified lab report draft has been saved as version ${response.data.data.version_no}.`,
+            description: `Saved v${response.data.data.version_no}. Soil rows: ${soilTestData.length}, Rock rows: ${rockTestData.length}`,
           });
         } else {
           throw new Error(response.data.message || 'Failed to save draft');
@@ -333,6 +349,7 @@ export default function UnifiedLabReportPage() {
           remarks: reportData.review_comments || ''
         };
         
+        console.log('[Unified] Creating new draft with payload:', createData);
         const response = await labReportVersionControlApi.saveDraft(createData);
         
         if (response.data.success) {
@@ -351,7 +368,7 @@ export default function UnifiedLabReportPage() {
           navigate(`/lab-reports/unified/${response.data.data.report_id}`, { replace: true });
           toast({
             title: 'Draft Saved',
-            description: 'Unified lab report draft has been created successfully.',
+            description: `Draft created. Soil rows: ${soilTestData.length}, Rock rows: ${rockTestData.length}`,
           });
         } else {
           throw new Error(response.data.message || 'Failed to save draft');

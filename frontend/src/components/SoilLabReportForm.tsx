@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,9 @@ interface SoilLabReportFormProps {
   isLoading?: boolean;
   userRole?: UserRole;
   isReadOnly?: boolean;
+  onDataChange?: (data: { soil_test_data: SoilTestData[] }) => void;
+  incomingSoilData?: any;
+  onMetaChange?: (meta: Partial<FormData>) => void;
 }
 
 interface SoilTestData {
@@ -108,7 +111,7 @@ const shearTestTypes = [
   { value: 'DS-CD', label: 'Direct Shear Consolidated Drained' }
 ];
 
-export default function SoilLabReportForm({ 
+function SoilLabReportForm({ 
   labRequest, 
   existingReport, 
   onSubmit, 
@@ -116,7 +119,10 @@ export default function SoilLabReportForm({
   onSaveDraft,
   isLoading = false,
   userRole = 'Lab Engineer',
-  isReadOnly = false 
+  isReadOnly = false,
+  onDataChange,
+  incomingSoilData,
+  onMetaChange
 }: SoilLabReportFormProps) {
   const [formData, setFormData] = useState<FormData>({
     lab_report_id: existingReport?.id || `SLR-${Date.now()}`,
@@ -169,8 +175,41 @@ export default function SoilLabReportForm({
     }
   }, [labRequest]);
 
+  // Bubble up soil_test_data to parent whenever it changes
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange({ soil_test_data: formData.soil_test_data });
+    }
+    // Only re-run when the data array changes, not when parent re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.soil_test_data]);
+
+  // When parent provides incomingSoilData (e.g., after loading a version), sync it to local state
+  useEffect(() => {
+    if (incomingSoilData) {
+      try {
+        const next = Array.isArray(incomingSoilData) ? incomingSoilData : (incomingSoilData.samples || []);
+        // Avoid resetting state if nothing actually changed to prevent flicker
+        setFormData(prev => {
+          const prevArr = prev.soil_test_data || [];
+          const sameRef = prevArr === next;
+          const sameLen = Array.isArray(next) && prevArr.length === next.length;
+          if (sameRef || (sameLen && JSON.stringify(prevArr) === JSON.stringify(next))) {
+            return prev;
+          }
+          return { ...prev, soil_test_data: next };
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }, [incomingSoilData]);
+
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (onMetaChange) {
+      onMetaChange({ [field]: value } as Partial<FormData>);
+    }
   };
 
   const handleTestDataChange = (index: number, field: keyof SoilTestData, value: any) => {
@@ -257,141 +296,7 @@ export default function SoilLabReportForm({
         </div>
       </div>
 
-      {/* Project Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Project Information</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="project_name">Project Name</Label>
-            <Textarea
-              id="project_name"
-              value={formData.project_name}
-              onChange={(e) => handleInputChange('project_name', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter project name"
-            />
-          </div>
-          <div>
-            <Label htmlFor="client_name">Client Name</Label>
-            <Input
-              id="client_name"
-              value={formData.client_name}
-              onChange={(e) => handleInputChange('client_name', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter client name"
-            />
-          </div>
-          <div>
-            <Label htmlFor="loa_number">LOA Number</Label>
-            <Input
-              id="loa_number"
-              value={formData.loa_number}
-              onChange={(e) => handleInputChange('loa_number', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter LOA number"
-            />
-          </div>
-          <div>
-            <Label htmlFor="job_code">Job Code</Label>
-            <Input
-              id="job_code"
-              value={formData.job_code}
-              onChange={(e) => handleInputChange('job_code', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="Enter job code"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Location Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Location Details</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <Label htmlFor="coordinates_e">Coordinates E</Label>
-            <Input
-              id="coordinates_e"
-              type="number"
-              step="0.001"
-              value={formData.coordinates_e}
-              onChange={(e) => handleInputChange('coordinates_e', safeParseFloat(e.target.value))}
-              disabled={isReadOnly}
-              placeholder="E.g., 529303.065"
-            />
-          </div>
-          <div>
-            <Label htmlFor="coordinates_n">Coordinates N</Label>
-            <Input
-              id="coordinates_n"
-              type="number"
-              step="0.001"
-              value={formData.coordinates_n}
-              onChange={(e) => handleInputChange('coordinates_n', safeParseFloat(e.target.value))}
-              disabled={isReadOnly}
-              placeholder="E.g., 2469991.452"
-            />
-          </div>
-          <div>
-            <Label htmlFor="section_name">Section Name</Label>
-            <Input
-              id="section_name"
-              value={formData.section_name}
-              onChange={(e) => handleInputChange('section_name', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="E.g., KGP - TATA"
-            />
-          </div>
-          <div>
-            <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
-              value={formData.location}
-              onChange={(e) => handleInputChange('location', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="E.g., NEW MNBR"
-            />
-          </div>
-          <div>
-            <Label htmlFor="chainage_km">Chainage (km)</Label>
-            <Input
-              id="chainage_km"
-              type="number"
-              step="0.001"
-              value={formData.chainage_km}
-              onChange={(e) => handleInputChange('chainage_km', safeParseFloat(e.target.value))}
-              disabled={isReadOnly}
-              placeholder="E.g., 2325"
-            />
-          </div>
-          <div>
-            <Label htmlFor="borehole_no">Borehole No.</Label>
-            <Input
-              id="borehole_no"
-              value={formData.borehole_no}
-              onChange={(e) => handleInputChange('borehole_no', e.target.value)}
-              disabled={isReadOnly}
-              placeholder="E.g., BH-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="standing_water_level">Standing Water Level (m BGL)</Label>
-            <Input
-              id="standing_water_level"
-              type="number"
-              step="0.01"
-              value={formData.standing_water_level}
-              onChange={(e) => handleInputChange('standing_water_level', safeParseFloat(e.target.value))}
-              disabled={isReadOnly}
-              placeholder="E.g., 1.20"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Project & Location moved to General Info */}
 
       {/* Report Details */}
       <Card>
@@ -484,9 +389,11 @@ export default function SoilLabReportForm({
               </TableHeader>
               <TableBody>
                 {formData.soil_test_data.map((sample, index) => (
-                  <TableRow key={index}>
+                  <TableRow key={`soil-row-${index}`}>
                     <TableCell>
                       <Input
+                        id={`soil_sample_no_${index}`}
+                        name={`soil_sample_no_${index}`}
                         value={sample.sample_no}
                         onChange={(e) => handleTestDataChange(index, 'sample_no', e.target.value)}
                         disabled={isReadOnly}
@@ -495,6 +402,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_sample_depth_${index}`}
+                        name={`soil_sample_depth_${index}`}
                         type="number"
                         step="0.01"
                         value={sample.sample_depth}
@@ -505,6 +414,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_observed_n_value_${index}`}
+                        name={`soil_observed_n_value_${index}`}
                         type="number"
                         step="1"
                         value={sample.observed_n_value || ''}
@@ -515,6 +426,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_corrected_n_value_${index}`}
+                        name={`soil_corrected_n_value_${index}`}
                         type="number"
                         step="1"
                         value={sample.corrected_n_value || ''}
@@ -525,6 +438,7 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Select
+                        name={`soil_type_${index}`}
                         value={sample.soil_type}
                         onValueChange={(value) => handleTestDataChange(index, 'soil_type', value)}
                         disabled={isReadOnly}
@@ -543,6 +457,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_classification_${index}`}
+                        name={`soil_classification_${index}`}
                         value={sample.soil_classification}
                         onChange={(e) => handleTestDataChange(index, 'soil_classification', e.target.value)}
                         disabled={isReadOnly}
@@ -551,6 +467,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_moisture_content_${index}`}
+                        name={`soil_moisture_content_${index}`}
                         type="number"
                         step="0.01"
                         value={sample.moisture_content}
@@ -561,6 +479,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_bulk_density_${index}`}
+                        name={`soil_bulk_density_${index}`}
                         type="number"
                         step="0.001"
                         value={sample.bulk_density}
@@ -571,6 +491,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_dry_density_${index}`}
+                        name={`soil_dry_density_${index}`}
                         type="number"
                         step="0.001"
                         value={sample.dry_density}
@@ -581,6 +503,8 @@ export default function SoilLabReportForm({
                     </TableCell>
                     <TableCell>
                       <Input
+                        id={`soil_specific_gravity_${index}`}
+                        name={`soil_specific_gravity_${index}`}
                         type="number"
                         step="0.01"
                         value={sample.specific_gravity}
@@ -779,3 +703,5 @@ export default function SoilLabReportForm({
     </div>
   );
 }
+
+export default memo(SoilLabReportForm);

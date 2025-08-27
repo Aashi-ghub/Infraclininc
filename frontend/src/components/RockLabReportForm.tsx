@@ -24,6 +24,9 @@ interface RockLabReportFormProps {
   isLoading?: boolean;
   userRole?: string;
   isReadOnly?: boolean;
+  onDataChange?: (data: { rock_test_data: RockTestData[] }) => void;
+  incomingRockData?: any;
+  onMetaChange?: (meta: Partial<FormData>) => void;
 }
 
 interface RockTestData {
@@ -87,7 +90,10 @@ export default function RockLabReportForm({
   onSaveDraft,
   isLoading = false,
   userRole = 'Lab Engineer',
-  isReadOnly = false 
+  isReadOnly = false,
+  onDataChange,
+  incomingRockData,
+  onMetaChange
 }: RockLabReportFormProps) {
   const [formData, setFormData] = useState<FormData>({
     lab_report_id: existingReport?.id || `LR-${Date.now()}`,
@@ -130,9 +136,32 @@ export default function RockLabReportForm({
 
 
   const { toast } = useToast();
+  // Bubble up rock_test_data to parent whenever it changes
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange({ rock_test_data: formData.rock_test_data });
+    }
+    // Only re-run when the data array changes, not when parent re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.rock_test_data]);
+
+  // Sync incoming rock data from parent (after version load)
+  useEffect(() => {
+    if (incomingRockData) {
+      try {
+        const next = Array.isArray(incomingRockData) ? incomingRockData : (incomingRockData.samples || []);
+        setFormData(prev => ({ ...prev, rock_test_data: next }));
+      } catch {
+        // ignore
+      }
+    }
+  }, [incomingRockData]);
 
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (onMetaChange) {
+      onMetaChange({ [field]: value } as Partial<FormData>);
+    }
   };
 
   const handleTestDataChange = (index: number, field: keyof RockTestData, value: any) => {

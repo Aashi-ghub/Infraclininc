@@ -25,7 +25,8 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
     }
 
     const body = JSON.parse(event.body || '{}');
-    const { report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no, client, test_date, tested_by, checked_by, approved_by, test_types, soil_test_data, rock_test_data, remarks } = body;
+    const { report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no, client, test_date, tested_by, checked_by, approved_by, test_types, soil_test_data, rock_test_data, remarks,
+      location, section_name, chainage_km, coordinates_e, coordinates_n } = body;
 
     // Log the received data for debugging
     logger.info('Received saveLabReportDraft request:', {
@@ -96,14 +97,16 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
       INSERT INTO lab_report_versions (
         report_id, version_no, assignment_id, borelog_id, sample_id, project_name, borehole_no,
         client, test_date, tested_by, checked_by, approved_by, test_types, 
-        soil_test_data, rock_test_data, status, remarks, created_by_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        soil_test_data, rock_test_data, status, remarks, created_by_user_id,
+        location, section_name, chainage_km, coordinates_e, coordinates_n
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
     `;
 
     await db.query(createVersionQuery, [
       finalReportId, nextVersion, assignment_id || null, borelog_id || null, sample_id || null, project_name || null, borehole_no || null,
       client || null, test_date || null, tested_by || null, checked_by || null, approved_by || null, JSON.stringify(test_types || []),
-      JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks || null, payload.userId
+      JSON.stringify(soil_test_data || []), JSON.stringify(rock_test_data || []), 'draft', remarks || null, payload.userId,
+      location || null, section_name || null, chainage_km || null, coordinates_e || null, coordinates_n || null
     ]);
 
     logger.info(`Lab report draft saved by user ${payload.userId}`, {
