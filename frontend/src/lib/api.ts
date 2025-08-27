@@ -536,6 +536,10 @@ export const unifiedLabReportsApi = {
   // Delete unified lab report
   delete: (reportId: string) =>
     apiClient.delete<ApiResponse<null>>(`/unified-lab-reports/${reportId}`),
+
+  // Upload CSV for bulk unified lab report creation
+  uploadCSV: (data: { csvData: string; default_assignment_id?: string; default_borelog_id?: string }) =>
+    apiClient.post<ApiResponse<any>>('/unified-lab-reports/upload-csv', data),
 };
 
 // Lab Report Version Control API

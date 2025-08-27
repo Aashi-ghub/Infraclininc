@@ -11,6 +11,8 @@ import { ProtectedRoute } from '@/lib/authComponents';
 import { LabRequest, LabReport } from '@/lib/types';
 import { unifiedLabReportsApi, labReportApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import LabReportCSVUpload from '@/components/LabReportCSVUpload';
 
 export default function LabReportManagement() {
   const navigate = useNavigate();
@@ -288,6 +290,42 @@ export default function LabReportManagement() {
                       >
                         Create Unified Report
                   </Button>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        Upload CSV
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Upload CSV for this Request</DialogTitle>
+                      </DialogHeader>
+                      <div className="mb-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const header = 'assignment_id,borelog_id,sample_id,project_name,borehole_no,client,test_date,tested_by,checked_by,approved_by,test_types,soil_test_data,rock_test_data,remarks';
+                            const row = `${request.id || ''},${request.borelog_id || ''},${request.sample_id || 'SAMPLE-001'},${request.borelog?.project_name || 'Project A'},${request.borelog?.borehole_number || 'BH-01'},Client A,2025-01-30,John Doe,Jane Roe,Dr. Smith,Soil;Rock,[],[],Initial draft`;
+                            const csv = `${header}\n${row}`;
+                            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `unified_lab_reports_sample_${request.id || 'request'}.csv`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                        >
+                          Download Sample CSV
+                        </Button>
+                      </div>
+                      <LabReportCSVUpload 
+                        onUploadSuccess={() => { loadData(); }}
+                        defaultAssignmentId={request.id}
+                        defaultBorelogId={request.borelog_id}
+                      />
+                    </DialogContent>
+                  </Dialog>
                   {user?.role === 'Admin' && (
                     <Button 
                       size="sm" 

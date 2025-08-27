@@ -1,6 +1,6 @@
-# CSV Upload Guide for Geological Logs
+# CSV Upload Guide
 
-## Overview
+## Geological Logs (Borelogs)
 You can create multiple geological logs (borelogs) at once by uploading a CSV file. This feature is available in the "Manage Geological Logs" page.
 
 ## How to Use
@@ -20,7 +20,7 @@ You can create multiple geological logs (borelogs) at once by uploading a CSV fi
 - Drag and drop your CSV file or click "browse" to select it
 - Click "Upload CSV" to process the file
 
-## CSV Template Format
+## CSV Template Format (Borelogs)
 
 Your CSV file should have the following columns:
 
@@ -125,3 +125,42 @@ If you encounter issues:
 3. Ensure all required fields are filled
 4. Check that dates are in the correct format
 5. Verify substructure IDs if using them
+
+---
+
+## Unified Lab Reports (Bulk Upload)
+Lab engineers can upload multiple unified lab reports in one CSV. This creates draft reports that you can open in the unified editor to review and version as usual.
+
+### How to Use
+- Go to the Lab Reports section
+- Click "Upload Lab Reports (CSV)"
+- Download the template for correct columns
+- Upload your filled CSV and submit
+
+### CSV Template Format (Unified Lab Reports)
+Required columns are marked Yes.
+
+| Column | Required | Description | Example |
+|--------|----------|-------------|---------|
+| assignment_id | No | UUID of lab assignment (optional) | 550e8400-e29b-41d4-a716-446655440000 |
+| borelog_id | Yes | UUID of related borelog | 550e8400-e29b-41d4-a716-446655440111 |
+| sample_id | Yes | Sample or borehole number | BH-01 |
+| project_name | Yes | Project name | Project A |
+| borehole_no | Yes | Borehole number | BH-01 |
+| client | No | Client name | Client A |
+| test_date | Yes | ISO date (YYYY-MM-DD) | 2025-01-30 |
+| tested_by | Yes | Name | John Doe |
+| checked_by | Yes | Name | Jane Roe |
+| approved_by | Yes | Name | Dr. Smith |
+| test_types | Yes | Semicolon or comma-separated list | Soil;Rock |
+| soil_test_data | No | JSON array string | [] |
+| rock_test_data | No | JSON array string | [] |
+| remarks | No | Notes | Initial draft |
+
+Notes:
+- test_types accepts Soil and/or Rock (case-insensitive).
+- If you include soil_test_data or rock_test_data, they must be valid JSON arrays.
+- All created reports start as draft and get an initial version.
+
+### Results
+After upload, you’ll see how many reports were created and any row-level errors to fix.

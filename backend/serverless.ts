@@ -1224,6 +1224,19 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    // Unified Lab Reports CSV upload
+    uploadUnifiedLabReportCSV: {
+      handler: 'src/handlers/uploadUnifiedLabReportCSV.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/unified-lab-reports/upload-csv',
+            cors: true
+          }
+        }
+      ]
+    },
   },
   package: {
     individually: true

@@ -1,0 +1,175 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { unifiedLabReportsApi } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+
+interface UploadSummary {
+  successful: number;
+  failed: number;
+  total: number;
+}
+
+interface UploadResponse {
+  summary: UploadSummary;
+  results: Array<{ row: number; report_id?: string; error?: string }>;
+}
+
+interface LabReportCSVUploadProps {
+  onUploadSuccess?: () => void;
+  defaultAssignmentId?: string;
+  defaultBorelogId?: string;
+}
+
+export function LabReportCSVUpload({ onUploadSuccess, defaultAssignmentId, defaultBorelogId }: LabReportCSVUploadProps) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast({ title: 'Invalid file type', description: 'Please select a CSV file.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Please select a file smaller than 10MB.', variant: 'destructive' });
+      return;
+    }
+    setSelectedFile(file);
+    setUploadResult(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    handleFileSelect(e.dataTransfer.files);
+  };
+
+  const removeFile = () => {
+    setSelectedFile(null);
+    setUploadResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      toast({ title: 'No file selected', description: 'Please select a CSV file to upload.', variant: 'destructive' });
+      return;
+    }
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const csvData = await selectedFile.text();
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      const response = await unifiedLabReportsApi.uploadCSV({ csvData, default_assignment_id: defaultAssignmentId, default_borelog_id: defaultBorelogId } as any);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      const result = response.data.data as UploadResponse;
+      setUploadResult(result);
+
+      if (result.summary.successful > 0) {
+        toast({
+          title: 'Upload completed',
+          description: `Created ${result.summary.successful} draft lab reports. ${result.summary.failed} failed.`,
+        });
+        onUploadSuccess?.();
+      } else {
+        toast({ title: 'Upload failed', description: 'No lab reports were created. Check your CSV.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({ title: 'Upload failed', description: 'Failed to upload CSV file. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `assignment_id,borelog_id,sample_id,project_name,borehole_no,client,test_date,tested_by,checked_by,approved_by,test_types,soil_test_data,rock_test_data,remarks\n,00000000-0000-0000-0000-000000000000,SAMPLE-001,Project A,BH-01,Client A,2025-01-30,John Doe,Jane Roe,Dr. Smith,"Soil;Rock","[]","[]","Initial draft"`;
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lab_reports_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Upload Unified Lab Reports (CSV)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div
+          className={`border-2 border-dashed rounded-md p-6 text-center ${isDragOver ? 'bg-muted' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => handleFileSelect(e.target.files)} />
+          {!selectedFile ? (
+            <div>
+              <p className="mb-2">Drag and drop a CSV file here, or</p>
+              <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>Browse</Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm">Selected: {selectedFile.name}</div>
+              <div className="flex gap-2">
+                <Button onClick={handleUpload} disabled={isUploading}>Upload CSV</Button>
+                <Button variant="secondary" onClick={removeFile} disabled={isUploading}>Remove</Button>
+                <Button variant="outline" onClick={downloadTemplate} disabled={isUploading}>Download Template</Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {isUploading && (
+          <div className="mt-4">
+            <Progress value={uploadProgress} />
+          </div>
+        )}
+
+        {uploadResult && (
+          <div className="mt-4 text-sm">
+            <div>Created: {uploadResult.summary.successful}</div>
+            <div>Errors: {uploadResult.summary.failed}</div>
+            <div>Total: {uploadResult.summary.total}</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default LabReportCSVUpload;
+
+
