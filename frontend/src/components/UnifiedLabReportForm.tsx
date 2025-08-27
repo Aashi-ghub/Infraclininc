@@ -75,6 +75,12 @@ export default function UnifiedLabReportForm({
   requestId
 }: UnifiedLabReportFormProps) {
   const { toast } = useToast();
+  // Prevent child forms from temporarily overriding key General Info (avoids flicker)
+  const sanitizeMeta = React.useCallback((meta: any) => {
+    if (!meta || typeof meta !== 'object') return {};
+    const { project_name, borehole_no, ...rest } = meta;
+    return rest;
+  }, []);
   const [formData, setFormData] = useState<UnifiedFormData>({
     lab_report_id: existingReport?.report_id || existingReport?.id || '',
     lab_request_id: labRequest?.id || existingReport?.request_id || requestId || '',
@@ -487,7 +493,7 @@ export default function UnifiedLabReportForm({
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="text-sm font-medium">Project Name</label>
-                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={formData.project_name} onChange={(e) => {}} disabled />
+                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={labRequest?.borelog?.project_name || formData.project_name} onChange={(e) => {}} disabled />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Client</label>
@@ -509,7 +515,7 @@ export default function UnifiedLabReportForm({
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="text-sm font-medium">Borehole No.</label>
-                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={formData.borehole_no} onChange={(e) => {}} disabled />
+                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={labRequest?.sample_id || formData.borehole_no} onChange={(e) => {}} disabled />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -559,7 +565,7 @@ export default function UnifiedLabReportForm({
                   soil_test_completed: Array.isArray(d.soil_test_data) && d.soil_test_data.length > 0
                 })), [])}
                 incomingSoilData={isApplyingVersion ? formData.soil_test_data : undefined}
-                onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...meta})), [])}
+                onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />
             </TabsContent>
 
@@ -584,7 +590,7 @@ export default function UnifiedLabReportForm({
                   rock_test_completed: Array.isArray(d.rock_test_data) && d.rock_test_data.length > 0
                 })), [])}
                 incomingRockData={isApplyingVersion ? formData.rock_test_data : undefined}
-                onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...meta})), [])}
+                onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />
             </TabsContent>
           </Tabs>

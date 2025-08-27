@@ -102,35 +102,11 @@ export default function RockLabReportForm({
     client: '',
     borehole_no: labRequest?.sample_id || existingReport?.sample_id || '',
     date: existingReport?.submitted_at ? new Date(existingReport.submitted_at) : new Date(),
-    tested_by: 'Dr. Michael Chen',
-    checked_by: 'Prof. Sarah Johnson',
-    approved_by: 'Prof. David Wilson',
+    tested_by: '',
+    checked_by: '',
+    approved_by: '',
     report_status: existingReport?.status || 'Draft',
-    rock_test_data: existingReport?.rock_test_data || [
-      {
-        sample_no: '1',
-        depth_m: 0.50,
-        rock_type: 'Granite',
-        description: 'Fresh to slightly weathered granite',
-        length_mm: 70.00,
-        diameter_mm: 38.00,
-        weight_g: 179.71,
-        density_g_cm3: 2.70,
-        moisture_content_percent: 0.86,
-        water_absorption_percent: 0.86,
-        porosity_percent: 2.33,
-        weight_in_air_g: 179.71,
-        weight_in_water_g: 117.97,
-        weight_saturated_g: 181.24,
-        volume_water_displaced_cm3: 66.57,
-        failure_load_kn: 0.63,
-        point_load_index_mpa: 2.00,
-        uniaxial_compressive_strength_mpa: 100.00,
-        brazilian_tensile_strength_mpa: 2.00,
-        test_count: 1,
-        result: 'Pass'
-      }
-    ],
+    rock_test_data: existingReport?.rock_test_data || [],
     
   });
 
@@ -188,26 +164,26 @@ export default function RockLabReportForm({
   const addTestDataRow = () => {
     const newRow: RockTestData = {
       sample_no: `${formData.rock_test_data.length + 1}`,
-      depth_m: 0.50 + (formData.rock_test_data.length * 0.50),
+      depth_m: 0,
       rock_type: '',
       description: '',
-      length_mm: 70.00,
-      diameter_mm: 38.00,
-      weight_g: 179.71,
-      density_g_cm3: 2.70,
-      moisture_content_percent: 0.86,
-      water_absorption_percent: 0.86,
-      porosity_percent: 2.33,
-      weight_in_air_g: 179.71,
-      weight_in_water_g: 117.97,
-      weight_saturated_g: 181.24,
-      volume_water_displaced_cm3: 66.57,
-      failure_load_kn: 0.63,
-      point_load_index_mpa: 2.00,
-      uniaxial_compressive_strength_mpa: 100.00,
-      brazilian_tensile_strength_mpa: 2.00,
-      test_count: 1,
-      result: 'Pass'
+      length_mm: 0,
+      diameter_mm: 0,
+      weight_g: 0,
+      density_g_cm3: 0,
+      moisture_content_percent: 0,
+      water_absorption_percent: 0,
+      porosity_percent: 0,
+      weight_in_air_g: 0,
+      weight_in_water_g: 0,
+      weight_saturated_g: 0,
+      volume_water_displaced_cm3: 0,
+      failure_load_kn: 0,
+      point_load_index_mpa: 0,
+      uniaxial_compressive_strength_mpa: 0,
+      brazilian_tensile_strength_mpa: 0,
+      test_count: 0,
+      result: 'Pending'
     };
     setFormData(prev => ({
       ...prev,
@@ -241,9 +217,7 @@ export default function RockLabReportForm({
                 <FlaskConical className="h-6 w-6" />
                 Laboratory Rock Tests Result Sheet
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {existingReport ? `Report ID: ${existingReport.id}` : `Borehole: ${formData.borehole_no}`}
-              </p>
+              <p className="text-sm text-muted-foreground"></p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={formData.report_status === 'Draft' ? 'secondary' : 
@@ -256,90 +230,7 @@ export default function RockLabReportForm({
         </CardHeader>
         <CardContent>
                      <form onSubmit={handleSubmit} className="space-y-6">
-             <div className="space-y-6">
-
-                             {/* General Info Section */}
-               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="project_name">Project Name</Label>
-                    <Input
-                      id="project_name"
-                      value={formData.project_name}
-                      onChange={(e) => handleInputChange('project_name', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="client">Client</Label>
-                    <Input
-                      id="client"
-                      value={formData.client}
-                      onChange={(e) => handleInputChange('client', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="borehole_no">Borehole No.</Label>
-                    <Input
-                      id="borehole_no"
-                      value={formData.borehole_no}
-                      onChange={(e) => handleInputChange('borehole_no', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="date">Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start text-left font-normal"
-                          disabled={isReadOnly}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {formData.date ? format(formData.date, 'PPP') : 'Pick a date'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={formData.date}
-                          onSelect={(date) => handleInputChange('date', date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div>
-                    <Label htmlFor="tested_by">Tested By</Label>
-                    <Input
-                      id="tested_by"
-                      value={formData.tested_by}
-                      onChange={(e) => handleInputChange('tested_by', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="checked_by">Checked By</Label>
-                    <Input
-                      id="checked_by"
-                      value={formData.checked_by}
-                      onChange={(e) => handleInputChange('checked_by', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="approved_by">Approved By</Label>
-                    <Input
-                      id="approved_by"
-                      value={formData.approved_by}
-                      onChange={(e) => handleInputChange('approved_by', e.target.value)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-                                 </div>
-               </div>
+            <div className="space-y-6">
 
                {/* Caliper Method Section */}
                <div className="space-y-4">
@@ -499,7 +390,7 @@ export default function RockLabReportForm({
                     <Plus className="h-4 w-4 mr-2" />
                     Add Sample Row
                   </Button>
-                                 )}
+                )}
                </div>
 
                {/* Buoyancy & Water Displacement Section */}
@@ -738,9 +629,9 @@ export default function RockLabReportForm({
                       ))}
                     </TableBody>
                   </Table>
-                                 </div>
-               </div>
-             </div>
+                </div>
+                </div>
+            </div>
 
 
 
