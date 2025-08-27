@@ -121,12 +121,36 @@ export default function RockLabReportForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.rock_test_data]);
 
+  // Strip any legacy mock sample that may arrive from prior defaults
+  useEffect(() => {
+    const first = formData.rock_test_data?.[0];
+    if (!first) return;
+    const looksLikeOldMock =
+      first.rock_type === 'Granite' &&
+      first.result === 'Pass' &&
+      Math.abs((first.diameter_mm ?? 0) - 38) < 1e-6 &&
+      Math.abs((first.length_mm ?? 0) - 70) < 1e-6 &&
+      Math.abs((first.point_load_index_mpa ?? 0) - 2) < 1e-6 &&
+      Math.abs((first.uniaxial_compressive_strength_mpa ?? 0) - 100) < 1e-6;
+    if (looksLikeOldMock && formData.rock_test_data.length === 1) {
+      setFormData(prev => ({ ...prev, rock_test_data: [] }));
+    }
+  }, []);
+
   // Sync incoming rock data from parent (after version load)
   useEffect(() => {
     if (incomingRockData) {
       try {
         const next = Array.isArray(incomingRockData) ? incomingRockData : (incomingRockData.samples || []);
-        setFormData(prev => ({ ...prev, rock_test_data: next }));
+        setFormData(prev => {
+          const prevArr = prev.rock_test_data || [];
+          const sameRef = prevArr === next;
+          const sameLen = Array.isArray(next) && prevArr.length === next.length;
+          if (sameRef || (sameLen && JSON.stringify(prevArr) === JSON.stringify(next))) {
+            return prev;
+          }
+          return { ...prev, rock_test_data: next };
+        });
       } catch {
         // ignore
       }

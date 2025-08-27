@@ -115,6 +115,9 @@ export default function UnifiedLabReportForm({
   const [versions, setVersions] = useState<any[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [isApplyingVersion, setIsApplyingVersion] = useState(false);
+  // Hold incoming test data snapshots to pass to child forms after version loads
+  const [incomingSoilDataRef, setIncomingSoilDataRef] = useState<any[] | undefined>(undefined);
+  const [incomingRockDataRef, setIncomingRockDataRef] = useState<any[] | undefined>(undefined);
 
   // Update form data when existingReport changes (e.g., after creation)
   useEffect(() => {
@@ -230,6 +233,9 @@ export default function UnifiedLabReportForm({
       rock_test_completed: Array.isArray(rockData) ? rockData.length > 0 : prev.rock_test_completed,
       report_status: toReportStatus(version.status)
     }));
+    // Provide snapshots to child forms so they can sync when their tab mounts later
+    if (Array.isArray(soilData)) setIncomingSoilDataRef(soilData);
+    if (Array.isArray(rockData)) setIncomingRockDataRef(rockData);
     if (typeof version.version_no === 'number') setCurrentVersion(version.version_no);
     if (version.status) setCurrentStatus(version.status);
   };
@@ -286,7 +292,10 @@ export default function UnifiedLabReportForm({
       if (ok && Array.isArray(listRaw)) {
         const list = listRaw.slice().sort((a: any, b: any) => b.version_no - a.version_no);
         setVersions(list);
-        setShowVersionHistory(true);
+        // Only open the panel when explicitly requested (not during auto-apply or Load Latest)
+        if (!autoApplyLatest) {
+          setShowVersionHistory(true);
+        }
         if (list.length > 0) {
           setCurrentVersion(list[0].version_no);
           if (list[0].status) setCurrentStatus(list[0].status);
@@ -368,10 +377,6 @@ export default function UnifiedLabReportForm({
                   <History className="h-4 w-4 mr-2" />
                   {loadingVersions ? 'Loading...' : showVersionHistory ? 'Hide History' : 'Version History'}
                 </Button>
-                  <Button variant="outline" onClick={() => loadVersionHistory(true)} disabled={loadingVersions}>
-                    <Eye className="h-4 w-4 mr-2" />
-                    Load Latest
-                  </Button>
                 </>
               )}
               <Button variant="outline" onClick={handleExportToExcel} disabled={!formData.soil_test_completed && !formData.rock_test_completed}>
@@ -564,7 +569,7 @@ export default function UnifiedLabReportForm({
                   soil_test_data: d.soil_test_data,
                   soil_test_completed: Array.isArray(d.soil_test_data) && d.soil_test_data.length > 0
                 })), [])}
-                incomingSoilData={isApplyingVersion ? formData.soil_test_data : undefined}
+                incomingSoilData={incomingSoilDataRef}
                 onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />
             </TabsContent>
@@ -589,7 +594,7 @@ export default function UnifiedLabReportForm({
                   rock_test_data: d.rock_test_data,
                   rock_test_completed: Array.isArray(d.rock_test_data) && d.rock_test_data.length > 0
                 })), [])}
-                incomingRockData={isApplyingVersion ? formData.rock_test_data : undefined}
+                incomingRockData={incomingRockDataRef}
                 onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />
             </TabsContent>
