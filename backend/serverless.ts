@@ -1227,6 +1227,9 @@ const serverlessConfiguration: AWS = {
     // Unified Lab Reports CSV upload
     uploadUnifiedLabReportCSV: {
       handler: 'src/handlers/uploadUnifiedLabReportCSV.handler',
+      // Heavier workload: parsing large XLSX-derived CSV and multiple inserts
+      timeout: 120,
+      memorySize: 1024,
       events: [
         {
           http: {

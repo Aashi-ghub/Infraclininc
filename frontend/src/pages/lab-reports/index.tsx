@@ -190,6 +190,17 @@ export default function LabReportManagement() {
             <Button onClick={() => navigate('/lab-reports/unified')}>
               Create Unified Report
             </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">Bulk Upload</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Bulk Upload Unified Lab Reports (CSV)</DialogTitle>
+                </DialogHeader>
+                <LabReportCSVUpload onUploadSuccess={() => loadData()} />
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
