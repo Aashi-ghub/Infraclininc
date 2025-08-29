@@ -160,13 +160,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 		let failed = 0;
 		let total = 0;
 
-		// Process each dataset (sheet) as ONE report with multiple samples
+		// Collect all sample data from ALL sheets into unified arrays
+		const allSoilData: any[] = [];
+		const allRockData: any[] = [];
+		let reportMetadata: any = {};
+		let hasValidSamples = false;
+		let totalProcessedRows = 0;
+
+		// Process each dataset (sheet) and collect data
 		for (const dataset of datasets) {
 			const records = dataset.rows;
 			if (!records.length) continue;
 			
 			const headers = Object.keys(records[0] || {});
-			logger.info('Processing sheet as single report', { 
+			logger.info('Processing sheet for unified report', { 
 				sheet: dataset.name, 
 				headerCount: headers.length, 
 				headers, 
@@ -175,12 +182,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 				firstRowKeys: Object.keys(records[0] || {}),
 				firstRowValues: Object.values(records[0] || {})
 			});
-
-			// Collect all sample data from this sheet into arrays
-			const allSoilData: any[] = [];
-			const allRockData: any[] = [];
-			let reportMetadata: any = {};
-			let hasValidSamples = false;
 
 			// First pass: collect metadata and identify sample rows
 			for (let i = 0; i < records.length; i++) {
@@ -414,114 +415,114 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 					results.push({ row: rowIndex, error: message, sheet: dataset.name });
 				}
 			}
+		}
 
-			// Create ONE report per sheet with all collected sample data
-			if (hasValidSamples) {
+		// Create ONE unified report with all collected sample data from ALL sheets
+		if (hasValidSamples) {
+			try {
+				const pool = await db.getPool();
+				const client = await pool.connect();
 				try {
-					const pool = await db.getPool();
-					const client = await pool.connect();
-					try {
-						await client.query('BEGIN');
+					await client.query('BEGIN');
 
-						const reportId = uuidv4();
-						
-						// Determine test types based on collected data
-						const testTypes: string[] = [];
-						if (allSoilData.length > 0) testTypes.push('Soil');
-						if (allRockData.length > 0) testTypes.push('Rock');
+					const reportId = uuidv4();
+					
+					// Determine test types based on collected data
+					const testTypes: string[] = [];
+					if (allSoilData.length > 0) testTypes.push('Soil');
+					if (allRockData.length > 0) testTypes.push('Rock');
 
-						// Create minimal record in unified_lab_reports
-						const createReportQuery = `
-							INSERT INTO unified_lab_reports (
-								report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no,
-								client, test_date, tested_by, checked_by, approved_by, test_types,
-								soil_test_data, rock_test_data, status, remarks, created_by_user_id
-							) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-						`;
+					// Create minimal record in unified_lab_reports
+					const createReportQuery = `
+						INSERT INTO unified_lab_reports (
+							report_id, assignment_id, borelog_id, sample_id, project_name, borehole_no,
+							client, test_date, tested_by, checked_by, approved_by, test_types,
+							soil_test_data, rock_test_data, status, remarks, created_by_user_id
+						) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+					`;
 
-						await client.query(createReportQuery, [
-							reportId,
-							isUuid(default_assignment_id) ? default_assignment_id : null,
-							default_borelog_id,
-							uuidv4(), // Generate sample_id for the report
-							reportMetadata.project_name || '',
-							reportMetadata.borehole_no || '',
-							reportMetadata.client || '',
-							new Date().toISOString(),
-							'', // tested_by
-							'', // checked_by
-							'', // approved_by
-							JSON.stringify(testTypes),
-							JSON.stringify(allSoilData),
-							JSON.stringify(allRockData),
-							'draft',
-							`Lab report from ${dataset.name} sheet with ${allSoilData.length + allRockData.length} samples`,
-							payload.userId,
-						]);
+					await client.query(createReportQuery, [
+						reportId,
+						isUuid(default_assignment_id) ? default_assignment_id : null,
+						default_borelog_id,
+						uuidv4(), // Generate sample_id for the report
+						reportMetadata.project_name || '',
+						reportMetadata.borehole_no || '',
+						reportMetadata.client || '',
+						new Date().toISOString(),
+						'', // tested_by
+						'', // checked_by
+						'', // approved_by
+						JSON.stringify(testTypes),
+						JSON.stringify(allSoilData),
+						JSON.stringify(allRockData),
+						'draft',
+						`Unified lab report with ${allSoilData.length} soil samples and ${allRockData.length} rock samples`,
+						payload.userId,
+					]);
 
-						// Create initial version explicitly to ensure version history exists
-						const versionResult = await client.query('SELECT get_next_lab_report_version($1) as next_version', [reportId]);
-						const nextVersion = versionResult.rows?.[0]?.next_version ?? 1;
+					// Create initial version explicitly to ensure version history exists
+					const versionResult = await client.query('SELECT get_next_lab_report_version($1) as next_version', [reportId]);
+					const nextVersion = versionResult.rows?.[0]?.next_version ?? 1;
 
-						const insertVersionQuery = `
-							INSERT INTO lab_report_versions (
-								report_id, version_no, assignment_id, borelog_id, sample_id, project_name, borehole_no,
-								client, test_date, tested_by, checked_by, approved_by, test_types,
-								soil_test_data, rock_test_data, status, remarks, created_by_user_id
-							) VALUES (
-								$1, $2, $3, $4, $5, $6, $7,
-								$8, $9, $10, $11, $12, $13,
-								$14, $15, $16, $17, $18
-							)
-						`;
+					const insertVersionQuery = `
+						INSERT INTO lab_report_versions (
+							report_id, version_no, assignment_id, borelog_id, sample_id, project_name, borehole_no,
+							client, test_date, tested_by, checked_by, approved_by, test_types,
+							soil_test_data, rock_test_data, status, remarks, created_by_user_id
+						) VALUES (
+							$1, $2, $3, $4, $5, $6, $7,
+							$8, $9, $10, $11, $12, $13,
+							$14, $15, $16, $17, $18
+						)
+					`;
 
-						await client.query(insertVersionQuery, [
-							reportId,
-							nextVersion,
-							isUuid(default_assignment_id) ? default_assignment_id : null,
-							default_borelog_id,
-							uuidv4(), // Generate sample_id for the version
-							reportMetadata.project_name || '',
-							reportMetadata.borehole_no || '',
-							reportMetadata.client || '',
-							new Date().toISOString(),
-							'', // tested_by
-							'', // checked_by
-							'', // approved_by
-							JSON.stringify(testTypes),
-							JSON.stringify(allSoilData),
-							JSON.stringify(allRockData),
-							'draft',
-							`Lab report from ${dataset.name} sheet with ${allSoilData.length + allRockData.length} samples`,
-							payload.userId,
-						]);
+					await client.query(insertVersionQuery, [
+						reportId,
+						nextVersion,
+						isUuid(default_assignment_id) ? default_assignment_id : null,
+						default_borelog_id,
+						uuidv4(), // Generate sample_id for the version
+						reportMetadata.project_name || '',
+						reportMetadata.borehole_no || '',
+						reportMetadata.client || '',
+						new Date().toISOString(),
+						'', // tested_by
+						'', // checked_by
+						'', // approved_by
+						JSON.stringify(testTypes),
+						JSON.stringify(allSoilData),
+						JSON.stringify(allRockData),
+						'draft',
+						`Unified lab report with ${allSoilData.length} soil samples and ${allRockData.length} rock samples`,
+						payload.userId,
+					]);
 
-						await client.query('COMMIT');
-						successful += 1;
-						results.push({ row: 0, report_id: reportId, sheet: dataset.name });
-						logger.info('Created single report from sheet', { 
-							sheet: dataset.name, 
-							reportId, 
-							soilSamples: allSoilData.length, 
-							rockSamples: allRockData.length 
-						});
-					} catch (err: any) {
-						await client.query('ROLLBACK');
-						failed += 1;
-						logger.error('Failed to create report from sheet', { sheet: dataset.name, error: err?.message });
-						results.push({ row: 0, error: err?.message || 'Unknown error', sheet: dataset.name });
-					} finally {
-						client.release();
-					}
-				} catch (error: any) {
+					await client.query('COMMIT');
+					successful += 1;
+					results.push({ row: 0, report_id: reportId, sheet: 'unified' });
+					logger.info('Created unified report from all sheets', { 
+						reportId, 
+						soilSamples: allSoilData.length, 
+						rockSamples: allRockData.length,
+						totalSheets: datasets.length
+					});
+				} catch (err: any) {
+					await client.query('ROLLBACK');
 					failed += 1;
-					logger.error('Failed to process sheet', { sheet: dataset.name, error: error?.message });
-					results.push({ row: 0, error: error?.message || 'Unknown error', sheet: dataset.name });
+					logger.error('Failed to create unified report', { error: err?.message });
+					results.push({ row: 0, error: err?.message || 'Unknown error', sheet: 'unified' });
+				} finally {
+					client.release();
 				}
-			} else {
-				logger.warn('No valid sample data found in sheet', { sheet: dataset.name });
-				results.push({ row: 0, error: 'No valid sample data found', sheet: dataset.name });
+			} catch (error: any) {
+				failed += 1;
+				logger.error('Failed to process unified report', { error: error?.message });
+				results.push({ row: 0, error: error?.message || 'Unknown error', sheet: 'unified' });
 			}
+		} else {
+			logger.warn('No valid sample data found in any sheet');
+			results.push({ row: 0, error: 'No valid sample data found in any sheet', sheet: 'unified' });
 		}
 
 		const response = createResponse(200, {
