@@ -526,6 +526,18 @@ export const unifiedLabReportsApi = {
   }) =>
     apiClient.put<ApiResponse<any>>(`/unified-lab-reports/${reportId}`, data),
 
+  // Submit report for approval
+  submit: (reportId: string) =>
+    apiClient.post<ApiResponse<any>>(`/unified-lab-reports/${reportId}/submit`),
+
+  // Approve report
+  approve: (reportId: string, data?: { customer_notes?: string }) =>
+    apiClient.post<ApiResponse<any>>(`/unified-lab-reports/${reportId}/approve`, data),
+
+  // Reject report
+  reject: (reportId: string, data: { rejection_reason?: string }) =>
+    apiClient.post<ApiResponse<any>>(`/unified-lab-reports/${reportId}/reject`, data),
+
   // Get all unified lab reports with optional filters
   getAll: (params?: {
     status?: string;

@@ -1149,6 +1149,146 @@ const serverlessConfiguration: AWS = {
       ]
     },
 
+    // Approval endpoints for unified lab reports
+    approveUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.approveUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/unified-lab-reports/{reportId}/approve',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    rejectUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.rejectUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/unified-lab-reports/{reportId}/reject',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    submitUnifiedLabReport: {
+      handler: 'src/handlers/unifiedLabReports.submitUnifiedLabReport',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/unified-lab-reports/{reportId}/submit',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Soil Test Samples endpoints
+    getSoilTestSamples: {
+      handler: 'src/handlers/soilTestSamples.getSoilTestSamples',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/unified-lab-reports/{reportId}/soil-samples',
+            cors: true
+          }
+        }
+      ]
+    },
+    getSoilTestSample: {
+      handler: 'src/handlers/soilTestSamples.getSoilTestSample',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/soil-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateSoilTestSample: {
+      handler: 'src/handlers/soilTestSamples.updateSoilTestSample',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/soil-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteSoilTestSample: {
+      handler: 'src/handlers/soilTestSamples.deleteSoilTestSample',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/soil-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+
+    // Rock Test Samples endpoints
+    getRockTestSamples: {
+      handler: 'src/handlers/rockTestSamples.getRockTestSamples',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/unified-lab-reports/{reportId}/rock-samples',
+            cors: true
+          }
+        }
+      ]
+    },
+    getRockTestSample: {
+      handler: 'src/handlers/rockTestSamples.getRockTestSample',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/rock-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    updateRockTestSample: {
+      handler: 'src/handlers/rockTestSamples.updateRockTestSample',
+      events: [
+        {
+          http: {
+            method: 'put',
+            path: '/rock-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+    deleteRockTestSample: {
+      handler: 'src/handlers/rockTestSamples.deleteRockTestSample',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/rock-test-samples/{sampleId}',
+            cors: true
+          }
+        }
+      ]
+    },
+
     // Lab Reports endpoint (alias for unified lab reports)
     getLabReports: {
       handler: 'src/handlers/unifiedLabReports.getUnifiedLabReports',

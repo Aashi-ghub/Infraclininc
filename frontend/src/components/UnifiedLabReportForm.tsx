@@ -121,24 +121,152 @@ export default function UnifiedLabReportForm({
 
   // Update form data when existingReport changes (e.g., after creation)
   useEffect(() => {
+    console.log('UnifiedLabReportForm: existingReport changed:', existingReport);
     if (existingReport) {
-      setFormData(prev => ({
-          ...prev,
-        lab_report_id: existingReport?.report_id || existingReport?.id || prev.lab_report_id,
-        lab_request_id: existingReport?.request_id || existingReport?.assignment_id || requestId || prev.lab_request_id,
-        project_name: existingReport?.project_name || prev.project_name,
-        borehole_no: existingReport?.borehole_no || existingReport?.sample_id || prev.borehole_no,
-        client: existingReport?.client || prev.client,
-        date: existingReport?.test_date ? new Date(existingReport.test_date) : prev.date,
-        tested_by: existingReport?.tested_by || prev.tested_by,
-        checked_by: existingReport?.checked_by || prev.checked_by,
-        approved_by: existingReport?.approved_by || prev.approved_by,
-        report_status: existingReport?.status || prev.report_status,
-        soil_test_data: existingReport?.soil_test_data || prev.soil_test_data,
-        rock_test_data: existingReport?.rock_test_data || prev.rock_test_data,
-        soil_test_completed: !!(existingReport?.soil_test_data && existingReport.soil_test_data.length > 0),
-        rock_test_completed: !!(existingReport?.rock_test_data && existingReport.rock_test_data.length > 0)
-      }));
+      // Parse test data and extract metadata if embedded
+      let soilData = existingReport?.soil_test_data || [];
+      let rockData = existingReport?.rock_test_data || [];
+      
+      // Parse JSON strings if needed
+      if (typeof soilData === 'string') {
+        try { soilData = JSON.parse(soilData); } catch (e) { soilData = []; }
+      }
+      if (typeof rockData === 'string') {
+        try { rockData = JSON.parse(rockData); } catch (e) { rockData = []; }
+      }
+      
+             // Function to segregate data into general info and test data
+       const segregateData = (dataArray: any[]) => {
+         if (!Array.isArray(dataArray)) return { generalInfo: {}, testData: [] };
+         
+         const generalInfo: any = {};
+         const testData: any[] = [];
+         
+         console.log('UnifiedLabReportForm: Raw data array:', dataArray);
+         
+         // First, let's identify the actual structure by looking at the data
+         for (const item of dataArray) {
+           if (typeof item === 'object' && item !== null) {
+             console.log('UnifiedLabReportForm: Processing item:', item);
+             
+             // Check if this item is purely metadata (contains only metadata fields)
+             const keys = Object.keys(item);
+             const hasOnlyMetadata = keys.every(key => {
+               const lowerKey = key.toLowerCase();
+               return lowerKey.includes('project') || 
+                      lowerKey.includes('client') || 
+                      lowerKey.includes('borehole') || 
+                      lowerKey.includes('location') || 
+                      lowerKey.includes('section') || 
+                      lowerKey.includes('chainage') || 
+                      lowerKey.includes('coordinate') || 
+                      lowerKey.includes('tested by') || 
+                      lowerKey.includes('checked by') || 
+                      lowerKey.includes('approved by') ||
+                      lowerKey.includes('date') ||
+                      key.includes('Project Name:') ||
+                      key.includes('Client Name:') ||
+                      key.includes('Borehole No:') ||
+                      key.includes('Location:') ||
+                      key.includes('Section:') ||
+                      key.includes('Chainage:') ||
+                      key.includes('Coordinates E:') ||
+                      key.includes('Coordinates N:') ||
+                      key.includes('Tested By:') ||
+                      key.includes('Checked By:') ||
+                      key.includes('Approved By:');
+             });
+             
+             if (hasOnlyMetadata) {
+               // This is a metadata item - extract general info
+               for (const [key, value] of Object.entries(item)) {
+                 if (value !== null && value !== undefined && value !== '') {
+                   let cleanKey = key.replace(':', '').trim();
+                   if (cleanKey === 'Project Name') cleanKey = 'project_name';
+                   if (cleanKey === 'Client Name') cleanKey = 'client';
+                   if (cleanKey === 'Borehole No') cleanKey = 'borehole_no';
+                   if (cleanKey === 'Coordinates E') cleanKey = 'coordinates_e';
+                   if (cleanKey === 'Coordinates N') cleanKey = 'coordinates_n';
+                   if (cleanKey === 'Tested By') cleanKey = 'tested_by';
+                   if (cleanKey === 'Checked By') cleanKey = 'checked_by';
+                   if (cleanKey === 'Approved By') cleanKey = 'approved_by';
+                   
+                   generalInfo[cleanKey] = value;
+                 }
+               }
+             } else {
+               // This is test data - check if it contains actual test values
+               const hasTestValues = Object.entries(item).some(([key, value]) => {
+                 if (typeof value === 'number') return true;
+                 if (typeof value === 'string') {
+                   // Check if it's a numerical value or test-related
+                   return /^-?\d+(\.\d+)?$/.test(value) || 
+                          key.toLowerCase().includes('result') ||
+                          key.toLowerCase().includes('test') ||
+                          key.toLowerCase().includes('load') ||
+                          key.toLowerCase().includes('strength') ||
+                          key.toLowerCase().includes('density') ||
+                          key.toLowerCase().includes('ucs') ||
+                          key.toLowerCase().includes('mpa') ||
+                          key.toLowerCase().includes('kn');
+                 }
+                 return false;
+               });
+               
+               if (hasTestValues) {
+                 testData.push(item);
+               }
+             }
+           }
+         }
+         
+         return { generalInfo, testData };
+       };
+      
+      // Segregate soil data
+      const soilSegregation = segregateData(soilData);
+      soilData = soilSegregation.testData;
+      let extractedMeta = soilSegregation.generalInfo;
+      
+      // Segregate rock data and merge with existing metadata
+      const rockSegregation = segregateData(rockData);
+      rockData = rockSegregation.testData;
+      extractedMeta = { ...extractedMeta, ...rockSegregation.generalInfo };
+      
+      console.log('UnifiedLabReportForm: Segregated data:', {
+        soilDataCount: soilData.length,
+        rockDataCount: rockData.length,
+        extractedMeta,
+        firstSoilSample: soilData[0],
+        firstRockSample: rockData[0]
+      });
+      
+      const updatedFormData = {
+        ...formData,
+        lab_report_id: existingReport?.report_id || existingReport?.id || formData.lab_report_id,
+        lab_request_id: existingReport?.request_id || existingReport?.assignment_id || requestId || formData.lab_request_id,
+        project_name: extractedMeta.project_name || existingReport?.project_name || formData.project_name,
+        borehole_no: extractedMeta.borehole_no || existingReport?.borehole_no || existingReport?.sample_id || formData.borehole_no,
+        client: extractedMeta.client || existingReport?.client || formData.client,
+        location: extractedMeta.location || existingReport?.location || formData.location,
+        section_name: extractedMeta.section_name || existingReport?.section_name || formData.section_name,
+        chainage_km: extractedMeta.chainage_km || existingReport?.chainage_km || formData.chainage_km,
+        coordinates_e: extractedMeta.coordinates_e || existingReport?.coordinates_e || formData.coordinates_e,
+        coordinates_n: extractedMeta.coordinates_n || existingReport?.coordinates_n || formData.coordinates_n,
+        date: existingReport?.test_date ? new Date(existingReport.test_date) : formData.date,
+        tested_by: extractedMeta.tested_by || existingReport?.tested_by || formData.tested_by,
+        checked_by: extractedMeta.checked_by || existingReport?.checked_by || formData.checked_by,
+        approved_by: extractedMeta.approved_by || existingReport?.approved_by || formData.approved_by,
+        report_status: existingReport?.status || formData.report_status,
+        soil_test_data: Array.isArray(soilData) ? soilData : formData.soil_test_data,
+        rock_test_data: Array.isArray(rockData) ? rockData : formData.rock_test_data,
+        soil_test_completed: Array.isArray(soilData) && soilData.length > 0,
+        rock_test_completed: Array.isArray(rockData) && rockData.length > 0
+      };
+      console.log('UnifiedLabReportForm: Updated form data:', updatedFormData);
+      console.log('UnifiedLabReportForm: Soil data count:', soilData.length);
+      console.log('UnifiedLabReportForm: Rock data count:', rockData.length);
+      setFormData(updatedFormData);
     }
   }, [existingReport]);
 
@@ -498,7 +626,7 @@ export default function UnifiedLabReportForm({
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="text-sm font-medium">Project Name</label>
-                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={labRequest?.borelog?.project_name || formData.project_name} onChange={(e) => {}} disabled />
+                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={formData.project_name} onChange={(e) => {}} disabled />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Client</label>
@@ -520,7 +648,7 @@ export default function UnifiedLabReportForm({
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="text-sm font-medium">Borehole No.</label>
-                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={labRequest?.sample_id || formData.borehole_no} onChange={(e) => {}} disabled />
+                      <input type="text" className="mt-1 block w-full rounded-md border px-3 py-2 bg-gray-50" value={formData.borehole_no} onChange={(e) => {}} disabled />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -557,18 +685,25 @@ export default function UnifiedLabReportForm({
               </div>
               <SoilLabReportForm
                 labRequest={labRequest}
-                existingReport={existingReport}
+                existingReport={{
+                  ...existingReport,
+                  soil_test_data: formData.soil_test_data,
+                  rock_test_data: formData.rock_test_data
+                }}
                 onSubmit={handleSoilFormSubmit}
                 onCancel={() => {}}
                 onSaveDraft={() => {}}
                 isLoading={false}
                 userRole={userRole}
                 isReadOnly={isReadOnly}
-                onDataChange={React.useCallback((d) => setFormData(prev => ({
+                onDataChange={React.useCallback((d) => {
+                  console.log('SoilLabReportForm onDataChange:', d);
+                  setFormData(prev => ({
                   ...prev,
                   soil_test_data: d.soil_test_data,
                   soil_test_completed: Array.isArray(d.soil_test_data) && d.soil_test_data.length > 0
-                })), [])}
+                  }));
+                }, [])}
                 incomingSoilData={incomingSoilDataRef}
                 onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />
@@ -582,18 +717,25 @@ export default function UnifiedLabReportForm({
               </div>
               <RockLabReportForm
                 labRequest={labRequest}
-                existingReport={existingReport}
+                existingReport={{
+                  ...existingReport,
+                  soil_test_data: formData.soil_test_data,
+                  rock_test_data: formData.rock_test_data
+                }}
                 onSubmit={handleRockFormSubmit}
                 onCancel={() => {}}
                 onSaveDraft={() => {}}
                 isLoading={false}
                 userRole={userRole}
                 isReadOnly={isReadOnly}
-                onDataChange={React.useCallback((d) => setFormData(prev => ({
+                onDataChange={React.useCallback((d) => {
+                  console.log('RockLabReportForm onDataChange:', d);
+                  setFormData(prev => ({
                   ...prev,
                   rock_test_data: d.rock_test_data,
                   rock_test_completed: Array.isArray(d.rock_test_data) && d.rock_test_data.length > 0
-                })), [])}
+                  }));
+                }, [])}
                 incomingRockData={incomingRockDataRef}
                 onMetaChange={React.useCallback((meta) => setFormData(prev => ({...prev, ...sanitizeMeta(meta)})), [sanitizeMeta])}
               />

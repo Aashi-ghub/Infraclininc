@@ -235,15 +235,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 					});
 					
 					// Log raw row data for debugging
-					if (i < 2) {
-						logger.info('Processing row', { 
-							sheet: dataset.name, 
-							rowIndex, 
-							rawData: normalizedInput,
-							keys: Object.keys(normalizedInput),
-							values: Object.values(normalizedInput)
-						});
-					}
+					logger.info('Processing row', { 
+						sheet: dataset.name, 
+						rowIndex, 
+						rawData: raw,
+						normalizedData: normalizedInput,
+						keys: Object.keys(raw),
+						values: Object.values(raw)
+					});
 					
 					const parsedInput = UnifiedLabReportCSVSchema.partial().parse(normalizedInput) as Partial<CsvRow>;
 					
@@ -417,6 +416,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 			}
 		}
 
+		// Log collected data for debugging
+		logger.info('Collected data summary:', {
+			hasValidSamples,
+			allSoilDataLength: allSoilData.length,
+			allRockDataLength: allRockData.length,
+			reportMetadata,
+			allSoilData: allSoilData.slice(0, 2), // Log first 2 samples
+			allRockData: allRockData.slice(0, 2)  // Log first 2 samples
+		});
+
 		// Create ONE unified report with all collected sample data from ALL sheets
 		if (hasValidSamples) {
 			try {
@@ -454,12 +463,137 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 						'', // checked_by
 						'', // approved_by
 						JSON.stringify(testTypes),
-						JSON.stringify(allSoilData),
-						JSON.stringify(allRockData),
-						'draft',
+						'[]', // Empty JSON array for soil_test_data (now stored in separate table)
+						'[]', // Empty JSON array for rock_test_data (now stored in separate table)
+						'submitted',
 						`Unified lab report with ${allSoilData.length} soil samples and ${allRockData.length} rock samples`,
 						payload.userId,
 					]);
+
+					// Insert soil test samples into separate table
+					logger.info('Inserting soil samples:', { count: allSoilData.length });
+					if (allSoilData.length > 0) {
+						for (let i = 0; i < allSoilData.length; i++) {
+							const soilSample = allSoilData[i];
+							const soilSampleQuery = `
+								INSERT INTO soil_test_samples (
+									report_id, layer_no, sample_no, depth_from, depth_to,
+									natural_moisture_content, bulk_density, dry_density, specific_gravity,
+									void_ratio, porosity, degree_of_saturation,
+									liquid_limit, plastic_limit, plasticity_index, shrinkage_limit,
+									gravel_percentage, sand_percentage, silt_percentage, clay_percentage,
+									cohesion, angle_of_internal_friction, unconfined_compressive_strength,
+									compression_index, recompression_index, preconsolidation_pressure,
+									permeability_coefficient, cbr_value,
+									soil_classification, soil_description, remarks,
+									created_by_user_id
+								) VALUES (
+									$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+									$17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+								)
+							`;
+
+							logger.info('Inserting soil sample:', { 
+								index: i, 
+								sampleData: soilSample,
+								sampleKeys: Object.keys(soilSample)
+							});
+							
+							await client.query(soilSampleQuery, [
+								reportId,
+								soilSample.layer_no || i + 1,
+								soilSample.sample_no || `S-${i + 1}`,
+								soilSample.depth_from || null,
+								soilSample.depth_to || null,
+								soilSample.natural_moisture_content || null,
+								soilSample.bulk_density || null,
+								soilSample.dry_density || null,
+								soilSample.specific_gravity || null,
+								soilSample.void_ratio || null,
+								soilSample.porosity || null,
+								soilSample.degree_of_saturation || null,
+								soilSample.liquid_limit || null,
+								soilSample.plastic_limit || null,
+								soilSample.plasticity_index || null,
+								soilSample.shrinkage_limit || null,
+								soilSample.gravel_percentage || null,
+								soilSample.sand_percentage || null,
+								soilSample.silt_percentage || null,
+								soilSample.clay_percentage || null,
+								soilSample.cohesion || null,
+								soilSample.angle_of_internal_friction || null,
+								soilSample.unconfined_compressive_strength || null,
+								soilSample.compression_index || null,
+								soilSample.recompression_index || null,
+								soilSample.preconsolidation_pressure || null,
+								soilSample.permeability_coefficient || null,
+								soilSample.cbr_value || null,
+								soilSample.soil_classification || null,
+								soilSample.soil_description || null,
+								soilSample.remarks || null,
+								payload.userId
+							]);
+						}
+					}
+
+					// Insert rock test samples into separate table
+					logger.info('Inserting rock samples:', { count: allRockData.length });
+					if (allRockData.length > 0) {
+						for (let i = 0; i < allRockData.length; i++) {
+							const rockSample = allRockData[i];
+							const rockSampleQuery = `
+								INSERT INTO rock_test_samples (
+									report_id, layer_no, sample_no, depth_from, depth_to,
+									natural_moisture_content, bulk_density, dry_density, specific_gravity,
+									porosity, water_absorption,
+									unconfined_compressive_strength, point_load_strength_index,
+									tensile_strength, shear_strength,
+									youngs_modulus, poissons_ratio,
+									slake_durability_index, soundness_loss,
+									los_angeles_abrasion_value,
+									rock_classification, rock_description, rock_quality_designation, remarks,
+									created_by_user_id
+								) VALUES (
+									$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+									$17, $18, $19, $20, $21, $22, $23, $24, $25
+								)
+							`;
+
+							logger.info('Inserting rock sample:', { 
+								index: i, 
+								sampleData: rockSample,
+								sampleKeys: Object.keys(rockSample)
+							});
+							
+							await client.query(rockSampleQuery, [
+								reportId,
+								rockSample.layer_no || i + 1,
+								rockSample.sample_no || `R-${i + 1}`,
+								rockSample.depth_from || null,
+								rockSample.depth_to || null,
+								rockSample.natural_moisture_content || null,
+								rockSample.bulk_density || null,
+								rockSample.dry_density || null,
+								rockSample.specific_gravity || null,
+								rockSample.porosity || null,
+								rockSample.water_absorption || null,
+								rockSample.unconfined_compressive_strength || null,
+								rockSample.point_load_strength_index || null,
+								rockSample.tensile_strength || null,
+								rockSample.shear_strength || null,
+								rockSample.youngs_modulus || null,
+								rockSample.poissons_ratio || null,
+								rockSample.slake_durability_index || null,
+								rockSample.soundness_loss || null,
+								rockSample.los_angeles_abrasion_value || null,
+								rockSample.rock_classification || null,
+								rockSample.rock_description || null,
+								rockSample.rock_quality_designation || null,
+								rockSample.remarks || null,
+								payload.userId
+							]);
+						}
+					}
 
 					// Create initial version explicitly to ensure version history exists
 					const versionResult = await client.query('SELECT get_next_lab_report_version($1) as next_version', [reportId]);
@@ -491,14 +625,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 						'', // checked_by
 						'', // approved_by
 						JSON.stringify(testTypes),
-						JSON.stringify(allSoilData),
-						JSON.stringify(allRockData),
-						'draft',
+						'[]', // Empty JSON array for soil_test_data
+						'[]', // Empty JSON array for rock_test_data
+						'submitted',
 						`Unified lab report with ${allSoilData.length} soil samples and ${allRockData.length} rock samples`,
 						payload.userId,
 					]);
 
 					await client.query('COMMIT');
+					
+					logger.info('Successfully created report with samples:', {
+						reportId,
+						soilSamplesCount: allSoilData.length,
+						rockSamplesCount: allRockData.length,
+						totalSheets: datasets.length
+					});
+					
 					successful += 1;
 					results.push({ row: 0, report_id: reportId, sheet: 'unified' });
 					logger.info('Created unified report from all sheets', { 

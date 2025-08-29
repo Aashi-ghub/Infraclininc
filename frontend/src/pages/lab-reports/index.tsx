@@ -190,6 +190,9 @@ export default function LabReportManagement() {
             <Button onClick={() => navigate('/lab-reports/unified')}>
               Create Unified Report
             </Button>
+            <Button onClick={() => navigate('/lab-reports/pending')} variant="outline">
+              View All Reports
+            </Button>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline">Bulk Upload</Button>

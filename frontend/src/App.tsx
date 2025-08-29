@@ -22,6 +22,8 @@ import CreateLabRequest from "./pages/lab-reports/create-request";
 import RockLabTestPage from "./pages/lab-reports/rock-test";
 import SoilLabTestPage from "./pages/lab-reports/soil-test";
 import UnifiedLabReportPage from "./pages/lab-reports/unified";
+import PendingReportsPage from "./pages/lab-reports/pending-reports";
+import ViewReportPage from "./pages/lab-reports/view-report";
 import ReviewerDashboard from "./pages/reviewer/dashboard";
 import CreateBorelogDetailPage from "./pages/borelog-details/create";
 import ContactsListPage from "./pages/contacts/list";
@@ -230,6 +232,16 @@ const App = () => (
         <Route path="/lab-reports/unified/:requestId?" element={
           <ProtectedRoute allowedRoles={['Admin', 'Lab Engineer']}>
             <UnifiedLabReportPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/pending" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer']}>
+            <PendingReportsPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/lab-reports/view/:reportId" element={
+          <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer']}>
+            <ViewReportPage />
           </ProtectedRoute>
         } />
                     
