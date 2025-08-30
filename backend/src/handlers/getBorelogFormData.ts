@@ -83,13 +83,31 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const substructures = await db.query(substructuresQuery, substructuresParams);
 
+    // Group structures by project_id
+    const structures_by_project: { [key: string]: any[] } = {};
+    structures.forEach((structure: any) => {
+      if (!structures_by_project[structure.project_id]) {
+        structures_by_project[structure.project_id] = [];
+      }
+      structures_by_project[structure.project_id].push(structure);
+    });
+
+    // Group substructures by structure_id
+    const substructures_by_structure: { [key: string]: any[] } = {};
+    substructures.forEach((substructure: any) => {
+      if (!substructures_by_structure[substructure.structure_id]) {
+        substructures_by_structure[substructure.structure_id] = [];
+      }
+      substructures_by_structure[substructure.structure_id].push(substructure);
+    });
+
     const response = createResponse(200, {
       success: true,
       message: 'Form data retrieved successfully',
       data: {
         projects,
-        structures,
-        substructures
+        structures_by_project,
+        substructures_by_structure
       }
     });
 

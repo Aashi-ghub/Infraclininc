@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { actualBorelogApi, projectApi, structureApi, substructureApi, boreholeApi } from '@/lib/api';
+import { actualBorelogApi, projectApi, structureApi, substructureApi, boreholeApi, borelogApiV2 } from '@/lib/api';
 import { Loader } from '@/components/Loader';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
@@ -91,12 +91,9 @@ export default function ManageBorelogs() {
           return;
         }
 
-        const response = await structureApi.list(selectedProjectData.project_id);
-        if (response.data && Array.isArray(response.data.data)) {
-          setStructures(response.data.data);
-        } else {
-          setStructures([]);
-        }
+        const response = await borelogApiV2.getFormData({ project_id: selectedProjectData.project_id });
+        const formData = response.data.data;
+        setStructures(formData.structures_by_project[selectedProjectData.project_id] || []);
       } catch (error) {
         console.error('Failed to load structures:', error);
         setStructures([]);
@@ -126,12 +123,9 @@ export default function ManageBorelogs() {
           return;
         }
 
-        const response = await substructureApi.list(selectedProjectData.project_id, selectedStructure);
-        if (response.data && Array.isArray(response.data.data)) {
-          setSubstructures(response.data.data);
-        } else {
-          setSubstructures([]);
-        }
+        const response = await borelogApiV2.getFormData({ project_id: selectedProjectData.project_id, structure_id: selectedStructure });
+        const formData = response.data.data;
+        setSubstructures(formData.substructures_by_structure[selectedStructure] || []);
       } catch (error) {
         console.error('Failed to load substructures:', error);
         setSubstructures([]);

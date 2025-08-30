@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { borelogAssignmentApi, userApi, projectApi, structureApi } from '@/lib/api';
+import { borelogAssignmentApi, userApi, projectApi, structureApi, borelogApiV2 } from '@/lib/api';
 import { BorelogAssignment, User, Project, Structure } from '@/lib/types';
 import { format } from 'date-fns';
 import { useAuth } from '@/lib/auth';
@@ -63,8 +63,9 @@ export default function BorelogAssignmentsPage() {
 
   const loadStructures = async (projectId: string) => {
     try {
-      const response = await structureApi.getByProject(projectId);
-      setStructures(response.data.data || []);
+      const response = await borelogApiV2.getFormData({ project_id: projectId });
+      const formData = response.data.data;
+      setStructures(formData.structures_by_project[projectId] || []);
     } catch (error) {
       console.error('Failed to load structures:', error);
       toast({

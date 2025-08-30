@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
-import { projectsApi, structuresApi, substructureApi } from '@/lib/api';
+import { projectsApi, structuresApi, substructureApi, borelogApiV2 } from '@/lib/api';
 import { BorelogEntryForm } from '@/components/BorelogEntryForm';
 import { Project, Structure, Substructure } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -96,8 +96,9 @@ export default function BorelogEntryPage() {
   const loadStructures = async (projectId: string) => {
     setIsLoadingStructures(true);
     try {
-      const response = await structuresApi.getByProject(projectId);
-      setStructures(response.data || []);
+      const response = await borelogApiV2.getFormData({ project_id: projectId });
+      const formData = response.data.data;
+      setStructures(formData.structures_by_project[projectId] || []);
     } catch (error: any) {
       console.error('Failed to load structures:', error);
       toast({
@@ -113,8 +114,9 @@ export default function BorelogEntryPage() {
   const loadSubstructures = async (projectId: string, structureId: string) => {
     setIsLoadingSubstructures(true);
     try {
-      const response = await substructureApi.list(projectId, structureId);
-      setSubstructures(response.data.data || []);
+      const response = await borelogApiV2.getFormData({ project_id: projectId, structure_id: structureId });
+      const formData = response.data.data;
+      setSubstructures(formData.substructures_by_structure[structureId] || []);
     } catch (error: any) {
       console.error('Failed to load substructures:', error);
       toast({

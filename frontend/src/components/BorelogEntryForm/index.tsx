@@ -214,8 +214,9 @@ export function BorelogEntryForm({
   // Load substructures
   const loadSubstructures = async (projectId: string, structureId: string) => {
     try {
-      const response = await substructureApi.list(projectId, structureId);
-      setSubstructures(response.data.data || []);
+      const response = await borelogApiV2.getFormData({ project_id: projectId, structure_id: structureId });
+      const formData = response.data.data;
+      setSubstructures(formData.substructures_by_structure[structureId] || []);
     } catch (error) {
       console.error('Error loading substructures:', error);
     }
@@ -827,21 +828,36 @@ export function BorelogEntryForm({
     
     try {
       setIsSubmitting(true);
-      if (!data.borelog_id) {
-        throw new Error('No borelog found for selected substructure. Load an existing borelog before submitting.');
-      }
       
       // Check if substructure_id is set
       if (!data.substructure_id || data.substructure_id === '') {
         throw new Error('Please select a substructure before submitting.');
       }
+
+      // If no borelog_id exists, create a new borelog first
+      let borelogId = data.borelog_id;
+      if (!borelogId) {
+        console.log('Creating new borelog for substructure:', data.substructure_id);
+        const createResponse = await borelogApiV2.create({
+          substructure_id: data.substructure_id,
+          project_id: data.project_id,
+          type: borelogType || 'Geological',
+          status: 'submitted'
+        });
+        borelogId = createResponse.data.data.borelog_id;
+        console.log('Created new borelog with ID:', borelogId);
+        
+        // Update the form with the new borelog_id
+        form.setValue('borelog_id', borelogId);
+        // Don't set version_number - let the backend handle it
+      }
       const payload: any = {
-        borelog_id: data.borelog_id,
+        borelog_id: borelogId,
         substructure_id: data.substructure_id,
         project_id: data.project_id,
         type: borelogType || 'Geological',
         status: 'submitted',
-        version_no: data.version_number,
+        // Don't include version_no - let the backend handle it automatically
       };
 
       console.log('All form values for submission:', data);
@@ -983,23 +999,38 @@ export function BorelogEntryForm({
     try {
       setIsSaving(true);
       const v = form.getValues();
-      if (!v.borelog_id) {
-        throw new Error('No borelog found for selected substructure. Load an existing borelog before saving.');
-      }
       
       // Check if substructure_id is set
       if (!v.substructure_id || v.substructure_id === '') {
         throw new Error('Please select a substructure before saving.');
       }
 
+      // If no borelog_id exists, create a new borelog first
+      let borelogId = v.borelog_id;
+      if (!borelogId) {
+        console.log('Creating new borelog for substructure:', v.substructure_id);
+        const createResponse = await borelogApiV2.create({
+          substructure_id: v.substructure_id,
+          project_id: v.project_id,
+          type: borelogType || 'Geological',
+          status: 'draft'
+        });
+        borelogId = createResponse.data.data.borelog_id;
+        console.log('Created new borelog with ID:', borelogId);
+        
+        // Update the form with the new borelog_id
+        form.setValue('borelog_id', borelogId);
+        // Don't set version_number - let the backend handle it
+      }
+
       // Base payload with required fields
       const payload: any = {
-        borelog_id: v.borelog_id,
+        borelog_id: borelogId,
         substructure_id: v.substructure_id,
         project_id: v.project_id,
         type: borelogType || 'Geological',
         status: 'draft',
-        version_no: v.version_number,
+        // Don't include version_no - let the backend handle it automatically
         boring_method: 'Rotary Drilling', // Default value
         hole_diameter: 150, // Default value
       };
@@ -1099,11 +1130,12 @@ export function BorelogEntryForm({
         }
       });
 
-      // Handle stratum data separately
+      // Handle stratum data separately - will save after version creation
       const stratumRows = v.stratum_rows;
+      let transformedLayers: any[] = [];
       if (Array.isArray(stratumRows) && stratumRows.length > 0) {
         // Transform stratum data to match backend schema
-        const transformedLayers = stratumRows.map(layer => ({
+        transformedLayers = stratumRows.map(layer => ({
           ...layer,
           // Convert string fields to numbers where needed
           depth_from_m: layer.depth_from !== undefined ? Number(layer.depth_from) : null,
@@ -1122,36 +1154,14 @@ export function BorelogEntryForm({
             spt_15cm_2: sample.spt_15cm_2 !== undefined ? Number(sample.spt_15cm_2) : null,
             spt_15cm_3: sample.spt_15cm_3 !== undefined ? Number(sample.spt_15cm_3) : null,
             n_value: sample.n_value !== undefined ? Number(sample.n_value) : null,
-            total_core_length_cm: sample.total_core_length_cm !== undefined ? Number(sample.total_core_length_cm) : null,
+            total_core_length_cm: sample.total_core_length !== undefined ? Number(sample.total_core_length) : null,
             tcr_percent: sample.tcr_percent !== undefined ? Number(sample.tcr_percent) : null,
             rqd_length_cm: sample.rqd_length !== undefined ? Number(sample.rqd_length) : null,
             rqd_percent: sample.rqd_percent !== undefined ? Number(sample.rqd_percent) : null,
           })) || []
         }));
 
-        // Save stratum data to new tables
-        try {
-          console.log('Saving stratum data with layers:', transformedLayers);
-          console.log('Stratum data details:', {
-            layerCount: transformedLayers.length,
-            sampleCount: transformedLayers.reduce((acc, layer) => acc + (layer.samples?.length || 0), 0),
-            layerSizes: transformedLayers.map(layer => ({
-              id: layer.id,
-              sampleCount: layer.samples?.length || 0,
-              hasDescription: !!layer.description,
-              hasDepths: layer.depth_from_m !== null || layer.depth_to_m !== null
-            }))
-          });
-          await borelogApiV2.saveStratumData({
-            borelog_id: v.borelog_id,
-            version_no: v.version_number,
-            layers: transformedLayers,
-            user_id: typedUser.user_id
-          });
-        } catch (error) {
-          console.error('Failed to save stratum data:', error);
-          throw new Error('Failed to save stratum data');
-        }
+        console.log('Stratum data will be saved after version creation');
       }
 
       // Handle coordinates
@@ -1175,6 +1185,22 @@ export function BorelogEntryForm({
       const response = await borelogApiV2.createVersion(payload);
       const newVersion = response.data.data;
       console.log('New version created:', newVersion);
+      
+      // Save stratum data with the new version number
+      if (Array.isArray(stratumRows) && stratumRows.length > 0) {
+        try {
+          console.log('Saving stratum data for version:', newVersion.version_no);
+          await borelogApiV2.saveStratumData({
+            borelog_id: borelogId,
+            version_no: newVersion.version_no,
+            layers: transformedLayers,
+            user_id: typedUser.user_id
+          });
+        } catch (error) {
+          console.error('Failed to save stratum data:', error);
+          throw new Error('Failed to save stratum data');
+        }
+      }
       
       // Update tracking after successful save
       setOriginalValues(form.getValues());

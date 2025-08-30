@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Plus, Building2, MapPin, Calendar, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { structureApi, projectApi } from '@/lib/api';
+import { structureApi, projectApi, borelogApiV2 } from '@/lib/api';
 import { Structure, Project } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -57,16 +57,9 @@ export default function StructureListPage() {
       
       try {
         setIsLoading(true);
-        const response = await structureApi.list(projectId);
-        
-        if (response.data && Array.isArray(response.data.data)) {
-          setStructures(response.data.data);
-        } else if (response.data && Array.isArray(response.data)) {
-          setStructures(response.data);
-        } else {
-          console.error('Unexpected structures response format:', response);
-          setStructures([]);
-        }
+        const response = await borelogApiV2.getFormData({ project_id: projectId });
+        const formData = response.data.data;
+        setStructures(formData.structures_by_project[projectId] || []);
       } catch (error) {
         console.error('Failed to load structures:', error);
         toast({
