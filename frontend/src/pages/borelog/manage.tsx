@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { actualBorelogApi, projectApi } from '@/lib/api';
+import { actualBorelogApi, projectApi, structureApi, substructureApi, boreholeApi } from '@/lib/api';
 import { Loader } from '@/components/Loader';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
@@ -22,14 +22,18 @@ export default function ManageBorelogs() {
   const [borelogs, setBorelogs] = useState<any[]>([]);
   const [filteredBorelogs, setFilteredBorelogs] = useState<any[]>([]);
   const [substructures, setSubstructures] = useState<any[]>([]);
+  const [structures, setStructures] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSubstructures, setIsLoadingSubstructures] = useState(true);
+  const [isLoadingStructures, setIsLoadingStructures] = useState(true);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   
   // Filter states
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedProject, setSelectedProject] = useState<string>('all');
+  const [selectedStructure, setSelectedStructure] = useState<string | undefined>(undefined);
+  const [selectedSubstructure, setSelectedSubstructure] = useState<string | undefined>(undefined);
   const [showCSVUpload, setShowCSVUpload] = useState(false);
   const [showAssignments, setShowAssignments] = useState(false);
   const [selectedBorelogForAssignment, setSelectedBorelogForAssignment] = useState<string | null>(null);
@@ -67,6 +71,79 @@ export default function ManageBorelogs() {
 
     loadProjects();
   }, [toast]);
+
+  // Load structures when project is selected
+  useEffect(() => {
+    const loadStructures = async () => {
+      if (selectedProject === 'all') {
+        setStructures([]);
+        setSelectedStructure(undefined);
+        setSelectedSubstructure(undefined);
+        setIsLoadingStructures(false);
+        return;
+      }
+
+      try {
+        setIsLoadingStructures(true);
+        const selectedProjectData = projects.find(p => p.name === selectedProject);
+        if (!selectedProjectData) {
+          setStructures([]);
+          return;
+        }
+
+        const response = await structureApi.list(selectedProjectData.project_id);
+        if (response.data && Array.isArray(response.data.data)) {
+          setStructures(response.data.data);
+        } else {
+          setStructures([]);
+        }
+      } catch (error) {
+        console.error('Failed to load structures:', error);
+        setStructures([]);
+      } finally {
+        setIsLoadingStructures(false);
+      }
+    };
+
+    loadStructures();
+  }, [selectedProject, projects]);
+
+  // Load substructures when structure is selected
+  useEffect(() => {
+    const loadSubstructures = async () => {
+      if (!selectedStructure || selectedProject === 'all') {
+        setSubstructures([]);
+        setSelectedSubstructure(undefined);
+        setIsLoadingSubstructures(false);
+        return;
+      }
+
+      try {
+        setIsLoadingSubstructures(true);
+        const selectedProjectData = projects.find(p => p.name === selectedProject);
+        if (!selectedProjectData) {
+          setSubstructures([]);
+          return;
+        }
+
+        const response = await substructureApi.list(selectedProjectData.project_id, selectedStructure);
+        if (response.data && Array.isArray(response.data.data)) {
+          setSubstructures(response.data.data);
+        } else {
+          setSubstructures([]);
+        }
+      } catch (error) {
+        console.error('Failed to load substructures:', error);
+        setSubstructures([]);
+      } finally {
+        setIsLoadingSubstructures(false);
+      }
+    };
+
+    loadSubstructures();
+  }, [selectedStructure, selectedProject, projects]);
+
+
 
   // Load borelogs for selected project
   useEffect(() => {
@@ -349,7 +426,7 @@ export default function ManageBorelogs() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Project Selection */}
               <div>
                 <label className="text-sm font-medium mb-2 block">Project</label>
@@ -368,6 +445,52 @@ export default function ManageBorelogs() {
                 </Select>
               </div>
 
+              {/* Structure Selection */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Structure</label>
+                <Select value={selectedStructure || ''} onValueChange={setSelectedStructure} disabled={isLoadingStructures || selectedProject === 'all'}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingStructures ? "Loading structures..." : "Select a structure"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {structures.length === 0 && !isLoadingStructures && (
+                      <SelectItem value="no-data" disabled>
+                        No structures available
+                      </SelectItem>
+                    )}
+                    {structures.map((structure) => (
+                      <SelectItem key={structure.structure_id} value={structure.structure_id}>
+                        {structure.type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Substructure Selection */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Substructure</label>
+                <Select value={selectedSubstructure || ''} onValueChange={setSelectedSubstructure} disabled={isLoadingSubstructures || !selectedStructure}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingSubstructures ? "Loading substructures..." : "Select a substructure"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {substructures.length === 0 && !isLoadingSubstructures && (
+                      <SelectItem value="no-data" disabled>
+                        No substructures available
+                      </SelectItem>
+                    )}
+                    {substructures.map((substructure) => (
+                      <SelectItem key={substructure.substructure_id} value={substructure.substructure_id}>
+                        {substructure.type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
               {/* Search Filter */}
               <div>
                 <label className="text-sm font-medium mb-2 block">Search</label>
@@ -383,6 +506,27 @@ export default function ManageBorelogs() {
                 </div>
               </div>
             </div>
+
+            {/* Selection Status */}
+            {showCSVUpload && (
+              <div className="mt-4 p-3 bg-muted rounded-lg">
+                <h4 className="text-sm font-medium mb-2">Upload Requirements:</h4>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 text-sm">
+                  <div className={`flex items-center gap-2 ${selectedProject !== 'all' ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`w-2 h-2 rounded-full ${selectedProject !== 'all' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    Project: {selectedProject !== 'all' ? 'Selected' : 'Required'}
+                  </div>
+                  <div className={`flex items-center gap-2 ${selectedStructure ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`w-2 h-2 rounded-full ${selectedStructure ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    Structure: {selectedStructure ? 'Selected' : 'Required'}
+                  </div>
+                  <div className={`flex items-center gap-2 ${selectedSubstructure ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`w-2 h-2 rounded-full ${selectedSubstructure ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    Substructure: {selectedSubstructure ? 'Selected' : 'Required'}
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -392,7 +536,7 @@ export default function ManageBorelogs() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Upload className="h-5 w-5 text-primary" />
-                Upload Geological Logs via CSV
+                Upload Borelogs via CSV
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -405,6 +549,8 @@ export default function ManageBorelogs() {
                     ? undefined 
                     : (projects.find(p => p.name === selectedProject)?.project_id)
                 }
+                selectedStructureId={selectedStructure}
+                selectedSubstructureId={selectedSubstructure}
               />
             </CardContent>
           </Card>

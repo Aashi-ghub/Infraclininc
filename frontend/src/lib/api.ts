@@ -105,6 +105,9 @@ export const geologicalLogApi = {
   
   uploadCSV: (data: { csvData: string; projectId: string }) => 
     apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data),
+  
+  uploadBorelogCSV: (data: { csvData: string; projectId: string; structureId?: string; substructureId?: string; fileType?: string }) => 
+    apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data),
 };
 
 // Borelog API - alias to geologicalLogApi for backward compatibility
@@ -227,6 +230,29 @@ export const substructureApi = {
   
   getById: (id: string) => 
     apiClient.get<ApiResponse<Substructure>>(`/substructures/${id}`),
+};
+
+export const boreholeApi = {
+  list: () => 
+    apiClient.get<ApiResponse<Borehole[]>>('/boreholes'),
+  
+  getByProject: (projectId: string) => 
+    apiClient.get<ApiResponse<Borehole[]>>(`/boreholes/project/${projectId}`),
+  
+  getByProjectAndStructure: (projectId: string, structureId: string) => 
+    apiClient.get<ApiResponse<Borehole[]>>(`/boreholes/project/${projectId}/structure/${structureId}`),
+  
+  getById: (id: string) => 
+    apiClient.get<ApiResponse<Borehole>>(`/boreholes/${id}`),
+  
+  create: (data: CreateBoreholeInput) => 
+    apiClient.post<ApiResponse<Borehole>>('/boreholes', data),
+  
+  update: (id: string, data: Partial<CreateBoreholeInput>) => 
+    apiClient.put<ApiResponse<Borehole>>(`/boreholes/${id}`, data),
+  
+  delete: (id: string) => 
+    apiClient.delete<ApiResponse<null>>(`/boreholes/${id}`),
 };
 
 export const assignmentApi = {

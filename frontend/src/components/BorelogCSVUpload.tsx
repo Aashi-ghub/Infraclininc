@@ -8,43 +8,47 @@ import { geologicalLogApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 
 interface BorelogCSVUploadProps {
   projects: Array<{ project_id: string; name: string }>;
   onUploadSuccess?: () => void;
   selectedProjectId?: string; // Optional: when provided, use this and hide selector
+  selectedStructureId?: string;
+  selectedSubstructureId?: string;
 }
 
 interface UploadResult {
-  row: number;
-  borehole_number: string;
   borelog_id: string;
-  status: 'created';
+  submission_id: string;
+  job_code: string;
+  stratum_layers_created: number;
 }
 
 interface UploadError {
   row: number;
-  borehole_number?: string;
-  errors?: string[];
   error?: string;
+  errors?: string[];
 }
 
 interface UploadResponse {
-  created: UploadResult[];
-  errors: UploadError[];
+  borelog_id: string;
+  submission_id: string;
+  job_code: string;
+  stratum_layers_created: number;
+  stratum_errors: UploadError[];
   summary: {
-    total_rows: number;
-    successful: number;
-    failed: number;
+    total_stratum_rows: number;
+    successful_stratum_layers: number;
+    failed_stratum_rows: number;
   };
 }
 
-export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId }: BorelogCSVUploadProps) {
+export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId, selectedStructureId, selectedSubstructureId }: BorelogCSVUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedProject, setSelectedProject] = useState<string>(selectedProjectId || '');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -62,10 +66,12 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
     const file = files[0];
     
     // Validate file type
-    if (!file.name.toLowerCase().endsWith('.csv')) {
+    const validExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    if (!validExtensions.includes(fileExtension)) {
       toast({
         title: 'Invalid file type',
-        description: 'Please select a CSV file.',
+        description: 'Please select a CSV, XLSX, or XLS file.',
         variant: 'destructive',
       });
       return;
@@ -82,7 +88,6 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
     }
 
     setSelectedFile(file);
-    setUploadResult(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -103,17 +108,23 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
 
   const removeFile = () => {
     setSelectedFile(null);
-    setUploadResult(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !selectedProject) {
+    if (!selectedFile) {
       toast({
-        title: 'Missing information',
-        description: 'Please select both a CSV file and a project.',
+        title: 'No file selected',
+        description: 'Please select a file to upload.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!selectedProject) {
+      toast({
+        title: 'No project selected',
+        description: 'Please select a project before uploading.',
         variant: 'destructive',
       });
       return;
@@ -123,12 +134,12 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
     setUploadProgress(0);
 
     try {
-      // Read the CSV file
-      const csvData = await selectedFile.text();
+      // Read file content
+      const fileContent = await selectedFile.text();
       
-      // Simulate progress
+      // Simulate upload progress
       const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
+        setUploadProgress((prev) => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return 90;
@@ -137,38 +148,61 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
         });
       }, 200);
 
-      // Upload to API
-      const response = await geologicalLogApi.uploadCSV({
-        csvData,
-        projectId: selectedProject
+      // Determine file type
+      const fileExtension = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'));
+      const fileType = fileExtension === '.csv' ? 'csv' : 'xlsx';
+
+      // Prepare request data
+      const requestData = {
+        csvData: fileContent,
+        fileType: fileType,
+        projectId: selectedProject,
+        structureId: selectedStructureId,
+        substructureId: selectedSubstructureId,
+      };
+
+      // Make API call
+      const response = await fetch('/api/borelog/upload-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(requestData),
       });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      const result = response.data.data as UploadResponse;
-      setUploadResult(result);
-
-      // Show success/error toast
-      if (result.summary.successful > 0) {
-        toast({
-          title: 'Upload completed',
-          description: `Successfully created ${result.summary.successful} geological logs. ${result.summary.failed} errors occurred.`,
-        });
-        onUploadSuccess?.();
-      } else {
-        toast({
-          title: 'Upload failed',
-          description: 'No geological logs were created. Please check your CSV format.',
-          variant: 'destructive',
-        });
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
       }
 
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: 'Upload successful',
+          description: `Borelog created successfully with ${result.data.stratum_layers_created} stratum layers.`,
+        });
+
+        // Call success callback
+        if (onUploadSuccess) {
+          onUploadSuccess(result.data);
+        }
+
+        // Reset form
+        setSelectedFile(null);
+        setUploadProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        throw new Error(result.message || 'Upload failed');
+      }
     } catch (error) {
       console.error('Upload error:', error);
       toast({
         title: 'Upload failed',
-        description: 'Failed to upload CSV file. Please try again.',
+        description: error instanceof Error ? error.message : 'An error occurred during upload.',
         variant: 'destructive',
       });
     } finally {
@@ -177,211 +211,158 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId 
     }
   };
 
-  const downloadTemplate = () => {
-    const template = `project_name,client_name,design_consultant,job_code,project_location,chainage_km,area,borehole_location,borehole_number,msl,method_of_boring,diameter_of_hole,commencement_date,completion_date,standing_water_level,termination_depth,coordinate_lat,coordinate_lng,type_of_core_barrel,bearing_of_hole,collar_elevation,logged_by,checked_by
-"Project A","Client A","Consultant A","JOB001","Location A",10.5,"Area A","Borehole Location A","BH001","45.2m","Rotary Drilling",150,"2024-01-15","2024-01-16",12.5,30.5,1.2345,103.6789,"Core Barrel Type A","N45E",45.2,"John Doe","Jane Smith"`;
+  const downloadTemplate = (format: 'csv' | 'excel' = 'csv') => {
+    const template = `project_id,structure_id,substructure_id,borehole_id,project_name,job_code,chainage_km,borehole_no,msl,method_of_boring,diameter_of_hole,section_name,location,coordinate_e,coordinate_l,commencement_date,completion_date,standing_water_level,termination_depth,permeability_tests_count,spt_tests_count,vs_tests_count,undisturbed_samples_count,disturbed_samples_count,water_samples_count,version_number,status,edited_by,editor_name,remarks
+"550e8400-e29b-41d4-a716-446655440000","550e8400-e29b-41d4-a716-446655440001","550e8400-e29b-41d4-a716-446655440002","550e8400-e29b-41d4-a716-446655440003","Project Name","JOB001",10.5,"BH-01",45.2,"Rotary Drilling","150 mm","CNE-AGTL","BR-365 (STEEL GIDER)","103.6789","1.2345","18.01.24","19.01.24",0.70,40.45,0,22,0,5,23,1,1,"draft","550e8400-e29b-41d4-a716-446655440004","John Doe","Initial borelog entry"
+stratum_description,stratum_depth_from,stratum_depth_to,stratum_thickness_m,sample_event_type,sample_event_depth_m,run_length_m,spt_blows_1,spt_blows_2,spt_blows_3,n_value_is_2131,total_core_length_cm,tcr_percent,rqd_length_cm,rqd_percent,return_water_colour,water_loss,borehole_diameter,remarks,is_subdivision,parent_row_id
+"Grey colour silty clay with mixed grass roots & brownish colour patches observed",0.00,0.70,0.70,"D-1",0.35,0.45,3,4,5,9,,,,"BROWNISH",,,"SAMPLE RECEIVED",false,
+"Dark grey colour, fine grained, clayey silty sand",0.70,1.20,0.50,"S/D-1",0.95,0.45,8,30,41,71,,,,"GREYISH",,,"SAMPLE RECEIVED",false,
+"Soft, dark grey colour, clayey silt with traces of very fine sand & mica",1.20,7.00,5.80,"S/D-2",4.10,0.45,38,37,39,76,,,,"GREYISH",,,"SAMPLE RECEIVED",false,
+"Medium stiff to stiff, deep grey colour silty clay/clayey silt",7.00,14.50,7.50,"U-1",10.75,0.45,43,54,64,118,,,,"PARTIAL",,,"SAMPLE RECEIVED",false,
+"Dense, blackish grey colour, fine grained silty sand with little % of clay mixed occasionally clayey silt layer observed",14.50,24.00,9.50,"S/D-3",19.25,0.45,55,49,52,101,,,,"PARTIAL",,,"SAMPLE RECEIVED",false,
+"Hard deep grey colour, silt with little % of clay binder, occasionally dark grey colour fine grained silty sand layer observed",24.00,40.45,16.45,"R/C-1",32.23,0.45,56,61,64,120,35,78,,"PARTIAL",,150,"SAMPLE RECEIVED",false,`;
     
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'borelog_template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (format === 'csv') {
+      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'borelog_template.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      // For Excel, we'll create a simple CSV that can be opened in Excel
+      // Users can save it as .xlsx format
+      const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'borelog_template.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({
+        title: 'Template Downloaded',
+        description: 'CSV template downloaded. You can open it in Excel and save as .xlsx format.',
+      });
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Project Selection - hidden if parent already picked a project */}
-      {!selectedProjectId && (
-        <div>
-          <label className="text-sm font-medium mb-2 block">Select Project</label>
-          <Select value={selectedProject} onValueChange={setSelectedProject}>
-            <SelectTrigger>
-              <SelectValue placeholder="Choose a project for the CSV upload" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((project) => (
-                <SelectItem key={project.project_id} value={project.project_id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {/* File Upload Area */}
-      <Card
-        className={cn(
-          "border-2 border-dashed transition-colors",
-          isDragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-        )}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <CardContent className="p-6">
-          <div className="text-center">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <div className="space-y-2">
-              <p className="text-sm font-medium">
-                Drop CSV file here or{' '}
-                <Button
-                  type="button"
-                  variant="link"
-                  className="p-0 h-auto"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                >
-                  browse
-                </Button>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Maximum file size: 10MB
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Format: CSV with headers matching the template
-              </p>
+      {/* Project Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Selection</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="project">Project</Label>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((project) => (
+                    <SelectItem key={project.project_id} value={project.project_id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv"
-        className="hidden"
-        onChange={(e) => handleFileSelect(e.target.files)}
-      />
+      {/* File Upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload Borelog CSV</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Drag and Drop Area */}
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              isDragOver
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <p className="text-lg font-medium text-gray-900 mb-2">
+              Drop your CSV file here
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              or click to browse files
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose File
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => handleFileSelect(e.target.files)}
+            />
+          </div>
 
-      {/* Selected File */}
-      {selectedFile && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText className="h-8 w-8 text-blue-500" />
-                <div>
-                  <p className="text-sm font-medium">{selectedFile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
+          {/* Selected File */}
+          {selectedFile && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <FileText className="h-8 w-8 text-blue-500" />
+                    <div>
+                      <p className="font-medium">{selectedFile.name}</p>
+                      <p className="text-sm text-gray-500">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={removeFile}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={removeFile}
-                disabled={isUploading}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          )}
 
-      {/* Upload Progress */}
-      {isUploading && (
-        <Card>
-          <CardContent className="p-4">
+          {/* Upload Progress */}
+          {isUploading && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Uploading...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <Progress value={uploadProgress} className="h-2" />
+              <Progress value={uploadProgress} />
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Upload Results */}
-      {uploadResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              Upload Results
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-green-600">{uploadResult.summary.successful}</p>
-                <p className="text-sm text-muted-foreground">Created</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-red-600">{uploadResult.summary.failed}</p>
-                <p className="text-sm text-muted-foreground">Errors</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-600">{uploadResult.summary.total_rows}</p>
-                <p className="text-sm text-muted-foreground">Total Rows</p>
-              </div>
-            </div>
-
-            {/* Error Details */}
-            {uploadResult.errors.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="space-y-2">
-                    <p className="font-medium">Errors occurred in the following rows:</p>
-                    <div className="max-h-40 overflow-y-auto space-y-1">
-                      {uploadResult.errors.map((error, index) => (
-                        <div key={index} className="text-sm">
-                          <span className="font-medium">Row {error.row}:</span>{' '}
-                          {error.borehole_number && `BH: ${error.borehole_number} - `}
-                          {error.errors ? error.errors.join(', ') : error.error}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex gap-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={downloadTemplate}
-          disabled={isUploading}
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Download Template
-        </Button>
-        
-        <Button
-          type="button"
-          onClick={handleUpload}
-          disabled={!selectedFile || !selectedProject || isUploading}
-          className="flex-1"
-        >
-          {isUploading ? (
-            <>
-              <Upload className="h-4 w-4 mr-2 animate-pulse" />
-              Uploading...
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload CSV
-            </>
           )}
-        </Button>
-      </div>
+
+          {/* Upload Button */}
+          <Button
+            onClick={handleUpload}
+            disabled={!selectedFile || isUploading || !selectedProject}
+            className="w-full"
+          >
+            {isUploading ? 'Uploading...' : 'Upload Borelog'}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 } 
