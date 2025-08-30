@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Building2, FileText, List, Plus, FlaskConical, ClipboardCheck, Users } from 'lucide-react';
+import { Building2, FileText, List, Plus, FlaskConical, ClipboardCheck, Users, TestTube } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import heroImage from '@/assets/hero-geological.jpg';
@@ -38,76 +38,73 @@ const Index = () => {
 
       {/* Main Content */}
       <div className="container mx-auto py-12 px-4">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          Manage Your Projects
-        </h2>
-        <p className="text-center text-muted-foreground mb-12 max-w-3xl mx-auto">
-          Streamline your geological surveys, manage borehole logs, and track project
-          progress with our comprehensive dashboard
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {/* View Logs - Available to all roles */}
-          <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                View Geological Logs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                View and manage existing geological survey logs
-              </p>
-              <Button asChild variant="outline" className="w-full">
-                <Link to="/geological-log/list">
-                  View Logs
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Create Logs - Admin, Engineer, Logger roles */}
-          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          {/* Lab Reports - Lab Engineer and Admin */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Lab Engineer']}>
             <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-primary" />
-                  Create Geological Log
+                  <TestTube className="h-5 w-5 text-primary" />
+                  Lab Reports
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground mb-4">
-                  Create a new geological survey log with detailed project information
+                  Manage laboratory test reports and assignments
                 </p>
                 <Button asChild variant="outline" className="w-full">
-                  <Link to="/geological-log/create">
-                    Create New Log
+                  <Link to="/lab-reports">
+                    View Lab Reports
                   </Link>
                 </Button>
               </CardContent>
             </Card>
           </RoleBasedComponent>
 
-          {/* Project Management - Available to all roles */}
-          <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-primary" />
-                Project Management
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                View and manage infrastructure projects
-              </p>
-              <Button asChild variant="outline" className="w-full">
-                <Link to="/projects">
-                  View Projects
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+          {/* Projects - Admin, Project Manager, Site Engineer, Approval Engineer roles */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer']}>
+            <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-primary" />
+                  Projects
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Manage infrastructure projects and assignments
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link to="/projects/list">
+                    View Projects
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </RoleBasedComponent>
+
+          {/* Geological Logs - Admin, Project Manager, Site Engineer, Approval Engineer roles */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer']}>
+            <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Geological Logs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  View and manage geological log entries
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link to="/geological-log/list">
+                    View Logs
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </RoleBasedComponent>
 
           {/* Borelog Management - Admin, Project Manager, Site Engineer roles */}
           <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer']}>
@@ -147,6 +144,28 @@ const Index = () => {
                 <Button asChild variant="outline" className="w-full">
                   <Link to="/contacts">
                     Manage Contacts
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </RoleBasedComponent>
+
+          {/* Workflow Dashboard - Admin, Project Manager, Site Engineer, Approval Engineer roles */}
+          <RoleBasedComponent allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer']}>
+            <Card className="shadow-elegant hover:shadow-lg transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardCheck className="h-5 w-5 text-primary" />
+                  Workflow Dashboard
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Monitor project workflow and approvals
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link to="/workflow/dashboard">
+                    Open Dashboard
                   </Link>
                 </Button>
               </CardContent>

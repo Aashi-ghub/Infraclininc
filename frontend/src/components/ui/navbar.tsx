@@ -25,8 +25,7 @@ export function Navbar() {
       .toUpperCase();
   };
 
-  const handleLogout = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleLogout = () => {
     logout();
     navigate("/auth/login");
   };
@@ -45,37 +44,56 @@ export function Navbar() {
           
           {user && (
             <div className="hidden md:flex space-x-4">
-              <Link to="/projects" className="text-foreground/80 hover:text-foreground">
-                Projects
-              </Link>
-              <Link to="/geological-log/list" className="text-foreground/80 hover:text-foreground">
-                Geological Logs
-              </Link>
+              {/* Projects - All roles except Lab Engineer */}
+              {(user.role !== "Lab Engineer") && (
+                <Link to="/projects" className="text-foreground/80 hover:text-foreground">
+                  Projects
+                </Link>
+              )}
+              
+              {/* Geological Logs - All roles except Lab Engineer */}
+              {(user.role !== "Lab Engineer") && (
+                <Link to="/geological-log/list" className="text-foreground/80 hover:text-foreground">
+                  Geological Logs
+                </Link>
+              )}
+              
+              {/* Create Log - Admin, Project Manager, Site Engineer */}
               {(user.role === "Admin" || user.role === "Project Manager" || user.role === "Site Engineer") && (
                 <Link to="/geological-log/create" className="text-foreground/80 hover:text-foreground">
                   Create Log
                 </Link>
               )}
-              {(user.role === "Admin" || user.role === "Project Manager" || user.role === "Site Engineer" || user.role === "Approval Engineer" || user.role === "Lab Engineer") && (
+              
+              {/* Workflow - All roles except Lab Engineer */}
+              {(user.role !== "Lab Engineer") && (
                 <Link to="/workflow/dashboard" className="text-foreground/80 hover:text-foreground">
                   Workflow
                 </Link>
               )}
+              
+              {/* Lab Reports - Admin and Lab Engineer */}
+              {(user.role === "Admin" || user.role === "Lab Engineer") && (
+                <Link to="/lab-reports" className="text-foreground/80 hover:text-foreground">
+                  Lab Reports
+                </Link>
+              )}
+              
+              {/* Contacts - Admin and Project Manager */}
               {(user.role === "Admin" || user.role === "Project Manager") && (
                 <Link to="/contacts" className="text-foreground/80 hover:text-foreground">
                   Contacts
                 </Link>
               )}
+              
+              {/* Lab Tests - Admin only */}
               {user.role === "Admin" && (
                 <Link to="/lab-tests/list" className="text-foreground/80 hover:text-foreground">
                   Lab Tests
                 </Link>
               )}
-              {(user.role === "Admin" || user.role === "Project Manager" || user.role === "Lab Engineer" || user.role === "Approval Engineer" || user.role === "Customer") && (
-                <Link to="/lab-reports" className="text-foreground/80 hover:text-foreground">
-                  Lab Reports
-                </Link>
-              )}
+              
+              {/* User Management - Admin only */}
               {user.role === "Admin" && (
                 <Link to="/users" className="text-foreground/80 hover:text-foreground">
                   Users
@@ -86,68 +104,28 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center space-x-4">
-          {isLoading ? (
-            <div className="h-10 w-10 rounded-full bg-muted animate-pulse"></div>
-          ) : user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 rounded-full flex items-center gap-2 px-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                  </Avatar>
-                  <span className="hidden sm:inline-block">{user.name}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
-                  {user.email}
-                </DropdownMenuLabel>
-                <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
-                  Role: {user.role}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {user.role === "Admin" && (
-                  <DropdownMenuItem asChild>
-                    <Link to="/workflow/dashboard" className="flex items-center">
-                      <UserIcon className="mr-2 h-4 w-4" />
-                      Workflow Dashboard
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {user.role === "Admin" && (
-                  <DropdownMenuItem asChild>
-                    <Link to="/reviewer/dashboard" className="flex items-center">
-                      <UserIcon className="mr-2 h-4 w-4" />
-                      Review Dashboard
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {user.role === "Admin" && (
-                  <DropdownMenuItem asChild>
-                    <Link to="/users" className="flex items-center">
-                      <UserIcon className="mr-2 h-4 w-4" />
-                      User Management
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {user.role === "Admin" && (
-                  <DropdownMenuItem asChild>
-                    <Link to="/assignments/create" className="flex items-center">
-                      <UserIcon className="mr-2 h-4 w-4" />
-                      Project Assignments
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {user ? (
+            <>
+              <div className="hidden md:flex items-center space-x-2">
+                <span className="text-sm text-muted-foreground">
+                  {user.name}
+                </span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                  {user.role}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                disabled={isLoading}
+              >
+                {isLoading ? "Logging out..." : "Logout"}
+              </Button>
+            </>
           ) : (
-            <Button onClick={handleLogin} variant="default">
-              Log in
+            <Button variant="outline" size="sm" onClick={handleLogin}>
+              Login
             </Button>
           )}
         </div>

@@ -254,7 +254,7 @@ const App = () => (
                     
                     {/* Workflow Dashboard */}
                     <Route path="/workflow/dashboard" element={
-                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer', 'Lab Engineer']}>
+                      <ProtectedRoute allowedRoles={['Admin', 'Project Manager', 'Site Engineer', 'Approval Engineer']}>
                         <WorkflowDashboard />
                       </ProtectedRoute>
                     } />
