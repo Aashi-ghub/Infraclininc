@@ -637,14 +637,18 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
       
       logger.info(`Created new stratum: ${description} (${depthFrom}-${depthTo}m)`);
     } else if (currentStratum) {
-      // This is a sample point within the current stratum
-      const sampleType = columnMap.sample_type !== undefined ? row[columnMap.sample_type] : '';
-      const sampleDepth = columnMap.sample_depth !== undefined ? row[columnMap.sample_depth] : '';
-      
-      if (sampleType && sampleDepth) {
+      // This is a sample/sub-division row within the current stratum
+      const mappedSampleType = columnMap.sample_type !== undefined ? row[columnMap.sample_type] : '';
+      const mappedSampleDepth = columnMap.sample_depth !== undefined ? row[columnMap.sample_depth] : '';
+      // Fallbacks for templates where sample type is in col 4 and depth may be absent
+      const fallbackSampleType = row[4] && row[4] !== '-' ? String(row[4]).trim() : '';
+      const sampleType = mappedSampleType || fallbackSampleType;
+      const sampleDepth = mappedSampleDepth; // keep as-is; may be empty
+
+      if (sampleType) {
         const sample = {
           sample_event_type: sampleType,
-          sample_event_depth_m: sampleDepth,
+          sample_event_depth_m: sampleDepth || '',
           run_length_m: columnMap.run_length !== undefined ? row[columnMap.run_length] : '',
           spt_blows_1: columnMap.spt_blows !== undefined ? row[columnMap.spt_blows] : '',
           spt_blows_2: '',
@@ -654,11 +658,12 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
           tcr_percent: columnMap.tcr_percent !== undefined ? row[columnMap.tcr_percent] : '',
           rqd_length_cm: columnMap.rqd_length !== undefined ? row[columnMap.rqd_length] : '',
           rqd_percent: columnMap.rqd_percent !== undefined ? row[columnMap.rqd_percent] : '',
-          remarks: columnMap.remarks !== undefined ? row[columnMap.remarks] : ''
+          remarks: columnMap.remarks !== undefined ? row[columnMap.remarks] : '',
+          is_subdivision: 'true'
         };
-        
+
         currentStratum.samples.push(sample);
-        logger.info(`Added sample: ${sampleType} at ${sampleDepth}m`);
+        logger.info(`Added subdivision/sample row: type=${sampleType}${sampleDepth ? ` depth=${sampleDepth}m` : ''}`);
       }
     }
   }
@@ -1116,44 +1121,27 @@ async function createBorelogFromCSV(borelogData: any, stratumRows: any[]) {
     const stratumIds: string[] = [];
     for (const stratum of stratumRows) {
       const stratumResult = await client.query(
-        `INSERT INTO stratum (
-          stratum_id, borelog_id, description, depth_from, depth_to, thickness_m,
-          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm,
-          n_value_is_2131, total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
-          return_water_colour, water_loss, borehole_diameter, remarks, is_subdivision,
-          parent_stratum_id, created_by_user_id
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-        RETURNING stratum_id`,
+        `INSERT INTO stratum_layers (
+          id, borelog_id, version_no, layer_order, description, depth_from_m, depth_to_m, thickness_m,
+          return_water_colour, water_loss, borehole_diameter, remarks, created_by_user_id
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id`,
         [
           borelog_id,
+          1, // version_no
+          stratumIds.length + 1, // layer_order
           stratum.stratum_description,
           stratum.stratum_depth_from,
           stratum.stratum_depth_to,
           stratum.stratum_thickness_m,
-          stratum.sample_event_type,
-          stratum.sample_event_depth_m,
-          stratum.run_length_m,
-          // Store SPT blows as JSON string for all three values
-          JSON.stringify({
-            blows_1: stratum.spt_blows_1,
-            blows_2: stratum.spt_blows_2,
-            blows_3: stratum.spt_blows_3
-          }),
-          stratum.n_value_is_2131,
-          stratum.total_core_length_cm,
-          stratum.tcr_percent,
-          stratum.rqd_length_cm,
-          stratum.rqd_percent,
-          stratum.return_water_colour,
-          stratum.water_loss,
-          stratum.borehole_diameter,
-          stratum.remarks,
-          stratum.is_subdivision,
-          stratum.parent_row_id ? stratumIds[parseInt(stratum.parent_row_id)] : null,
+          stratum.return_water_colour || null,
+          stratum.water_loss || null,
+          stratum.borehole_diameter || null,
+          stratum.remarks || null,
           borelogData.created_by_user_id
         ]
       );
-      stratumIds.push(stratumResult.rows[0].stratum_id);
+      stratumIds.push(stratumResult.rows[0].id);
     }
 
          // Create borelog submission record for version control

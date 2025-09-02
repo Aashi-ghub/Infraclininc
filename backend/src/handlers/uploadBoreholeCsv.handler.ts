@@ -240,44 +240,27 @@ async function createBorelogFromParsedData(
     const stratumIds: string[] = [];
     for (const layer of parsedData.layers) {
       const stratumResult = await client.query(
-        `INSERT INTO stratum (
-          stratum_id, borelog_id, description, depth_from, depth_to, thickness_m,
-          sample_event_type, sample_event_depth_m, run_length_m, spt_blows_per_15cm,
-          n_value_is_2131, total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
-          return_water_colour, water_loss, borehole_diameter, remarks, is_subdivision,
-          parent_stratum_id, created_by_user_id
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-        RETURNING stratum_id`,
+        `INSERT INTO stratum_layers (
+          id, borelog_id, version_no, layer_order, description, depth_from_m, depth_to_m, thickness_m,
+          return_water_colour, water_loss, borehole_diameter, remarks, created_by_user_id
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id`,
         [
           borelog_id,
+          1, // version_no
+          stratumIds.length + 1, // layer_order
           layer.description,
           layer.depth_from,
           layer.depth_to,
           layer.thickness,
-          layer.sample_id ? 'Sample' : null, // sample_event_type
-          layer.sample_depth,
-          layer.run_length,
-          // Store SPT blows as JSON string for all three values
-          JSON.stringify({
-            blows_1: layer.penetration_15cm[0],
-            blows_2: layer.penetration_15cm[1],
-            blows_3: layer.penetration_15cm[2]
-          }),
-          layer.n_value,
-          layer.total_core_length_cm,
-          layer.tcr_percent,
-          layer.rqd_length_cm,
-          layer.rqd_percent,
-          layer.colour_of_return_water,
-          layer.water_loss,
-          layer.diameter_of_borehole,
-          layer.remarks,
-          false, // is_subdivision
-          null, // parent_stratum_id
+          layer.colour_of_return_water || null,
+          layer.water_loss || null,
+          layer.diameter_of_borehole || null,
+          layer.remarks || null,
           userId
         ]
       );
-      stratumIds.push(stratumResult.rows[0].stratum_id);
+      stratumIds.push(stratumResult.rows[0].id);
     }
 
     // Create borelog submission record for version control
