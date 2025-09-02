@@ -600,8 +600,9 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
     logger.info(`Stratum candidate row ${i}: col0="${rawCol0}", col2="${row[2] || ''}", col4="${row[4] || ''}", mappedFrom="${depthFrom}", mappedTo="${depthTo}"`);
     if (relaxedRange) {
       logger.info(`  Regex extracted depths for row ${i}: from=${relaxedRange[2]} to=${relaxedRange[3]} description="${relaxedRange[1].trim()}"`);
-      // If mapped columns did not provide depths, use regex-derived ones
-      if (!depthFrom && !depthTo) {
+      // If mapped columns are missing or non-numeric (e.g., '-') use regex-derived depths
+      const isNumeric = (v: any) => v !== undefined && v !== null && /^\d+(?:\.\d+)?$/.test(String(v).trim());
+      if (!isNumeric(depthFrom) || !isNumeric(depthTo)) {
         description = relaxedRange[1].trim();
         depthFrom = relaxedRange[2];
         depthTo = relaxedRange[3];
@@ -624,7 +625,7 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
         stratum_description: description,
         stratum_depth_from: depthFrom,
         stratum_depth_to: depthTo,
-        stratum_thickness_m: (columnMap.thickness !== undefined ? row[columnMap.thickness] : '') || (depthFrom && depthTo ? (parseFloat(depthTo) - parseFloat(depthFrom)).toFixed(2) : ''),
+        stratum_thickness_m: (columnMap.thickness !== undefined ? row[columnMap.thickness] : '') || (Number.isFinite(parseFloat(String(depthTo))) && Number.isFinite(parseFloat(String(depthFrom))) ? (parseFloat(String(depthTo)) - parseFloat(String(depthFrom))).toFixed(2) : ''),
         return_water_colour: columnMap.return_water_colour !== undefined ? row[columnMap.return_water_colour] : '',
         water_loss: columnMap.water_loss !== undefined ? row[columnMap.water_loss] : '',
         borehole_diameter: columnMap.borehole_diameter !== undefined ? row[columnMap.borehole_diameter] : '',
