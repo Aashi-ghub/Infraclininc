@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { borelogApi } from '@/lib/api';
+import { borelogApiV2 } from '@/lib/api';
 
 interface DeleteBorelogButtonProps {
   borelogId: string;
@@ -28,7 +28,7 @@ export function DeleteBorelogButton({ borelogId, onSuccess, className }: DeleteB
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-      await borelogApi.delete(borelogId);
+      await borelogApiV2.delete(borelogId);
       
       toast({
         title: 'Success',

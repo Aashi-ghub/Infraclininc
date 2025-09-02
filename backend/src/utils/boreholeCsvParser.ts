@@ -3,17 +3,13 @@ import {
   BoreholeMetadata, 
   SoilLayer, 
   SampleRemark, 
-  CoreQuality,
-  ParsedCsvRow 
+  CoreQuality
 } from '../types/boreholeCsv';
 
 export class BoreholeCsvParser {
-  private csvContent: string;
   private lines: string[] = [];
-  private currentSection: 'metadata' | 'layers' | 'remarks' = 'metadata';
 
   constructor(csvContent: string) {
-    this.csvContent = csvContent;
     this.lines = csvContent.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   }
 
@@ -247,13 +243,45 @@ export class BoreholeCsvParser {
   }
 
   private isHeaderLine(line: string): boolean {
-    return line.includes('Depth') && 
-           (line.includes('Description') || line.includes('Thickness'));
+    // Text headers
+    if (line.includes('Depth') && (line.includes('Description') || line.includes('Thickness'))) {
+      return true;
+    }
+    // CSV headers
+    const fields = this.splitCsvLine(line);
+    if (fields.length > 2) {
+      const joined = fields.join(' ').toLowerCase();
+      if (joined.includes('description') && joined.includes('depth') && joined.includes('thickness')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private isNewLayerStart(line: string): boolean {
     // Check if line starts with a depth value (number followed by decimal)
-    return /^\d+\.\d+/.test(line.trim());
+    const trimmed = line.trim();
+    if (/^\d+\.\d+/.test(trimmed)) {
+      return true;
+    }
+    // Also support lines that END with a depth range like "0.00-0.70 m"
+    // Example: "Grey silty clay ... 0.00-0.70 m"
+    if (/(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)[ ]*m$/i.test(trimmed)) {
+      return true;
+    }
+    // CSV row that has description first column and numeric From/To later
+    const fields = this.splitCsvLine(line);
+    if (fields.length >= 3 && fields[0] && !/^(description|depth)/i.test(fields[0])) {
+      // Find two consecutive numeric-like fields after index 0
+      for (let i = 1; i < fields.length - 1; i++) {
+        const a = this.parseNumber(fields[i]);
+        const b = this.parseNumber(fields[i + 1]);
+        if (a !== null && b !== null) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private findLayerDataStart(): number {
@@ -349,16 +377,71 @@ export class BoreholeCsvParser {
     const firstLine = layerLines[0];
     const parts = firstLine.split(/\s+/).filter(part => part.length > 0);
     
-    if (parts.length < 3) return null;
+    // Try regex-based parsing where the line ends with a depth range "a-b m"
+    let depthFrom: number | null = null;
+    let depthTo: number | null = null;
+    let thickness: number | null = null;
+    let descriptionFromRegex: string | null = null;
 
-    const depthFrom = this.parseNumber(parts[0]);
-    const depthTo = this.parseNumber(parts[1]);
-    const thickness = this.parseNumber(parts[2]);
+    // Try relaxed regex on column 0 content (handles missing 'm' and en-dash)
+    const csvForFirst = this.splitCsvLine(firstLine);
+    const descriptionCol0 = (csvForFirst[0]?.trim() || firstLine).trim();
+    const rangeMatch = descriptionCol0.match(/^(.*?)(\d+(?:\.\d+)?)[ ]*[-–][ ]*(\d+(?:\.\d+)?)[ ]*m?$/i);
+    if (rangeMatch) {
+      descriptionFromRegex = rangeMatch[1].trim();
+      depthFrom = this.parseNumber(rangeMatch[2]);
+      depthTo = this.parseNumber(rangeMatch[3]);
+      if (depthFrom !== null && depthTo !== null) {
+        thickness = parseFloat((depthTo - depthFrom).toFixed(2));
+      }
+    }
+
+    // Extra fields from other CSV columns (e.g., core length, sample type)
+    let extraCoreLength: number | null = null;
+    let extraSampleType: string | null = null;
+    if (csvForFirst.length > 4) {
+      extraCoreLength = this.parseNumber(csvForFirst[2] || '');
+      extraSampleType = (csvForFirst[4] || '').trim() || null;
+    }
+
+    // CSV-based parsing: description in col 0, depths in later columns
+    if (depthFrom === null || depthTo === null) {
+      const csv = csvForFirst;
+      if (csv.length >= 3 && csv[0]) {
+        // locate first two numeric fields after description
+        for (let i = 1; i < csv.length - 1; i++) {
+          const a = this.parseNumber(csv[i]);
+          const b = this.parseNumber(csv[i + 1]);
+          if (a !== null && b !== null) {
+            descriptionFromRegex = (descriptionFromRegex || csv[0].trim());
+            depthFrom = a;
+            depthTo = b;
+            const maybeThickness = this.parseNumber(csv[i + 2] || '');
+            thickness = maybeThickness !== null ? maybeThickness : parseFloat((b - a).toFixed(2));
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback to column-based numeric-first parsing (depthFrom depthTo thickness ...)
+    if (depthFrom === null || depthTo === null || thickness === null) {
+      if (parts.length >= 3) {
+        const df = this.parseNumber(parts[0]);
+        const dt = this.parseNumber(parts[1]);
+        const th = this.parseNumber(parts[2]);
+        if (df !== null && dt !== null) {
+          depthFrom = df;
+          depthTo = dt;
+          thickness = th !== null ? th : parseFloat((dt - df).toFixed(2));
+        }
+      }
+    }
     
     if (depthFrom === null || depthTo === null || thickness === null) return null;
 
     // Extract description from remaining parts or subsequent lines
-    let description = '';
+    let description = descriptionFromRegex || '';
     let sampleId: string | null = null;
     let sampleDepth: number | null = null;
     let runLength: number | null = null;
@@ -420,6 +503,8 @@ export class BoreholeCsvParser {
 
     // If no description was found in additional lines, construct from first line
     if (!description) {
+      // If we parsed with regex, descriptionFromRegex already used.
+      // Otherwise, use remaining parts of the first line as description (after the first 3 numeric columns)
       description = parts.slice(3).join(' ');
     }
 
@@ -429,11 +514,12 @@ export class BoreholeCsvParser {
       depth_to: depthTo,
       thickness,
       sample_id: sampleId,
+      sample_type: extraSampleType ?? null,
       sample_depth: sampleDepth,
       run_length: runLength,
       penetration_15cm: penetration15cm,
       n_value: nValue,
-      total_core_length_cm: totalCoreLength,
+      total_core_length_cm: totalCoreLength ?? extraCoreLength,
       tcr_percent: tcrPercent,
       rqd_length_cm: rqdLength,
       rqd_percent: rqdPercent,
@@ -442,6 +528,18 @@ export class BoreholeCsvParser {
       diameter_of_borehole: diameterOfBorehole,
       remarks
     };
+  }
+
+  // Split a CSV line on commas not inside quotes, and trim quotes/whitespace
+  private splitCsvLine(line: string): string[] {
+    const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+    return parts.map(p => {
+      let s = p.trim();
+      if (s.startsWith('"') && s.endsWith('"')) {
+        s = s.substring(1, s.length - 1);
+      }
+      return s.trim();
+    });
   }
 }
 

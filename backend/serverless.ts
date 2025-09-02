@@ -986,6 +986,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    deleteBorelog: {
+      handler: 'src/handlers/deleteBorelog.handler',
+      events: [
+        {
+          http: {
+            method: 'delete',
+            path: '/borelog/{borelog_id}',
+            cors: true
+          }
+        }
+      ]
+    },
 
     // Workflow endpoints
     submitForReview: {

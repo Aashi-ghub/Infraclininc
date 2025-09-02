@@ -171,6 +171,10 @@ export const borelogApiV2 = {
   getByProject: (projectId: string) => 
     apiClient.get<ApiResponse<any>>(`/projects/${projectId}/borelogs`),
   
+  // Delete a borelog (admin-only)
+  delete: (borelogId: string) => 
+    apiClient.delete<ApiResponse<null>>(`/borelog/${borelogId}`),
+  
   // Get form data (projects, structures, substructures)
   getFormData: (params?: { project_id?: string; structure_id?: string }) => {
     const queryParams = params ? new URLSearchParams(params).toString() : '';

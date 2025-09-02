@@ -589,10 +589,31 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
     }
     
     // Check if this is a new stratum layer (has description and depth)
-    const description = columnMap.description !== undefined ? row[columnMap.description] : '';
-    const depthFrom = columnMap.depth_from !== undefined ? row[columnMap.depth_from] : '';
-    const depthTo = columnMap.depth_to !== undefined ? row[columnMap.depth_to] : '';
-    
+    let description = columnMap.description !== undefined ? row[columnMap.description] : '';
+    let depthFrom = columnMap.depth_from !== undefined ? row[columnMap.depth_from] : '';
+    let depthTo = columnMap.depth_to !== undefined ? row[columnMap.depth_to] : '';
+
+    // Instrumentation: log raw row and any regex-derived depths from description in column 0
+    const rawCol0 = row[columnMap.description ?? 0] || '';
+    const normalizedCol0 = String(rawCol0).replace(/\r?\n+/g, ' ').trim();
+    const relaxedRange = normalizedCol0.match(/^(.*?)(\d+(?:\.\d+)?)[ ]*[-–][ ]*(\d+(?:\.\d+)?)[ ]*m?$/i);
+    logger.info(`Stratum candidate row ${i}: col0="${rawCol0}", col2="${row[2] || ''}", col4="${row[4] || ''}", mappedFrom="${depthFrom}", mappedTo="${depthTo}"`);
+    if (relaxedRange) {
+      logger.info(`  Regex extracted depths for row ${i}: from=${relaxedRange[2]} to=${relaxedRange[3]} description="${relaxedRange[1].trim()}"`);
+      // If mapped columns did not provide depths, use regex-derived ones
+      if (!depthFrom && !depthTo) {
+        description = relaxedRange[1].trim();
+        depthFrom = relaxedRange[2];
+        depthTo = relaxedRange[3];
+      }
+    } else {
+      logger.info(`  No regex depth match found in col0 for row ${i}`);
+    }
+
+    // Also capture extra fields commonly found in columns 2 and 4
+    const totalCoreLengthFromPos = row[2] && row[2] !== '-' ? String(row[2]).trim() : '';
+    const sampleTypeFromPos = row[4] && row[4] !== '-' ? String(row[4]).trim() : '';
+
     if (description && depthFrom && depthTo) {
       // This is a new stratum layer
       if (currentStratum) {
@@ -603,11 +624,13 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
         stratum_description: description,
         stratum_depth_from: depthFrom,
         stratum_depth_to: depthTo,
-        stratum_thickness_m: columnMap.thickness !== undefined ? row[columnMap.thickness] : '',
+        stratum_thickness_m: (columnMap.thickness !== undefined ? row[columnMap.thickness] : '') || (depthFrom && depthTo ? (parseFloat(depthTo) - parseFloat(depthFrom)).toFixed(2) : ''),
         return_water_colour: columnMap.return_water_colour !== undefined ? row[columnMap.return_water_colour] : '',
         water_loss: columnMap.water_loss !== undefined ? row[columnMap.water_loss] : '',
         borehole_diameter: columnMap.borehole_diameter !== undefined ? row[columnMap.borehole_diameter] : '',
         remarks: columnMap.remarks !== undefined ? row[columnMap.remarks] : '',
+        total_core_length_cm: totalCoreLengthFromPos,
+        sample_event_type: sampleTypeFromPos,
         samples: []
       };
       
