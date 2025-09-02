@@ -475,7 +475,7 @@ export default function ManageBorelogs() {
                       </SelectItem>
                     )}
                     {substructures.map((substructure) => (
-                      <SelectItem key={substructure.substructure_id} value={substructure.substructure_id}>
+                      <SelectItem key={(substructure.substructure_id || substructure.id)} value={(substructure.substructure_id || substructure.id)}>
                         {substructure.type}
                       </SelectItem>
                     ))}

@@ -502,6 +502,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    uploadBoreholeCsv: {
+      handler: 'src/handlers/uploadBoreholeCsv.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/api/borelog/upload-csv',
+            cors: true
+          }
+        }
+      ]
+    },
     approveBorelog: {
       handler: 'src/handlers/approveBorelog.handler',
       events: [

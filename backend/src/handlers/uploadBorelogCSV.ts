@@ -839,182 +839,163 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // First row contains borelog header information
-    const headerRow = parsedData[0];
-    const stratumRows = parsedData.slice(1); // Remaining rows are stratum data
+    // Normalize CSV formats: template-style (scattered header) or standard (first-row header)
+    let normalizedHeader: any;
+    let normalizedStratumRows: any[];
 
-    try {
-      // Validate header row with borelog schema
-      const headerValidation = BorelogHeaderSchema.safeParse(headerRow);
-      if (!headerValidation.success) {
-        logger.error('Header validation failed:', {
-          availableColumns: Object.keys(headerRow as any),
-          expectedColumns: Object.keys(BorelogHeaderSchema.shape),
-          validationErrors: headerValidation.error.errors
-        });
-        
-        const response = createResponse(400, {
-          success: false,
-          message: 'Invalid borelog header data',
-          error: 'First row contains invalid borelog information',
-          data: {
-            errors: headerValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`),
-            availableColumns: Object.keys(headerRow as any)
-          }
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
+    const firstRow = parsedData[0] as any;
+    const keys = Object.keys(firstRow || {});
+    const values = Object.values(firstRow || {}).map(v => String(v || ''));
+    const isTemplateCsv = keys.some(k => k.includes('Project Name')) || values.some(v => v.includes('Description of Soil Stratum'));
 
-             const headerData = headerValidation.data;
-       logger.info('Processing borelog header:', { 
-         job_code: headerData.job_code,
-         project_id: projectId 
-       });
-
-       // Convert header string values to appropriate types
-                 const borelogData = {
-         project_id: projectId,
-         structure_id: structureId,
-         substructure_id: substructureId,
-         borehole_id: undefined, // Will be created from CSV data
-        project_name: headerData.project_name,
-        job_code: headerData.job_code,
-        chainage_km: headerData.chainage_km ? parseFloat(headerData.chainage_km) : null,
-        borehole_no: headerData.borehole_no,
-        msl: headerData.msl ? parseFloat(headerData.msl) : null,
-        method_of_boring: headerData.method_of_boring,
-        diameter_of_hole: headerData.diameter_of_hole,
-        section_name: headerData.section_name,
-        location: headerData.location,
-        coordinate_e: headerData.coordinate_e,
-        coordinate_l: headerData.coordinate_l,
-        commencement_date: headerData.commencement_date,
-        completion_date: headerData.completion_date,
-        standing_water_level: headerData.standing_water_level ? parseFloat(headerData.standing_water_level) : null,
-        termination_depth: headerData.termination_depth ? parseFloat(headerData.termination_depth) : null,
-        permeability_tests_count: headerData.permeability_tests_count ? parseInt(headerData.permeability_tests_count) : 0,
-        spt_tests_count: headerData.spt_tests_count ? parseInt(headerData.spt_tests_count) : 0,
-        vs_tests_count: headerData.vs_tests_count ? parseInt(headerData.vs_tests_count) : 0,
-        undisturbed_samples_count: headerData.undisturbed_samples_count ? parseInt(headerData.undisturbed_samples_count) : 0,
-        disturbed_samples_count: headerData.disturbed_samples_count ? parseInt(headerData.disturbed_samples_count) : 0,
-        water_samples_count: headerData.water_samples_count ? parseInt(headerData.water_samples_count) : 0,
-        version_number: headerData.version_number ? parseInt(headerData.version_number) : 1,
-        status: mapStatusValue(headerData.status),
-        edited_by: headerData.edited_by || (await payload).userId,
-        editor_name: headerData.editor_name,
-        remarks: headerData.remarks,
-          created_by_user_id: (await payload).userId
-        };
-
-        // Validate foreign keys before attempting to create
-        try {
-          await validateForeignKeys(borelogData);
-        } catch (fkError) {
-        logger.error('Foreign key validation failed:', fkError);
-        const response = createResponse(400, {
-          success: false,
-          message: 'Foreign key constraint violation',
-          error: (fkError as Error).message
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
-
-      // Validate stratum rows
-      const stratumErrors = [];
-      const validatedStratumRows = [];
-
-      for (let i = 0; i < stratumRows.length; i++) {
-        const row = stratumRows[i];
-        const rowNumber = i + 3; // +3 because CSV has header, first row is borelog header, and arrays are 0-indexed
-
-        try {
-          const stratumValidation = StratumRowSchema.safeParse(row);
-          if (!stratumValidation.success) {
-            logger.error(`Stratum validation failed for row ${rowNumber}:`, {
-              validationErrors: stratumValidation.error.errors
-            });
-            
-            stratumErrors.push({
-            row: rowNumber,
-              errors: stratumValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
-          });
-          continue;
-        }
-
-          const stratumData = stratumValidation.data;
-          
-          // Calculate N-value from SPT blows if not provided
-          let nValue = stratumData.n_value_is_2131;
-          if (!nValue && (stratumData.spt_blows_2 || stratumData.spt_blows_3)) {
-            const blows2 = stratumData.spt_blows_2 ? parseFloat(stratumData.spt_blows_2) : 0;
-            const blows3 = stratumData.spt_blows_3 ? parseFloat(stratumData.spt_blows_3) : 0;
-            nValue = (blows2 + blows3).toString();
-          }
-
-          validatedStratumRows.push({
-            ...stratumData,
-            stratum_depth_from: parseFloat(stratumData.stratum_depth_from),
-            stratum_depth_to: parseFloat(stratumData.stratum_depth_to),
-            stratum_thickness_m: stratumData.stratum_thickness_m ? parseFloat(stratumData.stratum_thickness_m) : null,
-            sample_event_depth_m: stratumData.sample_event_depth_m ? parseFloat(stratumData.sample_event_depth_m) : null,
-            run_length_m: stratumData.run_length_m ? parseFloat(stratumData.run_length_m) : null,
-            spt_blows_1: stratumData.spt_blows_1 ? parseFloat(stratumData.spt_blows_1) : null,
-            spt_blows_2: stratumData.spt_blows_2 ? parseFloat(stratumData.spt_blows_2) : null,
-            spt_blows_3: stratumData.spt_blows_3 ? parseFloat(stratumData.spt_blows_3) : null,
-            n_value_is_2131: nValue,
-            total_core_length_cm: stratumData.total_core_length_cm ? parseFloat(stratumData.total_core_length_cm) : null,
-            tcr_percent: stratumData.tcr_percent ? parseFloat(stratumData.tcr_percent) : null,
-            rqd_length_cm: stratumData.rqd_length_cm ? parseFloat(stratumData.rqd_length_cm) : null,
-            rqd_percent: stratumData.rqd_percent ? parseFloat(stratumData.rqd_percent) : null,
-            borehole_diameter: stratumData.borehole_diameter ? parseFloat(stratumData.borehole_diameter) : null,
-            is_subdivision: stratumData.is_subdivision ? stratumData.is_subdivision.toLowerCase() === 'true' || stratumData.is_subdivision === '1' : false
-        });
-
-      } catch (error) {
-          logger.error(`Error processing stratum row ${rowNumber}:`, error);
-          stratumErrors.push({
-          row: rowNumber,
-            error: error instanceof Error ? error.message : 'Failed to process stratum row'
-        });
-      }
+    if (isTemplateCsv) {
+      logger.info('Detected template-style CSV. Extracting scattered metadata and stratum.');
+      const { header, stratumData } = parseBorelogTemplateFormat(parsedData as any[]);
+      normalizedHeader = header;
+      normalizedStratumRows = stratumData;
+    } else {
+      // Assume standard CSV: first row header-like, rest stratum
+      normalizedHeader = parsedData[0];
+      normalizedStratumRows = parsedData.slice(1);
     }
 
-      // Create the borelog with all stratum data
-      logger.info(`Creating borelog with ${validatedStratumRows.length} stratum rows`);
-      const createdBorelog = await createBorelogFromCSV(borelogData, validatedStratumRows);
-    
-    const response = createResponse(201, {
-      success: true,
-        message: `Borelog created successfully with ${validatedStratumRows.length} stratum layers. ${stratumErrors.length} stratum rows had errors.`,
-      data: {
-          borelog_id: createdBorelog.borelog_id,
-          submission_id: createdBorelog.submission_id,
-          job_code: borelogData.job_code,
-          stratum_layers_created: validatedStratumRows.length,
-          stratum_errors: stratumErrors,
-        summary: {
-            total_stratum_rows: stratumRows.length,
-            successful_stratum_layers: validatedStratumRows.length,
-            failed_stratum_rows: stratumErrors.length
-        }
-      }
-    });
+    const safeNumber = (val: any) => (val === undefined || val === null || val === '' ? null : parseFloat(String(val)));
+    const safeInt = (val: any, def = 0) => (val === undefined || val === null || val === '' ? def : parseInt(String(val)));
 
-    logResponse(response, Date.now() - startTime);
-    return response;
+    // Build borelogData without strict header schema validation
+    const borelogData = {
+      project_id: projectId,
+      structure_id: structureId,
+      substructure_id: substructureId,
+      borehole_id: undefined,
+      project_name: normalizedHeader.project_name || normalizedHeader['Project Name'] || normalizedHeader['Project Name:'],
+      job_code: normalizedHeader.job_code || normalizedHeader['Job Code'] || normalizedHeader['job_code'],
+      chainage_km: safeNumber(normalizedHeader.chainage_km || normalizedHeader['Chainage (Km)']),
+      borehole_no: normalizedHeader.borehole_no || normalizedHeader['Borehole No.'],
+      msl: safeNumber(normalizedHeader.msl || normalizedHeader['MSL'] || normalizedHeader['Mean Sea Level (MSL)']),
+      method_of_boring: normalizedHeader.method_of_boring || normalizedHeader['Method of Boring'] || normalizedHeader['Method of Boring / Drilling'],
+      diameter_of_hole: normalizedHeader.diameter_of_hole || normalizedHeader['Diameter of Hole'],
+      section_name: normalizedHeader.section_name || normalizedHeader['Section Name'],
+      location: normalizedHeader.location || normalizedHeader['Location'],
+      coordinate_e: normalizedHeader.coordinate_e,
+      coordinate_l: normalizedHeader.coordinate_l,
+      commencement_date: normalizedHeader.commencement_date || normalizedHeader['Commencement Date'],
+      completion_date: normalizedHeader.completion_date || normalizedHeader['Completion Date'],
+      standing_water_level: safeNumber(normalizedHeader.standing_water_level),
+      termination_depth: safeNumber(normalizedHeader.termination_depth),
+      permeability_tests_count: safeInt(normalizedHeader.permeability_tests_count),
+      spt_tests_count: safeInt(normalizedHeader.spt_tests_count),
+      vs_tests_count: safeInt(normalizedHeader.vs_tests_count),
+      undisturbed_samples_count: safeInt(normalizedHeader.undisturbed_samples_count),
+      disturbed_samples_count: safeInt(normalizedHeader.disturbed_samples_count),
+      water_samples_count: safeInt(normalizedHeader.water_samples_count),
+      version_number: safeInt(normalizedHeader.version_number, 1),
+      status: mapStatusValue(normalizedHeader.status),
+      edited_by: normalizedHeader.edited_by || (await payload).userId,
+      editor_name: normalizedHeader.editor_name,
+      remarks: normalizedHeader.remarks,
+      created_by_user_id: (await payload).userId
+    };
 
-    } catch (error) {
-      logger.error('Error creating borelog:', error);
-      const response = createResponse(500, {
+    logger.info('Processing borelog (normalized) header:', { job_code: borelogData.job_code, project_id: projectId });
+
+    // Validate foreign keys before attempting to create
+    try {
+      await validateForeignKeys(borelogData);
+    } catch (fkError) {
+      logger.error('Foreign key validation failed:', fkError);
+      const response = createResponse(400, {
         success: false,
-        message: 'Failed to create borelog',
-        error: error instanceof Error ? error.message : 'Internal server error'
+        message: 'Foreign key constraint violation',
+        error: (fkError as Error).message
       });
       logResponse(response, Date.now() - startTime);
       return response;
     }
+
+    // Validate stratum rows
+    const stratumErrors = [];
+    const validatedStratumRows = [];
+
+    for (let i = 0; i < normalizedStratumRows.length; i++) {
+      const row = normalizedStratumRows[i];
+      const rowNumber = i + 3; // +3 because CSV has header, first row is borelog header, and arrays are 0-indexed
+
+      try {
+        const stratumValidation = StratumRowSchema.safeParse(row);
+        if (!stratumValidation.success) {
+          logger.error(`Stratum validation failed for row ${rowNumber}:`, {
+            validationErrors: stratumValidation.error.errors
+          });
+          
+          stratumErrors.push({
+            row: rowNumber,
+            errors: stratumValidation.error.errors.map(err => `${err.path.join('.')}: ${err.message}`)
+          });
+          continue;
+        }
+
+        const stratumData = stratumValidation.data;
+        
+        // Calculate N-value from SPT blows if not provided
+        let nValue = stratumData.n_value_is_2131;
+        if (!nValue && (stratumData.spt_blows_2 || stratumData.spt_blows_3)) {
+          const blows2 = stratumData.spt_blows_2 ? parseFloat(stratumData.spt_blows_2) : 0;
+          const blows3 = stratumData.spt_blows_3 ? parseFloat(stratumData.spt_blows_3) : 0;
+          nValue = (blows2 + blows3).toString();
+        }
+
+        validatedStratumRows.push({
+          ...stratumData,
+          stratum_depth_from: parseFloat(stratumData.stratum_depth_from),
+          stratum_depth_to: parseFloat(stratumData.stratum_depth_to),
+          stratum_thickness_m: stratumData.stratum_thickness_m ? parseFloat(stratumData.stratum_thickness_m) : null,
+          sample_event_depth_m: stratumData.sample_event_depth_m ? parseFloat(stratumData.sample_event_depth_m) : null,
+          run_length_m: stratumData.run_length_m ? parseFloat(stratumData.run_length_m) : null,
+          spt_blows_1: stratumData.spt_blows_1 ? parseFloat(stratumData.spt_blows_1) : null,
+          spt_blows_2: stratumData.spt_blows_2 ? parseFloat(stratumData.spt_blows_2) : null,
+          spt_blows_3: stratumData.spt_blows_3 ? parseFloat(stratumData.spt_blows_3) : null,
+          n_value_is_2131: nValue,
+          total_core_length_cm: stratumData.total_core_length_cm ? parseFloat(stratumData.total_core_length_cm) : null,
+          tcr_percent: stratumData.tcr_percent ? parseFloat(stratumData.tcr_percent) : null,
+          rqd_length_cm: stratumData.rqd_length_cm ? parseFloat(stratumData.rqd_length_cm) : null,
+          rqd_percent: stratumData.rqd_percent ? parseFloat(stratumData.rqd_percent) : null,
+          borehole_diameter: stratumData.borehole_diameter ? parseFloat(stratumData.borehole_diameter) : null,
+          is_subdivision: stratumData.is_subdivision ? stratumData.is_subdivision.toLowerCase() === 'true' || stratumData.is_subdivision === '1' : false
+        });
+
+      } catch (error) {
+        logger.error(`Error processing stratum row ${rowNumber}:`, error);
+        stratumErrors.push({
+          row: rowNumber,
+          error: error instanceof Error ? error.message : 'Failed to process stratum row'
+        });
+      }
+    }
+
+    // Create the borelog with all stratum data
+    logger.info(`Creating borelog with ${validatedStratumRows.length} stratum rows`);
+    const createdBorelog = await createBorelogFromCSV(borelogData, validatedStratumRows);
+    
+    const response = createResponse(201, {
+      success: true,
+      message: `Borelog created successfully with ${validatedStratumRows.length} stratum layers. ${stratumErrors.length} stratum rows had errors.`,
+      data: {
+        borelog_id: createdBorelog.borelog_id,
+        submission_id: createdBorelog.submission_id,
+        job_code: borelogData.job_code,
+        stratum_layers_created: validatedStratumRows.length,
+        stratum_errors: stratumErrors,
+        summary: {
+          total_stratum_rows: normalizedStratumRows.length,
+          successful_stratum_layers: validatedStratumRows.length,
+          failed_stratum_rows: stratumErrors.length
+        }
+      }
+    });
+
+    logResponse(response, 0);
+    return response;
 
   } catch (error) {
     logger.error('Error uploading CSV:', error);
@@ -1025,7 +1006,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       error: 'Failed to process CSV upload'
     });
 
-    logResponse(response, Date.now() - startTime);
+    logResponse(response, 0);
     return response;
   }
 };

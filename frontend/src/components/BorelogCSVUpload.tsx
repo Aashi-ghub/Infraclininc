@@ -161,24 +161,13 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId,
         substructureId: selectedSubstructureId,
       };
 
-      // Make API call
-      const response = await fetch('/api/borelog/upload-csv', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(requestData),
-      });
+      // Make API call via API client (handles base URL and auth)
+      const apiResponse = await geologicalLogApi.uploadBorelogCSV(requestData);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      const result = apiResponse.data;
 
       if (result.success) {
         toast({
@@ -188,7 +177,7 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId,
 
         // Call success callback
         if (onUploadSuccess) {
-          onUploadSuccess(result.data);
+          onUploadSuccess();
         }
 
         // Reset form
