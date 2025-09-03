@@ -1002,24 +1002,25 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Create the borelog with all stratum data
-    logger.info(`Creating borelog with ${validatedStratumRows.length} stratum rows`);
-    const createdBorelog = await createBorelogFromCSV(borelogData, validatedStratumRows);
+    // Store the CSV upload in pending status for approval
+    logger.info(`Storing CSV upload in pending status with ${validatedStratumRows.length} stratum rows`);
+    const pendingUpload = await storePendingCSVUpload(borelogData, validatedStratumRows, fileType, payload.userId);
     
     const response = createResponse(201, {
       success: true,
-      message: `Borelog created successfully with ${validatedStratumRows.length} stratum layers. ${stratumErrors.length} stratum rows had errors.`,
+      message: `CSV upload stored successfully and pending approval. ${validatedStratumRows.length} stratum layers validated. ${stratumErrors.length} stratum rows had errors.`,
       data: {
-        borelog_id: createdBorelog.borelog_id,
-        submission_id: createdBorelog.submission_id,
+        upload_id: pendingUpload.upload_id,
+        status: 'pending',
         job_code: borelogData.job_code,
-        stratum_layers_created: validatedStratumRows.length,
+        stratum_layers_validated: validatedStratumRows.length,
         stratum_errors: stratumErrors,
         summary: {
           total_stratum_rows: normalizedStratumRows.length,
           successful_stratum_layers: validatedStratumRows.length,
           failed_stratum_rows: stratumErrors.length
-        }
+        },
+        next_steps: 'Upload is pending approval by an Approval Engineer, Admin, or Project Manager'
       }
     });
 
@@ -1040,197 +1041,38 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 };
 
-// Helper function to create borelog from CSV data with multiple stratum layers
-async function createBorelogFromCSV(borelogData: any, stratumRows: any[]) {
+// Helper function to store CSV upload in pending status for approval
+async function storePendingCSVUpload(borelogData: any, stratumRows: any[], fileType: string, userId: string) {
   const pool = await db.getPool();
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    // Create a borehole first if it doesn't exist
-    let borehole_id: string;
-    const existingBoreholeResult = await client.query(
-      `SELECT borehole_id FROM borehole 
-       WHERE project_id = $1 AND structure_id = $2 AND borehole_number = $3`,
-      [borelogData.project_id, borelogData.structure_id, borelogData.borehole_no || borelogData.job_code]
-    );
-
-    if (existingBoreholeResult.rows.length > 0) {
-      borehole_id = existingBoreholeResult.rows[0].borehole_id;
-      logger.info('Using existing borehole:', borehole_id);
-    } else {
-      // Create new borehole
-      const newBoreholeResult = await client.query(
-        `INSERT INTO borehole (borehole_id, project_id, structure_id, borehole_number, location, created_by_user_id)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
-         RETURNING borehole_id`,
+    // Store the upload in pending_csv_uploads table
+    const uploadResult = await client.query(
+      `INSERT INTO pending_csv_uploads (
+        project_id, structure_id, substructure_id, uploaded_by, file_type, total_records,
+        borelog_header_data, stratum_rows_data, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING upload_id`,
         [
           borelogData.project_id,
           borelogData.structure_id,
-          borelogData.borehole_no || borelogData.job_code,
-          borelogData.location || 'Location from CSV',
-          borelogData.created_by_user_id
-        ]
-      );
-      borehole_id = newBoreholeResult.rows[0].borehole_id;
-      logger.info('Created new borehole:', borehole_id);
-    }
-
-    // Create the main borelog record
-    const borelogResult = await client.query(
-      `INSERT INTO boreloge (borelog_id, substructure_id, project_id, type, created_by_user_id)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4)
-       RETURNING borelog_id`,
-      [borelogData.substructure_id, borelogData.project_id, 'Geotechnical', borelogData.created_by_user_id]
-    );
-
-    const borelog_id = borelogResult.rows[0].borelog_id;
-
-    // Create borelog details with header information
-    const detailsResult = await client.query(
-      `INSERT INTO borelog_details (
-        borelog_id, version_no, number, msl, boring_method, hole_diameter,
-        commencement_date, completion_date, standing_water_level, termination_depth,
-        permeability_test_count, spt_vs_test_count, undisturbed_sample_count,
-        disturbed_sample_count, water_sample_count, remarks, created_by_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-      RETURNING borelog_id`,
-      [
-        borelog_id,
-        borelogData.version_number,
-        borelogData.job_code, // Use job_code as the number
-        borelogData.msl?.toString(),
-        borelogData.method_of_boring,
-        parseFloat(borelogData.diameter_of_hole),
-        borelogData.commencement_date,
-        borelogData.completion_date,
-        borelogData.standing_water_level,
-        borelogData.termination_depth,
-        borelogData.permeability_tests_count?.toString(),
-        `${borelogData.spt_tests_count}&${borelogData.vs_tests_count}`,
-        borelogData.undisturbed_samples_count?.toString(),
-        borelogData.disturbed_samples_count?.toString(),
-        borelogData.water_samples_count?.toString(),
-        borelogData.remarks,
-        borelogData.created_by_user_id
-      ]
-    );
-
-    // Create stratum records for each stratum row
-    const stratumIds: string[] = [];
-    for (const stratum of stratumRows) {
-      const stratumResult = await client.query(
-        `INSERT INTO stratum_layers (
-          id, borelog_id, version_no, layer_order, description, depth_from_m, depth_to_m, thickness_m,
-          return_water_colour, water_loss, borehole_diameter, remarks, created_by_user_id
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        RETURNING id`,
-        [
-          borelog_id,
-          1, // version_no
-          stratumIds.length + 1, // layer_order
-          stratum.stratum_description,
-          stratum.stratum_depth_from,
-          stratum.stratum_depth_to,
-          stratum.stratum_thickness_m,
-          stratum.return_water_colour || null,
-          stratum.water_loss || null,
-          stratum.borehole_diameter || null,
-          stratum.remarks || null,
-          borelogData.created_by_user_id
-        ]
-      );
-      stratumIds.push(stratumResult.rows[0].id);
-    }
-
-         // Create borelog submission record for version control
-     const submissionResult = await client.query(
-       `INSERT INTO borelog_submissions (
-         project_id, structure_id, borehole_id, version_number, edited_by,
-         form_data, status, created_by_user_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING submission_id`,
-       [
-         borelogData.project_id,
-         borelogData.structure_id,
-         borehole_id,
-        borelogData.version_number,
-        borelogData.edited_by,
-        JSON.stringify({
-          rows: [
-            {
-              id: 'header',
-              fields: [
-                { id: 'project_name', name: 'Project Name', value: borelogData.project_name, fieldType: 'manual', isRequired: false },
-                { id: 'job_code', name: 'Job Code', value: borelogData.job_code, fieldType: 'manual', isRequired: true },
-                { id: 'chainage_km', name: 'Chainage (Km)', value: borelogData.chainage_km, fieldType: 'manual', isRequired: false },
-                { id: 'borehole_no', name: 'Borehole No.', value: borelogData.borehole_no, fieldType: 'manual', isRequired: false },
-                { id: 'msl', name: 'MSL', value: borelogData.msl, fieldType: 'manual', isRequired: false },
-                { id: 'method_of_boring', name: 'Method of Boring', value: borelogData.method_of_boring, fieldType: 'manual', isRequired: true },
-                { id: 'diameter_of_hole', name: 'Diameter of Hole', value: borelogData.diameter_of_hole, fieldType: 'manual', isRequired: true },
-                { id: 'section_name', name: 'Section Name', value: borelogData.section_name, fieldType: 'manual', isRequired: true },
-                { id: 'location', name: 'Location', value: borelogData.location, fieldType: 'manual', isRequired: true },
-                { id: 'coordinate_e', name: 'Coordinate E', value: borelogData.coordinate_e, fieldType: 'manual', isRequired: false },
-                { id: 'coordinate_l', name: 'Coordinate L', value: borelogData.coordinate_l, fieldType: 'manual', isRequired: false },
-                { id: 'commencement_date', name: 'Commencement Date', value: borelogData.commencement_date, fieldType: 'manual', isRequired: true },
-                { id: 'completion_date', name: 'Completion Date', value: borelogData.completion_date, fieldType: 'manual', isRequired: true },
-                { id: 'standing_water_level', name: 'Standing Water Level', value: borelogData.standing_water_level, fieldType: 'manual', isRequired: false },
-                { id: 'termination_depth', name: 'Termination Depth', value: borelogData.termination_depth, fieldType: 'manual', isRequired: false },
-                { id: 'remarks', name: 'Remarks', value: borelogData.remarks, fieldType: 'manual', isRequired: false }
-              ],
-              description: 'Borelog header information'
-            },
-            ...stratumRows.map((stratum, index) => ({
-              id: `stratum_${index}`,
-              fields: [
-                { id: 'stratum_description', name: 'Description of Soil Stratum & Rock Methodology', value: stratum.stratum_description, fieldType: 'manual', isRequired: true },
-                { id: 'stratum_depth_from', name: 'Depth From (m)', value: stratum.stratum_depth_from, fieldType: 'manual', isRequired: true },
-                { id: 'stratum_depth_to', name: 'Depth To (m)', value: stratum.stratum_depth_to, fieldType: 'manual', isRequired: true },
-                { id: 'stratum_thickness_m', name: 'Thickness (m)', value: stratum.stratum_thickness_m, fieldType: 'calculated', isRequired: false },
-                { id: 'sample_event_type', name: 'Sample/Event Type', value: stratum.sample_event_type, fieldType: 'manual', isRequired: false },
-                { id: 'sample_event_depth_m', name: 'Sample/Event Depth (m)', value: stratum.sample_event_depth_m, fieldType: 'manual', isRequired: false },
-                { id: 'run_length_m', name: 'Run Length (m)', value: stratum.run_length_m, fieldType: 'manual', isRequired: false },
-                { id: 'spt_blows_1', name: 'SPT Blows 1', value: stratum.spt_blows_1, fieldType: 'manual', isRequired: false },
-                { id: 'spt_blows_2', name: 'SPT Blows 2', value: stratum.spt_blows_2, fieldType: 'manual', isRequired: false },
-                { id: 'spt_blows_3', name: 'SPT Blows 3', value: stratum.spt_blows_3, fieldType: 'manual', isRequired: false },
-                { id: 'n_value_is_2131', name: 'N-Value (IS-2131)', value: stratum.n_value_is_2131, fieldType: 'calculated', isRequired: false },
-                { id: 'total_core_length_cm', name: 'Total Core Length (cm)', value: stratum.total_core_length_cm, fieldType: 'manual', isRequired: false },
-                { id: 'tcr_percent', name: 'TCR (%)', value: stratum.tcr_percent, fieldType: 'manual', isRequired: false },
-                { id: 'rqd_length_cm', name: 'RQD Length (cm)', value: stratum.rqd_length_cm, fieldType: 'manual', isRequired: false },
-                { id: 'rqd_percent', name: 'RQD (%)', value: stratum.rqd_percent, fieldType: 'manual', isRequired: false },
-                { id: 'return_water_colour', name: 'Colour of Return Water', value: stratum.return_water_colour, fieldType: 'manual', isRequired: false },
-                { id: 'water_loss', name: 'Water Loss', value: stratum.water_loss, fieldType: 'manual', isRequired: false },
-                { id: 'borehole_diameter', name: 'Diameter of Borehole', value: stratum.borehole_diameter, fieldType: 'manual', isRequired: false },
-                { id: 'remarks', name: 'Remarks', value: stratum.remarks, fieldType: 'manual', isRequired: false }
-              ],
-              description: `Stratum layer ${index + 1}`,
-              isSubdivision: stratum.is_subdivision,
-              parentRowId: stratum.parent_row_id
-            }))
-          ],
-          metadata: {
-            project_name: borelogData.project_name || borelogData.job_code,
-            borehole_number: borelogData.borehole_no || borelogData.job_code,
-            commencement_date: borelogData.commencement_date,
-            completion_date: borelogData.completion_date,
-            standing_water_level: borelogData.standing_water_level,
-            termination_depth: borelogData.termination_depth
-          }
-        }),
-        borelogData.status,
-        borelogData.created_by_user_id
+        borelogData.substructure_id,
+        userId,
+        fileType,
+        stratumRows.length,
+        JSON.stringify(borelogData),
+        JSON.stringify(stratumRows),
+        'pending'
       ]
     );
 
     await client.query('COMMIT');
 
     return {
-      borelog_id,
-      submission_id: submissionResult.rows[0].submission_id,
-      version_no: borelogData.version_number,
-      status: 'created',
-      stratum_layers_created: stratumRows.length
+      upload_id: uploadResult.rows[0].upload_id
     };
 
   } catch (error) {

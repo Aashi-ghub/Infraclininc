@@ -1404,6 +1404,44 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+
+    // Pending CSV Uploads endpoints
+    listPendingCSVUploads: {
+      handler: 'src/handlers/listPendingCSVUploads.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/pending-csv-uploads',
+            cors: true
+          }
+        }
+      ]
+    },
+    getPendingCSVUpload: {
+      handler: 'src/handlers/getPendingCSVUpload.handler',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: '/pending-csv-uploads/{upload_id}',
+            cors: true
+          }
+        }
+      ]
+    },
+    approvePendingCSVUpload: {
+      handler: 'src/handlers/approvePendingCSVUpload.handler',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/pending-csv-uploads/{upload_id}/approve',
+            cors: true
+          }
+        }
+      ]
+    },
   },
   package: {
     individually: true

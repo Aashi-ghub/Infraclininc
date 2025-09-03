@@ -8,6 +8,7 @@ import { workflowApi } from '../lib/api';
 import { useToast } from '../hooks/use-toast';
 import { format } from 'date-fns';
 import { Loader } from './Loader';
+import { PendingCSVUploadsManager } from './PendingCSVUploadsManager';
 
 interface PendingReview {
   borelog_id: string;
@@ -239,6 +240,11 @@ export function WorkflowDashboard() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Pending CSV Uploads - for Admin, Approval Engineer, and Project Manager */}
+      {(user?.role === 'Admin' || user?.role === 'Approval Engineer' || user?.role === 'Project Manager') && (
+        <PendingCSVUploadsManager />
       )}
 
       {/* Lab Assignments - for Lab Engineers and Admins */}

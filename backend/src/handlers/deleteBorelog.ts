@@ -10,8 +10,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   logRequest(event, { awsRequestId: 'local' });
 
   try {
-    // Admin only
-    const authError = await checkRole(['Admin'])(event);
+    // Admin and Project Manager can delete borelogs
+    const authError = await checkRole(['Admin', 'Project Manager'])(event);
     if (authError !== null) {
       return authError;
     }
@@ -55,8 +55,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
       await client.query('BEGIN');
 
-      // Ensure borelog exists
-      const existsRes = await client.query('SELECT borelog_id FROM boreloge WHERE borelog_id = $1', [borelogId]);
+      // Ensure borelog exists and get project info for Project Manager validation
+      const existsRes = await client.query(
+        'SELECT borelog_id, project_id FROM boreloge WHERE borelog_id = $1', 
+        [borelogId]
+      );
       if (existsRes.rows.length === 0) {
         await client.query('ROLLBACK');
         const response = createResponse(404, {
@@ -68,12 +71,38 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         return response;
       }
 
+      const borelog = existsRes.rows[0];
+
+      // For Project Managers, check if they have access to the project
+      if (payload.role === 'Project Manager') {
+        const projectAccessRes = await client.query(
+          'SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2 AND role = $3',
+          [borelog.project_id, payload.userId, 'Project Manager']
+        );
+        
+        if (projectAccessRes.rows.length === 0) {
+          await client.query('ROLLBACK');
+          const response = createResponse(403, {
+            success: false,
+            message: 'Access denied',
+            error: 'You do not have permission to delete borelogs from this project'
+          });
+          logResponse(response, Date.now() - startTime);
+          return response;
+        }
+      }
+
       // Delete child records first (defensive if FK constraints lack cascade)
       await client.query('DELETE FROM borelog_images WHERE borelog_id = $1', [borelogId]).catch(() => {});
       await client.query('DELETE FROM borelog_assignments WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      await client.query('DELETE FROM stratum WHERE borelog_id = $1', [borelogId]).catch(() => {});
+      await client.query('DELETE FROM stratum_layers WHERE borelog_id = $1', [borelogId]).catch(() => {});
       await client.query('DELETE FROM borelog_details WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      await client.query('DELETE FROM borelog_submissions WHERE borehole_id IN (SELECT borehole_id FROM borehole WHERE borehole_id IN (SELECT borehole_id FROM borehole)) AND $1 IS NOT NULL', [borelogId]).catch(() => {});
+      
+      // Delete borelog submissions related to this borelog
+      await client.query(
+        'DELETE FROM borelog_submissions WHERE borehole_id IN (SELECT borehole_id FROM borehole WHERE project_id = $1)',
+        [borelog.project_id]
+      ).catch(() => {});
 
       // Finally delete borelog
       await client.query('DELETE FROM boreloge WHERE borelog_id = $1', [borelogId]);

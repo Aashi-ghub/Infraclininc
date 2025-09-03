@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth';
 import { Project } from '@/lib/types';
 import { BorelogCSVUpload } from '@/components/BorelogCSVUpload';
 import { BorelogAssignmentManager } from '@/components/BorelogAssignmentManager';
+import { DeleteBorelogButton } from '@/components/DeleteBorelogButton';
 
 export default function ManageBorelogs() {
   const { toast } = useToast();
@@ -771,6 +772,13 @@ export default function ManageBorelogs() {
                                     <span className="sm:hidden">✏</span>
                                   </Link>
                                 </Button>
+                              )}
+                              {(user?.role === 'Admin' || user?.role === 'Project Manager') && (
+                                <DeleteBorelogButton 
+                                  borelogId={borelog.borelog_id} 
+                                  onSuccess={handleBorelogDelete}
+                                  className="flex-1 min-w-0"
+                                />
                               )}
                             </div>
                             {(user?.role === 'Admin' || user?.role === 'Project Manager') && (

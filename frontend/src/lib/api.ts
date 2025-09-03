@@ -358,6 +358,20 @@ export const workflowApi = {
   // Get submitted borelogs (for site engineers)
   getSubmittedBorelogs: () => 
     apiClient.get<ApiResponse<any[]>>('/workflow/submitted-borelogs'),
+
+  // Pending CSV Uploads API functions
+  getPendingCSVUploads: (params?: { project_id?: string; status?: string; limit?: number; offset?: number }) => 
+    apiClient.get<ApiResponse<any>>('/pending-csv-uploads', { params }),
+  
+  getPendingCSVUpload: (uploadId: string) => 
+    apiClient.get<ApiResponse<any>>(`/pending-csv-uploads/${uploadId}`),
+  
+  approvePendingCSVUpload: (uploadId: string, data: { 
+    action: 'approve' | 'reject' | 'return_for_revision'; 
+    comments?: string; 
+    revision_notes?: string; 
+  }) => 
+    apiClient.post<ApiResponse<any>>(`/pending-csv-uploads/${uploadId}/approve`, data),
 };
 
 export const labTestApi = {
