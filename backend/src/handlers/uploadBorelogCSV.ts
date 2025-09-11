@@ -412,6 +412,37 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
 }
 
 // Helper function to parse borelog template format (specific to the provided template)
+// Helper function to find a non-empty value in the same row (excluding field names)
+function findValueInRow(row: string[], startIndex: number): string | null {
+  const fieldNames = ['Job Code', 'Chainage (Km)', 'Borehole No.', 'Mean Sea Level (MSL)', 
+                     'Method of Boring / Drilling', 'Diameter of Hole', 'Section Name', 
+                     'Location', 'Commencement Date', 'Completion Date'];
+  
+  for (let i = startIndex + 1; i < row.length; i++) {
+    if (row[i] && row[i].trim() !== '' && !fieldNames.includes(row[i].trim())) {
+      return row[i].trim();
+    }
+  }
+  return null;
+}
+
+// Helper function to find a non-empty value in the next row (excluding field names)
+function findValueInNextRow(allRows: string[][], currentRowIndex: number): string | null {
+  const fieldNames = ['Job Code', 'Chainage (Km)', 'Borehole No.', 'Mean Sea Level (MSL)', 
+                     'Method of Boring / Drilling', 'Diameter of Hole', 'Section Name', 
+                     'Location', 'Commencement Date', 'Completion Date'];
+  
+  if (currentRowIndex + 1 < allRows.length) {
+    const nextRow = allRows[currentRowIndex + 1];
+    for (let i = 0; i < nextRow.length; i++) {
+      if (nextRow[i] && nextRow[i].trim() !== '' && !fieldNames.includes(nextRow[i].trim())) {
+        return nextRow[i].trim();
+      }
+    }
+  }
+  return null;
+}
+
 function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData: any[] } {
   const header: any = {};
   const stratumData: any[] = [];
@@ -457,60 +488,62 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
   // Extract borelog header information from rows before the stratum table
   for (let i = 0; i < headerRowIndex; i++) {
     const row = allRows[i];
+    
+    // Look for field names in any column and find their values
     for (let j = 0; j < row.length; j++) {
       const cellValue = row[j];
       
-      // Extract Job Code
-      if (cellValue === 'Job Code' && j + 1 < row.length) {
-        header.job_code = row[j + 1];
+      // Extract Job Code - look for value in any column of the same row or next row
+      if (cellValue === 'Job Code') {
+        header.job_code = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found job_code: ${header.job_code}`);
       }
       
       // Extract Section Name
-      if (cellValue === 'Section Name' && j + 1 < row.length) {
-        header.section_name = row[j + 1];
+      if (cellValue === 'Section Name') {
+        header.section_name = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found section_name: ${header.section_name}`);
       }
       
       // Extract Chainage
-      if (cellValue === 'Chainage (Km)' && j + 1 < row.length) {
-        header.chainage_km = row[j + 1];
+      if (cellValue === 'Chainage (Km)') {
+        header.chainage_km = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found chainage_km: ${header.chainage_km}`);
       }
       
       // Extract Location
-      if (cellValue === 'Location' && j + 1 < row.length) {
-        header.location = row[j + 1];
+      if (cellValue === 'Location') {
+        header.location = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found location: ${header.location}`);
       }
       
       // Extract Borehole No
-      if (cellValue === 'Borehole No.' && j + 1 < row.length) {
-        header.borehole_no = row[j + 1];
+      if (cellValue === 'Borehole No.') {
+        header.borehole_no = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found borehole_no: ${header.borehole_no}`);
       }
       
       // Extract Commencement Date
-      if (cellValue === 'Commencement Date' && j + 1 < row.length) {
-        header.commencement_date = row[j + 1];
+      if (cellValue === 'Commencement Date') {
+        header.commencement_date = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found commencement_date: ${header.commencement_date}`);
       }
       
       // Extract MSL
-      if (cellValue === 'Mean Sea Level (MSL)' && j + 1 < row.length) {
-        header.msl = row[j + 1];
+      if (cellValue === 'Mean Sea Level (MSL)') {
+        header.msl = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found msl: ${header.msl}`);
       }
       
       // Extract Completion Date
-      if (cellValue === 'Completion Date' && j + 1 < row.length) {
-        header.completion_date = row[j + 1];
+      if (cellValue === 'Completion Date') {
+        header.completion_date = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found completion_date: ${header.completion_date}`);
       }
       
       // Extract Method of Boring
-      if (cellValue === 'Method of Boring / Drilling' && j + 1 < row.length) {
-        header.method_of_boring = row[j + 1];
+      if (cellValue === 'Method of Boring / Drilling') {
+        header.method_of_boring = findValueInRow(row, j) || findValueInNextRow(allRows, i);
         logger.info(`Found method_of_boring: ${header.method_of_boring}`);
       }
       

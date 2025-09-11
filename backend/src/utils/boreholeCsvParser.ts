@@ -58,6 +58,8 @@ export class BoreholeCsvParser {
       lab_tests: {
         permeability_tests: 0,
         sp_vs_tests: 0,
+        spt_tests: 0,
+        vs_tests: 0,
         undisturbed_samples: 0,
         disturbed_samples: '',
         water_samples: 0
@@ -319,6 +321,8 @@ export class BoreholeCsvParser {
   private parseLabTests(startIndex: number): { 
     permeability_tests: number; 
     sp_vs_tests: number; 
+    spt_tests: number;
+    vs_tests: number;
     undisturbed_samples: number; 
     disturbed_samples: string; 
     water_samples: number;
@@ -349,9 +353,16 @@ export class BoreholeCsvParser {
           }
         }
         
+        // For CSV format "SP/VS Tests: 15", we need to make an assumption about the split
+        // Common practice: assume 70% SPT, 30% VS for combined counts
+        const sptCount = Math.round(spVs * 0.7);
+        const vsCount = spVs - sptCount;
+
         return {
           permeability_tests: permeability,
           sp_vs_tests: spVs,
+          spt_tests: sptCount,
+          vs_tests: vsCount,
           undisturbed_samples: undisturbed,
           disturbed_samples: disturbed,
           water_samples: water,

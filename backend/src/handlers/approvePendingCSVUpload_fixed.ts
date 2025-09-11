@@ -2,22 +2,14 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
-import { z } from 'zod';
 import * as db from '../db';
-
-// Schema for approving pending CSV uploads
-const ApprovePendingCSVUploadSchema = z.object({
-  action: z.enum(['approve', 'reject', 'return_for_revision']),
-  comments: z.string().optional(),
-  revision_notes: z.string().optional()
-});
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
   try {
-    // Only Approval Engineer, Admin, or Project Manager can approve CSV uploads
+    // Only Approval Engineer, Admin, or Project Manager can approve pending CSV uploads
     const authError = await checkRole(['Admin', 'Approval Engineer', 'Project Manager'])(event);
     if (authError) {
       return authError;
@@ -36,6 +28,20 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
+    // Parse request body
+    const body = JSON.parse(event.body || '{}');
+    const { action, comments, revision_notes } = body;
+
+    if (!action || !['approve', 'reject', 'return_for_revision'].includes(action)) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Invalid action. Must be approve, reject, or return_for_revision',
+        error: 'Invalid action'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
     const uploadId = event.pathParameters?.upload_id;
     if (!uploadId) {
       const response = createResponse(400, {
@@ -47,21 +53,6 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Parse and validate request body
-    if (!event.body) {
-      const response = createResponse(400, {
-        success: false,
-        message: 'Missing request body',
-        error: 'Request body is required'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    }
-
-    const requestBody = JSON.parse(event.body);
-    const validatedData = ApprovePendingCSVUploadSchema.parse(requestBody);
-    const { action, comments, revision_notes } = validatedData;
-
     // Get the pending CSV upload
     const pool = await db.getPool();
     const client = await pool.connect();
@@ -69,14 +60,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
       await client.query('BEGIN');
 
-      // Get the pending upload
       const uploadResult = await client.query(
         `SELECT * FROM pending_csv_uploads WHERE upload_id = $1 AND status = 'pending'`,
         [uploadId]
       );
 
       if (uploadResult.rows.length === 0) {
-        await client.query('ROLLBACK');
         const response = createResponse(404, {
           success: false,
           message: 'Pending CSV upload not found or already processed',
@@ -111,7 +100,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
             borelog_id: createdBorelog.borelog_id,
             status: 'approved',
             approved_by: payload.userId,
-            stratum_layers_created: createdBorelog.stratum_layers_created
+            stratum_layers_created: createdBorelog.stratum_layers_created,
+            sample_points_created: createdBorelog.sample_points_created
           }
         });
 
@@ -265,52 +255,10 @@ async function createBorelogFromPendingUpload(client: any, upload: any) {
     ]
   );
 
-  // Best-effort: populate additional header fields used by the edit form
-  try {
-    // Check if the columns exist before trying to update them
-    const columnCheck = await client.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'borelog_details' 
-      AND column_name IN ('job_code', 'location', 'chainage_km')
-    `);
-    
-    const existingColumns = columnCheck.rows.map(row => row.column_name);
-    const updateFields = [];
-    const updateValues = [];
-    let paramIndex = 1;
-    
-    if (existingColumns.includes('job_code')) {
-      updateFields.push(`job_code = $${paramIndex++}`);
-      updateValues.push(borelogHeaderData.job_code || null);
-    }
-    if (existingColumns.includes('location')) {
-      updateFields.push(`location = $${paramIndex++}`);
-      updateValues.push(borelogHeaderData.location || null);
-    }
-    if (existingColumns.includes('chainage_km')) {
-      updateFields.push(`chainage_km = $${paramIndex++}`);
-      updateValues.push(borelogHeaderData.chainage_km || null);
-    }
-    
-    if (updateFields.length > 0) {
-      updateValues.push(borelog_id);
-      await client.query(
-        `UPDATE borelog_details 
-         SET ${updateFields.join(', ')}
-         WHERE borelog_id = $${paramIndex} AND version_no = 1`,
-        updateValues
-      );
-      logger.info(`Updated borelog_details with fields: ${updateFields.join(', ')}`);
-    } else {
-      logger.info('No additional fields to update in borelog_details');
-    }
-  } catch (e) {
-    logger.warn('Error updating optional fields in borelog_details:', e);
-  }
-
   // Create stratum records for each stratum row
   const stratumIds: string[] = [];
+  let samplePointsCreated = 0;
+
   for (let i = 0; i < stratumRowsData.length; i++) {
     const stratum = stratumRowsData[i];
     const stratumResult = await client.query(
@@ -334,154 +282,68 @@ async function createBorelogFromPendingUpload(client: any, upload: any) {
         upload.uploaded_by
       ]
     );
-    const stratumLayerId = stratumResult.rows[0].id;
-    stratumIds.push(stratumLayerId);
+    const stratumId = stratumResult.rows[0].id;
+    stratumIds.push(stratumId);
 
-    // Prefer explicit samples array (multiple subdivision rows)
-    if (Array.isArray(stratum.samples) && stratum.samples.length > 0) {
-      for (let sampleIndex = 0; sampleIndex < stratum.samples.length; sampleIndex++) {
-        const sample = stratum.samples[sampleIndex];
+    // Create sample points for this stratum if sample data exists
+    if (stratum.sample_event_type || stratum.spt_blows_1 || stratum.total_core_length_cm) {
+      logger.info(`Creating sample point for stratum ${i + 1} with sample data:`, {
+        sample_type: stratum.sample_event_type,
+        depth: stratum.sample_event_depth_m,
+        spt_blows: [stratum.spt_blows_1, stratum.spt_blows_2, stratum.spt_blows_3]
+      });
 
-        // Determine depth mode/values
-        let depthMode: 'single' | 'range' = 'single';
-        let depthSingle: number | null = null;
-        let depthFrom: number | null = null;
-        let depthTo: number | null = null;
-        let runLength: number | null = null;
-
-        if (sample.sample_event_depth_m) {
-          const d = parseFloat(sample.sample_event_depth_m);
-          if (!isNaN(d)) depthSingle = d;
-        } else if (stratum.stratum_depth_from && stratum.stratum_depth_to) {
-          const df = parseFloat(stratum.stratum_depth_from);
-          const dt = parseFloat(stratum.stratum_depth_to);
-          if (!isNaN(df) && !isNaN(dt)) {
-            depthMode = 'range';
-            depthFrom = df;
-            depthTo = dt;
-            runLength = +(dt - df).toFixed(2);
-          }
-        }
-
-        // Compute N-value if not provided
-        let nValue: number | null = null;
-        const b2s = sample.spt_blows_2 ? parseFloat(sample.spt_blows_2) : NaN;
-        const b3s = sample.spt_blows_3 ? parseFloat(sample.spt_blows_3) : NaN;
-        if (!isNaN(b2s) || !isNaN(b3s)) {
-          nValue = (isNaN(b2s) ? 0 : b2s) + (isNaN(b3s) ? 0 : b3s);
-        } else if (sample.n_value_is_2131 && !isNaN(parseFloat(sample.n_value_is_2131))) {
-          nValue = parseFloat(sample.n_value_is_2131);
-        }
-
-        // Compute TCR/RQD if possible
-        let tcrPercent: number | null = null;
-        let rqdPercent: number | null = null;
-        const totalCoreCmS = sample.total_core_length_cm ? parseFloat(sample.total_core_length_cm) : NaN;
-        const rqdLenCmS = sample.rqd_length_cm ? parseFloat(sample.rqd_length_cm) : NaN;
-        if (!isNaN(totalCoreCmS) && runLength && runLength > 0) {
-          tcrPercent = +(((totalCoreCmS / 100) / runLength) * 100).toFixed(2);
-        } else if (sample.tcr_percent && !isNaN(parseFloat(sample.tcr_percent))) {
-          tcrPercent = parseFloat(sample.tcr_percent);
-        }
-        if (!isNaN(rqdLenCmS) && runLength && runLength > 0) {
-          rqdPercent = +(((rqdLenCmS / 100) / runLength) * 100).toFixed(2);
-        } else if (sample.rqd_percent && !isNaN(parseFloat(sample.rqd_percent))) {
-          rqdPercent = parseFloat(sample.rqd_percent);
-        }
-
-        await client.query(
-          `INSERT INTO stratum_sample_points (
-            stratum_layer_id, sample_order, sample_type, depth_mode, depth_single_m,
-            depth_from_m, depth_to_m, run_length_m,
-            spt_15cm_1, spt_15cm_2, spt_15cm_3, n_value,
-            total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
-            created_by_user_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-          [
-            stratumLayerId,
-            sampleIndex + 1,
-            sample.sample_event_type || null,
-            depthMode,
-            depthSingle,
-            depthFrom,
-            depthTo,
-            runLength,
-            sample.spt_blows_1 ? parseFloat(sample.spt_blows_1) : null,
-            sample.spt_blows_2 ? parseFloat(sample.spt_blows_2) : null,
-            sample.spt_blows_3 ? parseFloat(sample.spt_blows_3) : null,
-            nValue,
-            !isNaN(totalCoreCmS) ? totalCoreCmS : null,
-            tcrPercent,
-            !isNaN(rqdLenCmS) ? rqdLenCmS : null,
-            rqdPercent,
-            upload.uploaded_by
-          ]
-        );
-      }
-    } else if (
-      stratum.sample_event_type ||
-      stratum.sample_event_depth_m ||
-      stratum.spt_blows_1 || stratum.spt_blows_2 || stratum.spt_blows_3 ||
-      stratum.n_value_is_2131 ||
-      stratum.total_core_length_cm || stratum.tcr_percent ||
-      stratum.rqd_length_cm || stratum.rqd_percent
-    ) {
-      // Single-sample fallback using flat fields
-      let depthMode: 'single' | 'range' = 'single';
-      let depthSingle: number | null = null;
-      let depthFrom: number | null = null;
-      let depthTo: number | null = null;
-      let runLength: number | null = null;
+      // Determine depth mode and values
+      let depthMode = 'single';
+      let depthSingle = null;
+      let depthFrom = null;
+      let depthTo = null;
+      let runLength = null;
 
       if (stratum.sample_event_depth_m) {
-        const d = parseFloat(stratum.sample_event_depth_m);
-        if (!isNaN(d)) depthSingle = d;
+        depthSingle = parseFloat(stratum.sample_event_depth_m);
+        depthMode = 'single';
       } else if (stratum.stratum_depth_from && stratum.stratum_depth_to) {
-        const df = parseFloat(stratum.stratum_depth_from);
-        const dt = parseFloat(stratum.stratum_depth_to);
-        if (!isNaN(df) && !isNaN(dt)) {
-          depthMode = 'range';
-          depthFrom = df;
-          depthTo = dt;
-          runLength = +(dt - df).toFixed(2);
-        }
+        depthFrom = parseFloat(stratum.stratum_depth_from);
+        depthTo = parseFloat(stratum.stratum_depth_to);
+        depthMode = 'range';
+        runLength = depthTo - depthFrom;
       }
 
-      let nValue: number | null = null;
-      const b2 = stratum.spt_blows_2 ? parseFloat(stratum.spt_blows_2) : NaN;
-      const b3 = stratum.spt_blows_3 ? parseFloat(stratum.spt_blows_3) : NaN;
-      if (!isNaN(b2) || !isNaN(b3)) {
-        nValue = (isNaN(b2) ? 0 : b2) + (isNaN(b3) ? 0 : b3);
-      } else if (stratum.n_value_is_2131 && !isNaN(parseFloat(stratum.n_value_is_2131))) {
+      // Calculate N-value from SPT blows
+      let nValue = null;
+      if (stratum.spt_blows_2 && stratum.spt_blows_3) {
+        nValue = (parseFloat(stratum.spt_blows_2) || 0) + (parseFloat(stratum.spt_blows_3) || 0);
+      } else if (stratum.n_value_is_2131) {
         nValue = parseFloat(stratum.n_value_is_2131);
       }
 
-      let tcrPercent: number | null = null;
-      let rqdPercent: number | null = null;
-      const totalCoreCm = stratum.total_core_length_cm ? parseFloat(stratum.total_core_length_cm) : NaN;
-      const rqdLenCm = stratum.rqd_length_cm ? parseFloat(stratum.rqd_length_cm) : NaN;
-      if (!isNaN(totalCoreCm) && runLength && runLength > 0) {
-        tcrPercent = +(((totalCoreCm / 100) / runLength) * 100).toFixed(2);
-      } else if (stratum.tcr_percent && !isNaN(parseFloat(stratum.tcr_percent))) {
+      // Calculate TCR and RQD percentages
+      let tcrPercent = null;
+      let rqdPercent = null;
+      
+      if (stratum.total_core_length_cm && runLength) {
+        tcrPercent = (parseFloat(stratum.total_core_length_cm) / 100) / runLength * 100;
+      } else if (stratum.tcr_percent) {
         tcrPercent = parseFloat(stratum.tcr_percent);
       }
-      if (!isNaN(rqdLenCm) && runLength && runLength > 0) {
-        rqdPercent = +(((rqdLenCm / 100) / runLength) * 100).toFixed(2);
-      } else if (stratum.rqd_percent && !isNaN(parseFloat(stratum.rqd_percent))) {
+      
+      if (stratum.rqd_length_cm && runLength) {
+        rqdPercent = (parseFloat(stratum.rqd_length_cm) / 100) / runLength * 100;
+      } else if (stratum.rqd_percent) {
         rqdPercent = parseFloat(stratum.rqd_percent);
       }
 
       await client.query(
         `INSERT INTO stratum_sample_points (
           stratum_layer_id, sample_order, sample_type, depth_mode, depth_single_m,
-          depth_from_m, depth_to_m, run_length_m,
-          spt_15cm_1, spt_15cm_2, spt_15cm_3, n_value,
-          total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
+          depth_from_m, depth_to_m, run_length_m, spt_15cm_1, spt_15cm_2, spt_15cm_3,
+          n_value, total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
           created_by_user_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [
-          stratumLayerId,
-          1,
+          stratumId,
+          1, // sample_order (first sample for this stratum)
           stratum.sample_event_type || null,
           depthMode,
           depthSingle,
@@ -492,13 +354,15 @@ async function createBorelogFromPendingUpload(client: any, upload: any) {
           stratum.spt_blows_2 ? parseFloat(stratum.spt_blows_2) : null,
           stratum.spt_blows_3 ? parseFloat(stratum.spt_blows_3) : null,
           nValue,
-          !isNaN(totalCoreCm) ? totalCoreCm : null,
+          stratum.total_core_length_cm ? parseFloat(stratum.total_core_length_cm) : null,
           tcrPercent,
-          !isNaN(rqdLenCm) ? rqdLenCm : null,
+          stratum.rqd_length_cm ? parseFloat(stratum.rqd_length_cm) : null,
           rqdPercent,
           upload.uploaded_by
         ]
       );
+      
+      samplePointsCreated++;
     }
   }
 
@@ -525,6 +389,8 @@ async function createBorelogFromPendingUpload(client: any, upload: any) {
   return {
     borelog_id,
     stratum_layers_created: stratumRowsData.length,
-    sample_points_created: stratumRowsData.filter(s => s.sample_event_type || s.spt_blows_1 || s.total_core_length_cm).length
+    sample_points_created: samplePointsCreated
   };
 }
+
+

@@ -21,6 +21,8 @@ export interface BoreholeMetadata {
   lab_tests: {
     permeability_tests: number | string | null;
     sp_vs_tests: number | string | null;
+    spt_tests: number | string | null;
+    vs_tests: number | string | null;
     undisturbed_samples: number | string | null;
     disturbed_samples: number | string | null;
     water_samples: number | string | null;
