@@ -76,7 +76,7 @@ const Index = () => {
                   Manage infrastructure projects and assignments
                 </p>
                 <Button asChild variant="outline" className="w-full">
-                  <Link to="/projects/list">
+                  <Link to="/projects">
                     View Projects
                   </Link>
                 </Button>

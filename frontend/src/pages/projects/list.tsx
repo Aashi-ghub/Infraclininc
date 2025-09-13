@@ -189,7 +189,7 @@ export default function ProjectListPage() {
                     
                     <RoleBasedComponent allowedRoles={['Admin', 'Project Manager']}>
                       <Button asChild variant="outline" size="sm">
-                        <Link to={`/structures/${project.project_id}`}>
+                        <Link to={`/projects/${project.project_id}/structures`}>
                           Structures
                         </Link>
                       </Button>
