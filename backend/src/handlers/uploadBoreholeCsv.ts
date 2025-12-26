@@ -4,8 +4,14 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { parseBoreholeCsv } from '../utils/boreholeCsvParser';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
+import { getStorageService, validateFile, generateS3Key } from '../services/storageService';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('uploadBoreholeCsv');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -38,14 +44,15 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     const requestBody = JSON.parse(event.body);
-    const { csvContent, projectId, structureId, substructureId } = requestBody;
+    const { csvContent, projectId, structureId, substructureId, fileName } = requestBody;
 
     logger.info('Request body parsed:', {
       hasCsvContent: !!csvContent,
       csvContentLength: csvContent ? csvContent.length : 0,
       projectId,
       structureId,
-      substructureId
+      substructureId,
+      fileName
     });
 
     if (!csvContent) {
@@ -58,10 +65,88 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
+    if (!projectId || !structureId || !substructureId) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing required fields',
+        error: 'projectId, structureId, and substructureId are required'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Convert CSV content to buffer and upload to S3
+    let fileUrl: string | null = null;
+    let csvBuffer: Buffer;
+    let csvContentForParsing: string;
+
+    try {
+      // Check if csvContent is base64 encoded
+      const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(csvContent.trim());
+      
+      if (isBase64 && csvContent.length > 100) {
+        // Likely base64 encoded file
+        csvBuffer = Buffer.from(csvContent, 'base64');
+        csvContentForParsing = csvBuffer.toString('utf-8');
+      } else {
+        // Raw CSV text
+        csvBuffer = Buffer.from(csvContent, 'utf-8');
+        csvContentForParsing = csvContent;
+      }
+
+      // Validate file size and MIME type
+      const mimeType = 'text/csv';
+      const validation = validateFile(csvBuffer, mimeType, 'CSV');
+      
+      if (!validation.valid) {
+        const response = createResponse(400, {
+          success: false,
+          message: 'File validation failed',
+          error: validation.error
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+
+      // Generate S3 key (we need a borelog_id, but we don't have one yet)
+      // Use a temporary ID or project-based path
+      const tempBorelogId = 'pending'; // Will be updated when borelog is created
+      const s3Key = generateS3Key(
+        projectId,
+        tempBorelogId,
+        'csv',
+        fileName || `borehole_${Date.now()}.csv`
+      );
+
+      // Upload to S3
+      const storageService = getStorageService();
+      fileUrl = await storageService.uploadFile(
+        csvBuffer,
+        s3Key,
+        mimeType,
+        {
+          project_id: projectId,
+          structure_id: structureId,
+          substructure_id: substructureId,
+        }
+      );
+
+      logger.info('File uploaded to S3', { fileUrl, s3Key });
+    } catch (error) {
+      logger.error('Error uploading file to S3:', error);
+      const response = createResponse(500, {
+        success: false,
+        message: 'Failed to upload file to S3',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
     let parsedData;
     try {
       logger.info('Parsing borehole CSV content...');
-      parsedData = await parseBoreholeCsv(csvContent);
+      parsedData = await parseBoreholeCsv(csvContentForParsing);
       logger.info('CSV parsed successfully:', {
         projectName: parsedData.metadata.project_name,
         jobCode: parsedData.metadata.job_code,
@@ -96,7 +181,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         projectId, 
         structureId, 
         substructureId, 
-        (await payload).userId
+        (await payload).userId,
+        fileUrl,
+        fileName || `borehole_${Date.now()}.csv`
       );
 
       const response = createResponse(201, {
@@ -154,7 +241,9 @@ async function storePendingBoreholeCSVUpload(
   projectId: string, 
   structureId: string, 
   substructureId: string, 
-  userId: string
+  userId: string,
+  fileUrl: string | null,
+  fileName: string
 ) {
   const pool = await db.getPool();
   const client = await pool.connect();
@@ -163,11 +252,12 @@ async function storePendingBoreholeCSVUpload(
     await client.query('BEGIN');
 
     // Store the upload in pending_csv_uploads table
+    // Note: file_url column must exist (added via migration)
     const uploadResult = await client.query(
       `INSERT INTO pending_csv_uploads (
         project_id, structure_id, substructure_id, uploaded_by, file_type, total_records,
-        borelog_header_data, stratum_rows_data, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        borelog_header_data, stratum_rows_data, status, file_name, file_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING upload_id`,
       [
         projectId,
@@ -182,7 +272,9 @@ async function storePendingBoreholeCSVUpload(
           sample_remarks: parsedData.remarks
         }),
         JSON.stringify(parsedData.layers),
-        'pending'
+        'pending',
+        fileName,
+        fileUrl
       ]
     );
 
@@ -194,6 +286,43 @@ async function storePendingBoreholeCSVUpload(
 
   } catch (error) {
     await client.query('ROLLBACK');
+    // If file_url column doesn't exist, log warning but don't fail
+    if (error instanceof Error && error.message.includes('column "file_url"')) {
+      logger.warn('file_url column does not exist yet. Run migration: add_file_url_to_pending_csv_uploads.sql');
+      // Retry without file_url
+      try {
+        await client.query('BEGIN');
+        const uploadResult = await client.query(
+          `INSERT INTO pending_csv_uploads (
+            project_id, structure_id, substructure_id, uploaded_by, file_type, total_records,
+            borelog_header_data, stratum_rows_data, status, file_name
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING upload_id`,
+          [
+            projectId,
+            structureId,
+            substructureId,
+            userId,
+            'csv',
+            parsedData.layers.length,
+            JSON.stringify({
+              metadata: parsedData.metadata,
+              core_quality: parsedData.core_quality,
+              sample_remarks: parsedData.remarks
+            }),
+            JSON.stringify(parsedData.layers),
+            'pending',
+            fileName
+          ]
+        );
+        await client.query('COMMIT');
+        logger.warn('Uploaded without file_url. File stored in S3 but URL not saved to DB.');
+        return { upload_id: uploadResult.rows[0].upload_id };
+      } catch (retryError) {
+        await client.query('ROLLBACK');
+        throw retryError;
+      }
+    }
     throw error;
   } finally {
     client.release();

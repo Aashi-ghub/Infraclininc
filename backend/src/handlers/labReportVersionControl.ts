@@ -4,9 +4,14 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { validateToken } from '../utils/validateInput';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Save draft version of lab report
 export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('saveLabReportDraft');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -146,6 +151,10 @@ export const saveLabReportDraft = async (event: APIGatewayProxyEvent): Promise<A
 
 // Submit lab report for review
 export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('submitLabReportForReview');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -269,6 +278,10 @@ export const submitLabReportForReview = async (event: APIGatewayProxyEvent): Pro
 
 // Review lab report (approve/reject/return for revision)
 export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('reviewLabReport');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -429,6 +442,10 @@ export const reviewLabReport = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // Get lab report version history
 export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getLabReportVersionHistory');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
   
@@ -525,6 +542,10 @@ export const getLabReportVersionHistory = async (event: APIGatewayProxyEvent): P
 
 // Get specific lab report version
 export const getLabReportVersion = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getLabReportVersion');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

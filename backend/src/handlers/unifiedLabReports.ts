@@ -3,6 +3,7 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Type definitions
 interface JwtPayload {
@@ -14,6 +15,10 @@ interface JwtPayload {
 
 // Get all unified lab reports (with optional filters)
 export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getUnifiedLabReports');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
@@ -79,6 +84,10 @@ export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise
 
 // Get unified lab report by ID
 export const getUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
@@ -136,6 +145,10 @@ export const getUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<
 
 // Create unified lab report
 export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -275,6 +288,10 @@ export const createUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
 // Update unified lab report
 export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('updateUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -341,6 +358,10 @@ export const updateUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
 // Delete unified lab report
 export const deleteUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin'])(event);
@@ -384,6 +405,10 @@ export const deleteUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
 // Approve unified lab report and create final report
 export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('approveUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Approval Engineer'])(event);
@@ -505,6 +530,10 @@ export const approveUnifiedLabReport = async (event: APIGatewayProxyEvent): Prom
 
 // Reject unified lab report
 export const rejectUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('rejectUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Approval Engineer'])(event);
@@ -593,6 +622,10 @@ export const rejectUnifiedLabReport = async (event: APIGatewayProxyEvent): Promi
 
 // Submit unified lab report for approval
 export const submitUnifiedLabReport = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('submitUnifiedLabReport');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Lab Engineer'])(event);

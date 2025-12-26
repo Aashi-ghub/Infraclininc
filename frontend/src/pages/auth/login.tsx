@@ -48,10 +48,40 @@ export default function Login() {
       });
       navigate('/');
     } catch (error: any) {
+      console.error('[LOGIN PAGE] Error details:', error);
+      
+      let errorMessage = 'Invalid credentials';
+      
+      // Handle different error types
+      if (!error.response) {
+        // Network error - backend not reachable
+        if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Cannot connect to backend server. Please ensure the backend is running on port 3000.';
+        } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+          errorMessage = 'Request timed out. Please check your connection and try again.';
+        } else if (error.message?.includes('Network Error')) {
+          errorMessage = 'Network error. Please check if the backend server is running.';
+        } else {
+          errorMessage = `Connection error: ${error.message || 'Unable to reach backend server'}`;
+        }
+      } else if (error.response.status === 401) {
+        // Authentication failed
+        errorMessage = error.response?.data?.message || 'Invalid email or password';
+      } else if (error.response.status === 400) {
+        // Bad request
+        errorMessage = error.response?.data?.message || error.response?.data?.error || 'Invalid request';
+      } else if (error.response.status >= 500) {
+        // Server error
+        errorMessage = 'Server error. Please try again later.';
+      } else {
+        // Other errors
+        errorMessage = error.response?.data?.message || error.message || 'Login failed';
+      }
+      
       toast({
         variant: 'destructive',
         title: 'Login failed',
-        description: error.response?.data?.message || 'Invalid credentials',
+        description: errorMessage,
       });
     } finally {
       setIsLoading(false);

@@ -3,6 +3,7 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 import { validate as validateUUID } from 'uuid';
 import { z } from 'zod';
 import { convertScalarToRelational } from '../utils/stratumConverter';
@@ -58,6 +59,10 @@ const CreateBorelogVersionSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createBorelogVersion');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

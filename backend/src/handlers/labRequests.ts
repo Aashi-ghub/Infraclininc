@@ -4,6 +4,7 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Type definitions for database results
 interface BorelogResult {
@@ -94,6 +95,10 @@ const extractAssignmentId = (requestId: string): string | null => {
 
 // Create new lab request
 export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createLabRequest');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager'])(event);
@@ -240,6 +245,10 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
 // Get all lab requests
 export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listLabRequests');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -376,6 +385,10 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // Get lab request by ID
 export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getLabRequestById');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -512,6 +525,10 @@ export const getLabRequestById = async (event: APIGatewayProxyEvent): Promise<AP
 
 // Update lab request
 export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('updateLabRequest');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager'])(event);
@@ -644,6 +661,10 @@ export const updateLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
 // Delete lab request
 export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteLabRequest');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin'])(event);
@@ -727,6 +748,10 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
 
 // Get final borelogs for lab requests (accessible by Project Managers and Lab Engineers)
 export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getFinalBorelogs');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);

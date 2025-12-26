@@ -36,6 +36,12 @@ import {
 // Get API base URL from environment variables
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/dev";
 
+// Log API configuration on startup
+console.log('[API Client] Initialized with:', {
+  baseURL: API_BASE,
+  envVar: import.meta.env.VITE_API_BASE_URL || 'not set (using default)'
+});
+
 // Create axios instance with default config
 export const apiClient = axios.create({
   baseURL: API_BASE,
@@ -53,15 +59,39 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Log request details for debugging
+    console.log('[API Request]', {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`,
+      hasAuth: !!token
+    });
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+  }
 );
 
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Enhanced error logging
+    console.error('[API Response Error]', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url,
+      baseURL: error.config?.baseURL,
+      fullURL: error.config ? `${error.config.baseURL}${error.config.url}` : 'unknown',
+      responseData: error.response?.data,
+      requestData: error.config?.data
+    });
+
     // Only handle 401s from non-auth endpoints
     if (error.response?.status === 401 && !error.config.url?.includes('/auth/')) {
       // Handle unauthorized

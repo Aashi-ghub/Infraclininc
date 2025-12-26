@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Support both legacy and V2 payloads
 // Legacy: { is_approved: boolean; remarks?: string; version_no?: number }
@@ -21,6 +22,10 @@ const ApproveBorelogSchemaV2 = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('approveBorelog');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

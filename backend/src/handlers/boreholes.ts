@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Borehole Schema
 const CreateBoreholeSchema = z.object({
@@ -22,6 +23,10 @@ const CreateBoreholeSchema = z.object({
 const UpdateBoreholeSchema = CreateBoreholeSchema.partial();
 
 export const listBoreholes = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listBoreholes');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -91,6 +96,10 @@ export const listBoreholes = async (event: APIGatewayProxyEvent): Promise<APIGat
 };
 
 export const getBoreholeById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getBoreholeById');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -182,6 +191,10 @@ export const getBoreholeById = async (event: APIGatewayProxyEvent): Promise<APIG
 };
 
 export const getBoreholesByProject = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getBoreholesByProject');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -279,6 +292,10 @@ export const getBoreholesByProject = async (event: APIGatewayProxyEvent): Promis
 };
 
 export const getBoreholesByProjectAndStructure = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getBoreholesByProjectAndStructure');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -375,6 +392,10 @@ export const getBoreholesByProjectAndStructure = async (event: APIGatewayProxyEv
 };
 
 export const createBorehole = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createBorehole');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -508,6 +529,10 @@ export const createBorehole = async (event: APIGatewayProxyEvent): Promise<APIGa
 };
 
 export const updateBorehole = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('updateBorehole');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -695,6 +720,10 @@ export const updateBorehole = async (event: APIGatewayProxyEvent): Promise<APIGa
 };
 
 export const deleteBorehole = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteBorehole');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

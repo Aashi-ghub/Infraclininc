@@ -3,6 +3,7 @@ import { checkRole } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 interface User {
   user_id: string;
@@ -15,6 +16,10 @@ interface User {
 }
 
 export const listUsers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listUsers');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -67,6 +72,10 @@ export const listUsers = async (event: APIGatewayProxyEvent): Promise<APIGateway
 };
 
 export const getLabEngineers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getLabEngineers');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -120,6 +129,10 @@ export const getLabEngineers = async (event: APIGatewayProxyEvent): Promise<APIG
 };
 
 export const getUserById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getUserById');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

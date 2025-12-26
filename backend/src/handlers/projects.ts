@@ -3,10 +3,15 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 import { getProjectsForSiteEngineer, getProjectDetailsForSiteEngineer } from '../utils/projectAccess';
 import { validate as validateUUID } from 'uuid';
 
 export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listProjects');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -73,6 +78,10 @@ export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGate
 };
 
 export const getProject = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getProject');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

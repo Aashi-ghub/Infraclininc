@@ -9,6 +9,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
+  // Guard: Check if DB is enabled
+  const dbGuard = db.guardDbRoute('uploadBoreholeCsv.handler');
+  if (dbGuard) return dbGuard;
+
   try {
     // Only Project Manager and Admin can upload CSV
     const authError = await checkRole(['Admin', 'Project Manager'])(event);

@@ -3,9 +3,14 @@ import { checkRole } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Get all rock test samples for a report
 export const getRockTestSamples = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getRockTestSamples');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
@@ -45,6 +50,10 @@ export const getRockTestSamples = async (event: APIGatewayProxyEvent): Promise<A
 
 // Get a specific rock test sample
 export const getRockTestSample = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getRockTestSample');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
@@ -87,6 +96,10 @@ export const getRockTestSample = async (event: APIGatewayProxyEvent): Promise<AP
 
 // Update a rock test sample
 export const updateRockTestSample = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('updateRockTestSample');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Lab Engineer'])(event);
@@ -184,6 +197,10 @@ export const updateRockTestSample = async (event: APIGatewayProxyEvent): Promise
 
 // Delete a rock test sample
 export const deleteRockTestSample = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteRockTestSample');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin'])(event);

@@ -2,7 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
-import { getPool } from '../db';
+import { getPool, guardDbRoute } from '../db';
 
 let pool: Pool | null = null;
 
@@ -45,6 +45,10 @@ const SaveStratumDataSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('saveStratumData');
+  if (dbGuard) return dbGuard;
+
   try {
     logger.info('Saving stratum data', { body: event.body });
 

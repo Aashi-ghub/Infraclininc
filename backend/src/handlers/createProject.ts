@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createProject } from '../models/projects';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
+import { guardDbRoute } from '../db';
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
@@ -12,6 +13,10 @@ const CreateProjectSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createProject');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

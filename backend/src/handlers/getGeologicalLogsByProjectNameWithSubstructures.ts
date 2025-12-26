@@ -5,7 +5,6 @@ import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { getAssignedBorelogsForSiteEngineer } from '../utils/projectAccess';
-import * as db from '../db';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
@@ -57,16 +56,11 @@ export const handler = async (event: APIGatewayProxyEvent) => {
         // No assignments, return empty list
         geologicalLogs = [];
       } else {
-        // Get geological logs for assigned borelogs only, filtered by project name
-        const query = `
-          SELECT gl.* 
-          FROM geological_logs gl
-          JOIN boreloge b ON gl.borelog_id = b.borelog_id
-          JOIN projects p ON b.project_id = p.project_id
-          WHERE gl.borelog_id = ANY($1) AND p.name = $2
-          ORDER BY gl.created_at DESC
-        `;
-        geologicalLogs = await db.query(query, [assignedBorelogIds, decodedProjectName]);
+        // Get all geological logs for the project and filter by assigned borelog IDs
+        const projectLogs = await getGeologicalLogsByProjectName(decodedProjectName);
+        geologicalLogs = projectLogs.filter(log => 
+          assignedBorelogIds.includes(log.borelog_id)
+        );
       }
     } else {
       // For other roles, get all geological logs for the project

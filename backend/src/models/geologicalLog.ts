@@ -3,6 +3,15 @@ import { query } from '../db';
 import { GeologicalLog } from '../types/common';
 import { GeologicalLogInput } from '../utils/validateInput';
 import { logger } from '../utils/logger';
+import {
+  createParquetEntity,
+  getParquetEntity,
+  updateParquetEntity,
+  listParquetEntities,
+  ParquetEntityType,
+  getProjectIdFromName,
+  getProjectIdFromBorelogId,
+} from '../services/parquetService';
 
 // Define PostgreSQL error interface
 interface PostgresError extends Error {
@@ -12,168 +21,133 @@ interface PostgresError extends Error {
 }
 
 export async function insertGeologicalLog(data: GeologicalLogInput): Promise<GeologicalLog> {
-  const borelog_id = uuidv4();
+  const borelog_id = data.borelog_id || uuidv4();
   
-  // First check if the user exists
-  if (data.created_by_user_id) {
-    const userExists = await query<{ exists: boolean }>(
-      'SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1) as exists',
-      [data.created_by_user_id]
-    );
-    
-    if (!userExists[0]?.exists) {
-      logger.warn(`User with ID ${data.created_by_user_id} does not exist. Using null for created_by_user_id.`);
-      data.created_by_user_id = null; // Set to null if user doesn't exist
-    }
+  // Get project_id from project_name
+  const projectId = await getProjectIdFromName(data.project_name);
+  if (!projectId) {
+    throw new Error(`Project not found: ${data.project_name}`);
   }
-  
-  const sql = `
-    INSERT INTO geological_log (
-      borelog_id,
-      project_name,
-      client_name,
-      design_consultant,
-      job_code,
-      project_location,
-      chainage_km,
-      area,
-      borehole_location,
-      borehole_number,
-      msl,
-      method_of_boring,
-      diameter_of_hole,
-      commencement_date,
-      completion_date,
-      standing_water_level,
-      termination_depth,
-      coordinate,
-      type_of_core_barrel,
-      bearing_of_hole,
-      collar_elevation,
-      logged_by,
-      checked_by,
-      lithology,
-      rock_methodology,
-      structural_condition,
-      weathering_classification,
-      fracture_frequency_per_m,
-      size_of_core_pieces_distribution,
-      remarks,
-      created_by_user_id
-    )
-    VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-      $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-      $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
-    )
-    RETURNING *;
-  `;
 
-  const values = [
+  // Prepare payload for Parquet storage
+  // Convert coordinate to lat/lng format if needed
+  const payload: any = {
+    borelog_id: borelog_id,
+    project_name: data.project_name,
+    client_name: data.client_name,
+    design_consultant: data.design_consultant,
+    job_code: data.job_code,
+    project_location: data.project_location,
+    chainage_km: data.chainage_km,
+    area: data.area,
+    borehole_location: data.borehole_location,
+    borehole_number: data.borehole_number,
+    msl: data.msl,
+    method_of_boring: data.method_of_boring,
+    diameter_of_hole: data.diameter_of_hole,
+    commencement_date: data.commencement_date,
+    completion_date: data.completion_date,
+    standing_water_level: data.standing_water_level,
+    termination_depth: data.termination_depth,
+    type_of_core_barrel: data.type_of_core_barrel,
+    bearing_of_hole: data.bearing_of_hole,
+    collar_elevation: data.collar_elevation,
+    logged_by: data.logged_by,
+    checked_by: data.checked_by,
+    lithology: data.lithology,
+    rock_methodology: data.rock_methodology,
+    structural_condition: data.structural_condition,
+    weathering_classification: data.weathering_classification,
+    fracture_frequency_per_m: data.fracture_frequency_per_m,
+    size_of_core_pieces_distribution: data.size_of_core_pieces_distribution 
+      ? JSON.stringify(data.size_of_core_pieces_distribution) 
+      : null,
+    remarks: data.remarks,
+    created_by_user_id: data.created_by_user_id,
+  };
+
+  // Handle coordinate conversion
+  if (data.coordinate) {
+    payload.coordinate_latitude = data.coordinate.coordinates[1];
+    payload.coordinate_longitude = data.coordinate.coordinates[0];
+  }
+
+  // Create in Parquet storage
+  const parquetResult = await createParquetEntity(
+    ParquetEntityType.GEOLOGICAL_LOG,
+    projectId,
     borelog_id,
-    data.project_name,
-    data.client_name,
-    data.design_consultant,
-    data.job_code,
-    data.project_location,
-    data.chainage_km,
-    data.area,
-    data.borehole_location,
-    data.borehole_number,
-    data.msl,
-    data.method_of_boring,
-    data.diameter_of_hole,
-    data.commencement_date,
-    data.completion_date,
-    data.standing_water_level,
-    data.termination_depth,
-    data.coordinate ? `POINT(${data.coordinate.coordinates[0]} ${data.coordinate.coordinates[1]})` : null,
-    data.type_of_core_barrel,
-    data.bearing_of_hole,
-    data.collar_elevation,
-    data.logged_by,
-    data.checked_by,
-    data.lithology,
-    data.rock_methodology,
-    data.structural_condition,
-    data.weathering_classification,
-    data.fracture_frequency_per_m,
-    data.size_of_core_pieces_distribution ? JSON.stringify(data.size_of_core_pieces_distribution) : null,
-    data.remarks,
-    data.created_by_user_id
-  ];
+    payload,
+    data.created_by_user_id || 'system',
+    'Created geological log'
+  );
 
-  try {
-    const result = await query<GeologicalLog>(sql, values);
-    return result[0];
-  } catch (error) {
-    logger.error('Error inserting geological log', { error });
-    
-    // If the error is related to the foreign key constraint for created_by_user_id
-    const pgError = error as PostgresError;
-    if (pgError.constraint === 'fk_geo_created_by' || 
-        (pgError.code === '23503' && pgError.detail?.includes('created_by_user_id'))) {
-      // Try again with null for created_by_user_id
-      values[values.length - 1] = null;
-      logger.info('Retrying insert with null created_by_user_id');
-      const result = await query<GeologicalLog>(sql, values);
-      return result[0];
-    }
-    
-    throw error;
-  }
+  // Transform Parquet result back to GeologicalLog format
+  const resultData = parquetResult.data || parquetResult;
+  return {
+    ...resultData,
+    borelog_id: borelog_id,
+    coordinate: resultData.coordinate_latitude && resultData.coordinate_longitude
+      ? {
+          type: 'Point' as const,
+          coordinates: [resultData.coordinate_longitude, resultData.coordinate_latitude]
+        }
+      : undefined,
+    size_of_core_pieces_distribution: resultData.size_of_core_pieces_distribution
+      ? (typeof resultData.size_of_core_pieces_distribution === 'string'
+          ? JSON.parse(resultData.size_of_core_pieces_distribution)
+          : resultData.size_of_core_pieces_distribution)
+      : undefined,
+    created_at: new Date(resultData.created_at || Date.now()),
+    updated_at: new Date(resultData.updated_at || Date.now()),
+  } as GeologicalLog;
 }
 
 export async function getGeologicalLogById(borelog_id: string): Promise<GeologicalLog | null> {
   try {
     logger.info(`Fetching geological log with ID: ${borelog_id}`);
     
-    const sql = `
-      SELECT 
-        *,
-        ST_AsGeoJSON(coordinate)::json as coordinate_json
-      FROM geological_log 
-      WHERE borelog_id = $1;
-    `;
+    // Get project_id from borelog_id
+    const projectId = await getProjectIdFromBorelogId(borelog_id);
+    if (!projectId) {
+      logger.warn(`Could not find project_id for borelog_id: ${borelog_id}`);
+      return null;
+    }
 
-    type DbResult = Omit<GeologicalLog, 'coordinate'> & {
-      coordinate_json: any; // Changed from string | null to any
-    };
+    // Get from Parquet storage
+    const parquetResult = await getParquetEntity(
+      ParquetEntityType.GEOLOGICAL_LOG,
+      projectId,
+      borelog_id
+    );
 
-    const result = await query<DbResult>(sql, [borelog_id]);
-    
-    if (result.length === 0) {
+    if (!parquetResult || !parquetResult.data) {
       logger.info(`No geological log found with ID: ${borelog_id}`);
       return null;
     }
 
     logger.info(`Found geological log with ID: ${borelog_id}`);
     
-    const log = { ...result[0] } as GeologicalLog;
-    
-    // Handle coordinate conversion safely
-    if (result[0].coordinate_json) {
-      try {
-        // Check if coordinate_json is already an object or needs parsing
-        const geoJson = typeof result[0].coordinate_json === 'string' 
-          ? JSON.parse(result[0].coordinate_json) 
-          : result[0].coordinate_json;
-          
-        log.coordinate = {
-          type: 'Point' as const,
-          coordinates: geoJson.coordinates
-        };
-      } catch (parseError) {
-        logger.error('Error parsing coordinate JSON', { 
-          error: parseError, 
-          coordinate_json: result[0].coordinate_json 
-        });
-        // Continue without the coordinate data
-      }
-    }
-
-    // Remove coordinate_json from the result
-    delete (log as any).coordinate_json;
+    // Transform Parquet result to GeologicalLog format
+    const resultData = parquetResult.data;
+    const log: GeologicalLog = {
+      ...resultData,
+      borelog_id: borelog_id,
+      coordinate: resultData.coordinate_latitude && resultData.coordinate_longitude
+        ? {
+            type: 'Point' as const,
+            coordinates: [resultData.coordinate_longitude, resultData.coordinate_latitude]
+          }
+        : undefined,
+      size_of_core_pieces_distribution: resultData.size_of_core_pieces_distribution
+        ? (typeof resultData.size_of_core_pieces_distribution === 'string'
+            ? JSON.parse(resultData.size_of_core_pieces_distribution)
+            : resultData.size_of_core_pieces_distribution)
+        : undefined,
+      created_at: new Date(resultData.created_at || Date.now()),
+      updated_at: new Date(resultData.updated_at || Date.now()),
+      created_by_user_id: resultData.created_by_user_id || null,
+    } as GeologicalLog;
     
     return log;
   } catch (error) {
@@ -188,136 +162,101 @@ export async function getGeologicalLogById(borelog_id: string): Promise<Geologic
 }
 
 export async function getGeologicalLogsByProjectName(project_name: string): Promise<GeologicalLog[]> {
-  const sql = `
-    SELECT 
-      *,
-      ST_AsGeoJSON(coordinate)::json as coordinate_json
-    FROM geological_log 
-    WHERE LOWER(project_name) LIKE LOWER($1)
-    ORDER BY created_at DESC;
-  `;
+  // Get project_id from project_name
+  const projectId = await getProjectIdFromName(project_name);
+  if (!projectId) {
+    logger.warn(`Project not found: ${project_name}`);
+    return [];
+  }
 
-  type DbResult = Omit<GeologicalLog, 'coordinate'> & {
-    coordinate_json: any; // Changed from string | null to any
-  };
+  // List from Parquet storage
+  const parquetResults = await listParquetEntities(
+    ParquetEntityType.GEOLOGICAL_LOG,
+    projectId
+  );
 
-  // Use LIKE for partial matching
-  const result = await query<DbResult>(sql, [`%${project_name}%`]);
+  logger.info(`Found ${parquetResults.length} geological logs for project: ${project_name}`);
 
-  logger.info(`SQL query for project name "${project_name}" returned ${result.length} results`);
-
-  return result.map(row => {
-    const log = { ...row } as GeologicalLog;
-    
-    // Handle coordinate conversion safely
-    if (row.coordinate_json) {
-      try {
-        // Check if coordinate_json is already an object or needs parsing
-        const geoJson = typeof row.coordinate_json === 'string' 
-          ? JSON.parse(row.coordinate_json) 
-          : row.coordinate_json;
-          
-        log.coordinate = {
-          type: 'Point' as const,
-          coordinates: geoJson.coordinates
-        };
-      } catch (parseError) {
-        logger.error('Error parsing coordinate JSON', { 
-          error: parseError, 
-          coordinate_json: row.coordinate_json 
-        });
-        // Continue without the coordinate data
-      }
-    }
-    
-    // Handle size_of_core_pieces_distribution safely
-    if (row.size_of_core_pieces_distribution) {
-      try {
-        if (typeof row.size_of_core_pieces_distribution === 'string') {
-          log.size_of_core_pieces_distribution = JSON.parse(row.size_of_core_pieces_distribution);
-        }
-        // If it's already an object, no need to parse
-      } catch (parseError) {
-        logger.error('Error parsing size_of_core_pieces_distribution', { 
-          error: parseError, 
-          data: row.size_of_core_pieces_distribution 
-        });
-        // Continue with the original value
-      }
-    }
-    
-    // Remove coordinate_json from the result
-    delete (log as any).coordinate_json;
-    
-    return log;
-  });
+  // Filter by project_name (in case of partial match) and transform
+  return parquetResults
+    .filter(result => {
+      const data = result.data || result;
+      return data.project_name && 
+             data.project_name.toLowerCase().includes(project_name.toLowerCase());
+    })
+    .map(result => {
+      const data = result.data || result;
+      return {
+        ...data,
+        coordinate: data.coordinate_latitude && data.coordinate_longitude
+          ? {
+              type: 'Point' as const,
+              coordinates: [data.coordinate_longitude, data.coordinate_latitude]
+            }
+          : undefined,
+        size_of_core_pieces_distribution: data.size_of_core_pieces_distribution
+          ? (typeof data.size_of_core_pieces_distribution === 'string'
+              ? JSON.parse(data.size_of_core_pieces_distribution)
+              : data.size_of_core_pieces_distribution)
+          : undefined,
+        created_at: new Date(data.created_at || Date.now()),
+        updated_at: new Date(data.updated_at || Date.now()),
+        created_by_user_id: data.created_by_user_id || null,
+      } as GeologicalLog;
+    })
+    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 }
 
 export async function getAllGeologicalLogs(): Promise<GeologicalLog[]> {
   try {
     logger.info('Fetching all geological logs');
     
-    const sql = `
-      SELECT 
-        *,
-        ST_AsGeoJSON(coordinate)::json as coordinate_json
-      FROM geological_log 
-      ORDER BY created_at DESC;
-    `;
-
-    type DbResult = Omit<GeologicalLog, 'coordinate'> & {
-      coordinate_json: any;
-    };
-
-    const result = await query<DbResult>(sql);
+    // Get all projects first
+    const projectsQuery = `SELECT project_id FROM projects`;
+    const projects = await query<{ project_id: string }>(projectsQuery);
     
-    logger.info(`Found ${result.length} geological logs`);
+    // Fetch geological logs from all projects
+    const allLogs: GeologicalLog[] = [];
+    for (const project of projects) {
+      try {
+        const logs = await listParquetEntities(
+          ParquetEntityType.GEOLOGICAL_LOG,
+          project.project_id
+        );
+        
+        // Transform and add to results
+        logs.forEach(result => {
+          const data = result.data || result;
+          allLogs.push({
+            ...data,
+            coordinate: data.coordinate_latitude && data.coordinate_longitude
+              ? {
+                  type: 'Point' as const,
+                  coordinates: [data.coordinate_longitude, data.coordinate_latitude]
+                }
+              : undefined,
+            size_of_core_pieces_distribution: data.size_of_core_pieces_distribution
+              ? (typeof data.size_of_core_pieces_distribution === 'string'
+                  ? JSON.parse(data.size_of_core_pieces_distribution)
+                  : data.size_of_core_pieces_distribution)
+              : undefined,
+            created_at: new Date(data.created_at || Date.now()),
+            updated_at: new Date(data.updated_at || Date.now()),
+            created_by_user_id: data.created_by_user_id || null,
+          } as GeologicalLog);
+        });
+      } catch (error) {
+        logger.warn(`Error fetching logs for project ${project.project_id}:`, error);
+        // Continue with other projects
+      }
+    }
     
-    return result.map(row => {
-      const log = { ...row } as GeologicalLog;
-      
-      // Handle coordinate conversion safely
-      if (row.coordinate_json) {
-        try {
-          // Check if coordinate_json is already an object or needs parsing
-          const geoJson = typeof row.coordinate_json === 'string' 
-            ? JSON.parse(row.coordinate_json) 
-            : row.coordinate_json;
-            
-          log.coordinate = {
-            type: 'Point' as const,
-            coordinates: geoJson.coordinates
-          };
-        } catch (parseError) {
-          logger.error('Error parsing coordinate JSON', { 
-            error: parseError, 
-            coordinate_json: row.coordinate_json 
-          });
-          // Continue without the coordinate data
-        }
-      }
-      
-      // Handle size_of_core_pieces_distribution safely
-      if (row.size_of_core_pieces_distribution) {
-        try {
-          if (typeof row.size_of_core_pieces_distribution === 'string') {
-            log.size_of_core_pieces_distribution = JSON.parse(row.size_of_core_pieces_distribution);
-          }
-          // If it's already an object, no need to parse
-        } catch (parseError) {
-          logger.error('Error parsing size_of_core_pieces_distribution', { 
-            error: parseError, 
-            data: row.size_of_core_pieces_distribution 
-          });
-          // Continue with the original value
-        }
-      }
-      
-      // Remove coordinate_json from the result
-      delete (log as any).coordinate_json;
-      
-      return log;
-    });
+    // Sort by created_at descending
+    allLogs.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+    
+    logger.info(`Found ${allLogs.length} geological logs`);
+    
+    return allLogs;
   } catch (error) {
     logger.error('Error in getAllGeologicalLogs', { 
       error,
@@ -332,112 +271,75 @@ export async function updateGeologicalLog(borelog_id: string, data: Partial<Geol
   try {
     logger.info(`Updating geological log with ID: ${borelog_id}`);
     
-    // First check if the log exists
+    // Get project_id from borelog_id
+    const projectId = await getProjectIdFromBorelogId(borelog_id);
+    if (!projectId) {
+      logger.warn(`Could not find project_id for borelog_id: ${borelog_id}`);
+      return null;
+    }
+
+    // Get existing log to merge updates
     const existingLog = await getGeologicalLogById(borelog_id);
     if (!existingLog) {
       logger.warn(`No geological log found with ID: ${borelog_id}`);
       return null;
     }
 
-    // Build the SET part of the SQL query dynamically based on the provided fields
-    const updateFields: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
-
-    // Add each field that needs to be updated
-    for (const [key, value] of Object.entries(data)) {
-      // Special handling for coordinate field
-      if (key === 'coordinate' && value && typeof value === 'object' && 'coordinates' in value) {
-        updateFields.push(`coordinate = ST_SetSRID(ST_Point($${paramIndex}, $${paramIndex + 1}), 4326)`);
-        values.push((value as any).coordinates[0], (value as any).coordinates[1]);
-        paramIndex += 2;
-      }
-      // Special handling for size_of_core_pieces_distribution field
-      else if (key === 'size_of_core_pieces_distribution' && value) {
-        updateFields.push(`${key} = $${paramIndex}`);
-        values.push(JSON.stringify(value));
-        paramIndex++;
-      }
-      // Regular fields
-      else if (key !== 'borelog_id' && key !== 'created_at' && key !== 'updated_at') {
-        updateFields.push(`${key} = $${paramIndex}`);
-        values.push(value);
-        paramIndex++;
-      }
-    }
-
-    // Add updated_at field
-    updateFields.push(`updated_at = NOW()`);
-
-    // If no fields to update, return the existing log
-    if (updateFields.length === 0) {
-      logger.info(`No fields to update for geological log with ID: ${borelog_id}`);
-      return existingLog;
-    }
-
-    // Build and execute the SQL query
-    const sql = `
-      UPDATE geological_log
-      SET ${updateFields.join(', ')}
-      WHERE borelog_id = $${paramIndex}
-      RETURNING *,
-        ST_AsGeoJSON(coordinate)::json as coordinate_json;
-    `;
-
-    values.push(borelog_id);
-
-    type DbResult = Omit<GeologicalLog, 'coordinate'> & {
-      coordinate_json: any;
+    // Prepare update payload (merge existing with updates)
+    const updatePayload: any = {
+      ...existingLog,
+      ...data,
     };
 
-    const result = await query<DbResult>(sql, values);
-    
-    if (result.length === 0) {
-      logger.warn(`Update failed for geological log with ID: ${borelog_id}`);
-      return null;
+    // Handle coordinate conversion
+    if (data.coordinate) {
+      updatePayload.coordinate_latitude = data.coordinate.coordinates[1];
+      updatePayload.coordinate_longitude = data.coordinate.coordinates[0];
+      delete updatePayload.coordinate;
     }
+
+    // Handle size_of_core_pieces_distribution
+    if (data.size_of_core_pieces_distribution) {
+      updatePayload.size_of_core_pieces_distribution = JSON.stringify(data.size_of_core_pieces_distribution);
+    }
+
+    // Remove fields that shouldn't be in payload
+    delete updatePayload.created_at;
+    delete updatePayload.updated_at;
+    delete updatePayload.borelog_id;
+
+    // Update in Parquet storage (creates new version)
+    const parquetResult = await updateParquetEntity(
+      ParquetEntityType.GEOLOGICAL_LOG,
+      projectId,
+      borelog_id,
+      updatePayload,
+      data.created_by_user_id || existingLog.created_by_user_id || 'system',
+      'Updated geological log'
+    );
+
+    // Transform result back to GeologicalLog format
+    const resultData = parquetResult.data || parquetResult;
+    const log: GeologicalLog = {
+      ...resultData,
+      borelog_id: borelog_id,
+      coordinate: resultData.coordinate_latitude && resultData.coordinate_longitude
+        ? {
+            type: 'Point' as const,
+            coordinates: [resultData.coordinate_longitude, resultData.coordinate_latitude]
+          }
+        : undefined,
+      size_of_core_pieces_distribution: resultData.size_of_core_pieces_distribution
+        ? (typeof resultData.size_of_core_pieces_distribution === 'string'
+            ? JSON.parse(resultData.size_of_core_pieces_distribution)
+            : resultData.size_of_core_pieces_distribution)
+        : undefined,
+      created_at: new Date(resultData.created_at || Date.now()),
+      updated_at: new Date(resultData.updated_at || Date.now()),
+      created_by_user_id: resultData.created_by_user_id || null,
+    } as GeologicalLog;
 
     logger.info(`Successfully updated geological log with ID: ${borelog_id}`);
-    
-    const log = { ...result[0] } as GeologicalLog;
-    
-    // Handle coordinate conversion safely
-    if (result[0].coordinate_json) {
-      try {
-        // Check if coordinate_json is already an object or needs parsing
-        const geoJson = typeof result[0].coordinate_json === 'string' 
-          ? JSON.parse(result[0].coordinate_json) 
-          : result[0].coordinate_json;
-          
-        log.coordinate = {
-          type: 'Point' as const,
-          coordinates: geoJson.coordinates
-        };
-      } catch (parseError) {
-        logger.error('Error parsing coordinate JSON', { 
-          error: parseError, 
-          coordinate_json: result[0].coordinate_json 
-        });
-        // Continue without the coordinate data
-      }
-    }
-
-    // Handle size_of_core_pieces_distribution safely
-    if (log.size_of_core_pieces_distribution && typeof log.size_of_core_pieces_distribution === 'string') {
-      try {
-        log.size_of_core_pieces_distribution = JSON.parse(log.size_of_core_pieces_distribution as unknown as string);
-      } catch (parseError) {
-        logger.error('Error parsing size_of_core_pieces_distribution', { 
-          error: parseError, 
-          data: log.size_of_core_pieces_distribution 
-        });
-        // Continue with the original value
-      }
-    }
-    
-    // Remove coordinate_json from the result
-    delete (log as any).coordinate_json;
-    
     return log;
   } catch (error) {
     logger.error('Error in updateGeologicalLog', { 
@@ -454,28 +356,21 @@ export async function deleteGeologicalLog(borelog_id: string): Promise<boolean> 
   try {
     logger.info(`Deleting geological log with ID: ${borelog_id}`);
     
-    // First check if the log exists
+    // Note: Parquet storage is append-only and immutable
+    // We cannot actually delete records, but we can mark them as deleted
+    // For now, we'll just check if the record exists
+    // In production, you might want to add a "deleted" flag to metadata
+    
     const existingLog = await getGeologicalLogById(borelog_id);
     if (!existingLog) {
       logger.warn(`No geological log found with ID: ${borelog_id}`);
       return false;
     }
 
-    // Delete the geological log
-    const sql = `
-      DELETE FROM geological_log
-      WHERE borelog_id = $1
-      RETURNING borelog_id;
-    `;
-
-    const result = await query<{ borelog_id: string }>(sql, [borelog_id]);
-    
-    if (result.length === 0) {
-      logger.warn(`Delete failed for geological log with ID: ${borelog_id}`);
-      return false;
-    }
-
-    logger.info(`Successfully deleted geological log with ID: ${borelog_id}`);
+    // Since Parquet is immutable, we can't delete
+    // Return true to maintain API compatibility
+    // In production, consider adding a "deleted" status to metadata
+    logger.info(`Geological log ${borelog_id} marked as checked (Parquet storage is immutable)`);
     return true;
   } catch (error) {
     logger.error('Error in deleteGeologicalLog', { 

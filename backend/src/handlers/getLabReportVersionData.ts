@@ -8,6 +8,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
+  // Guard: Check if DB is enabled
+  const dbGuard = db.guardDbRoute('getLabReportVersionData');
+  if (dbGuard) return dbGuard;
+
   try {
     // Validate authentication
     const authHeader = event.headers?.Authorization || event.headers?.authorization;

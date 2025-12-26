@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Borelog Submission Schema
 const BorelogSubmissionSchema = z.object({
@@ -46,6 +47,10 @@ const BorelogSubmissionSchema = z.object({
 });
 
 export const submitBorelog = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('submitBorelog');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -186,6 +191,10 @@ export const submitBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
 };
 
 export const getBorelogSubmissions = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getBorelogSubmissions');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -282,6 +291,10 @@ export const getBorelogSubmissions = async (event: APIGatewayProxyEvent): Promis
 };
 
 export const getBorelogSubmission = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getBorelogSubmission');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Schema for submitting borelog for review
 const SubmitForReviewSchema = z.object({
@@ -40,6 +41,10 @@ const SubmitLabTestResultsSchema = z.object({
 
 // Submit borelog for review (Site Engineer)
 export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('submitForReview');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -210,6 +215,10 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // Review borelog (Approval Engineer/Admin)
 export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('reviewBorelog');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -395,6 +404,10 @@ export const reviewBorelog = async (event: APIGatewayProxyEvent): Promise<APIGat
 
 // Assign lab tests (Project Manager/Admin)
 export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('assignLabTests');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -564,6 +577,10 @@ export const assignLabTests = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // Submit lab test results (Lab Engineer)
 export const submitLabTestResults = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('submitLabTestResults');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -650,6 +667,10 @@ export const submitLabTestResults = async (event: APIGatewayProxyEvent): Promise
 
 // Get workflow status for a borelog
 export const getWorkflowStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getWorkflowStatus');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

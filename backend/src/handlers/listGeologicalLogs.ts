@@ -4,9 +4,13 @@ import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { getAssignedBorelogsForSiteEngineer } from '../utils/projectAccess';
-import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listGeologicalLogs');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -40,13 +44,11 @@ export const handler = async (event: APIGatewayProxyEvent) => {
         // No assignments, return empty list
         geologicalLogs = [];
       } else {
-        // Get geological logs for assigned borelogs only
-        const query = `
-          SELECT * FROM geological_logs 
-          WHERE borelog_id = ANY($1)
-          ORDER BY created_at DESC
-        `;
-        geologicalLogs = await db.query(query, [assignedBorelogIds]);
+        // Get all geological logs and filter by assigned borelog IDs
+        const allLogs = await getAllGeologicalLogs();
+        geologicalLogs = allLogs.filter(log => 
+          assignedBorelogIds.includes(log.borelog_id)
+        );
       }
     } else {
       // For other roles, get all geological logs

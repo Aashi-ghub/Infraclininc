@@ -8,6 +8,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
+  // Guard: Check if DB is enabled
+  const dbGuard = db.guardDbRoute('approvePendingCSVUpload_fixed');
+  if (dbGuard) return dbGuard;
+
   try {
     // Only Approval Engineer, Admin, or Project Manager can approve pending CSV uploads
     const authError = await checkRole(['Admin', 'Approval Engineer', 'Project Manager'])(event);

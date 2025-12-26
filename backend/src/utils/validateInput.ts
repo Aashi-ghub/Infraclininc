@@ -2,9 +2,6 @@ import { z } from 'zod';
 import { logger } from './logger';
 import { APIGatewayProxyResult } from 'aws-lambda';
 
-// Add JWT validation imports
-import jwt from 'jsonwebtoken';
-
 // Define user roles
 export type UserRole = 'Admin' | 'Project Manager' | 'Site Engineer' | 'Approval Engineer' | 'Lab Engineer' | 'Customer';
 
@@ -17,32 +14,48 @@ export interface JwtPayload {
   exp?: number;
 }
 
-// JWT secret key from environment variables or use a fixed secret for development
-const JWT_SECRET = process.env.NODE_ENV === 'production'
-  ? (process.env.JWT_SECRET || '')
-  : 'your-fixed-development-secret-key-make-it-long-and-secure-123';
+// Import auth service for token validation
+import * as authService from '../auth/authService';
 
 // Function to validate JWT token
 export const validateToken = async (token: string): Promise<JwtPayload | null> => {
   try {
-    // Remove 'Bearer ' prefix if present
-    const tokenString = token.startsWith('Bearer ') ? token.slice(7) : token;
+    // Handle various Authorization header formats for frontend compatibility
+    // Supports: "Bearer <token>", "<token>", or just the token string
+    let tokenString = token;
+    
+    if (typeof token === 'string') {
+      // Remove 'Bearer ' prefix if present (case-insensitive)
+      if (token.toLowerCase().startsWith('bearer ')) {
+        tokenString = token.slice(7);
+      } else {
+        tokenString = token.trim();
+      }
+    }
     
     // Special handling for development mock token
     if (process.env.IS_OFFLINE && tokenString === 'mock-jwt-token-for-development') {
-      // Return a mock payload for development using a valid UUID
+      logger.debug('[AUTH] Using development mock token');
+      // Return a mock payload for development
       return {
-        userId: '550e8400-e29b-41d4-a716-446655442222', // Admin user UUID from database
-        email: 'admin@acme.com',
+        userId: 'u_admin',
+        email: 'admin@backendbore.com',
         role: 'Admin'
       };
     }
     
-    // Verify and decode the token
-    const decoded = jwt.verify(tokenString, JWT_SECRET) as JwtPayload;
-    return decoded;
+    // Use auth service to verify token (TEMPORARY: uses JWT, will work with Cognito too)
+    const payload = await authService.verifyToken(tokenString);
+    
+    if (payload) {
+      logger.debug(`[AUTH] Token validated successfully for user ${payload.userId} (${payload.email})`);
+    } else {
+      logger.warn('[AUTH] Token validation failed - invalid or expired token');
+    }
+    
+    return payload;
   } catch (error) {
-    console.error('Token validation error:', error);
+    logger.error('[AUTH] Token validation error:', error);
     return null;
   }
 };
@@ -55,10 +68,15 @@ export const hasRole = (userRole: UserRole, requiredRoles: UserRole[]): boolean 
 // RBAC middleware function
 export const checkRole = (requiredRoles: UserRole[]) => {
   return async (event: any): Promise<APIGatewayProxyResult | null> => {
-    // Extract authorization header
-    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    // Extract authorization header (handle both capitalized and lowercase)
+    // Frontend sends: Authorization: Bearer <token>
+    const authHeader = event.headers?.Authorization || 
+                       event.headers?.authorization ||
+                       event.headers?.['Authorization'] ||
+                       event.headers?.['authorization'];
     
     if (!authHeader) {
+      logger.warn('[AUTH] No Authorization header provided in request');
       return {
         statusCode: 401,
         body: JSON.stringify({
@@ -67,6 +85,8 @@ export const checkRole = (requiredRoles: UserRole[]) => {
         })
       };
     }
+    
+    logger.debug('[AUTH] Authorization header found, validating token');
     
     // Validate token
     const payload = await validateToken(authHeader);
@@ -83,6 +103,10 @@ export const checkRole = (requiredRoles: UserRole[]) => {
     
     // Check role
     if (!hasRole(payload.role, requiredRoles)) {
+      logger.warn(
+        `[AUTH] Role rejection: User ${payload.userId} (${payload.email}) with role '${payload.role}' ` +
+        `attempted to access endpoint requiring roles: ${requiredRoles.join(', ')}`
+      );
       return {
         statusCode: 403,
         body: JSON.stringify({
@@ -91,6 +115,11 @@ export const checkRole = (requiredRoles: UserRole[]) => {
         })
       };
     }
+    
+    logger.debug(
+      `[AUTH] Role check passed: User ${payload.userId} (${payload.email}) with role '${payload.role}' ` +
+      `has access (required: ${requiredRoles.join(', ')})`
+    );
     
     // Add user info to event for handlers to use
     event.user = payload;

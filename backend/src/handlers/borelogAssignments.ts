@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 import {
   createBorelogAssignment,
   updateBorelogAssignment,
@@ -38,6 +39,10 @@ const UpdateBorelogAssignmentSchema = z.object({
 
 // Create borelog assignment
 export const createAssignment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createAssignment');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -117,6 +122,10 @@ export const createAssignment = async (event: APIGatewayProxyEvent): Promise<API
 
 // Update borelog assignment
 export const updateAssignment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('updateAssignment');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -204,6 +213,10 @@ export const updateAssignment = async (event: APIGatewayProxyEvent): Promise<API
 
 // Get borelog assignments by borelog ID
 export const getAssignmentsByBorelogId = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getAssignmentsByBorelogId');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -265,6 +278,10 @@ export const getAssignmentsByBorelogId = async (event: APIGatewayProxyEvent): Pr
 
 // Get borelog assignments by structure ID
 export const getAssignmentsByStructureId = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getAssignmentsByStructureId');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -326,6 +343,10 @@ export const getAssignmentsByStructureId = async (event: APIGatewayProxyEvent): 
 
 // Get borelog assignments by site engineer
 export const getAssignmentsBySiteEngineer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getAssignmentsBySiteEngineer');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -387,6 +408,10 @@ export const getAssignmentsBySiteEngineer = async (event: APIGatewayProxyEvent):
 
 // Get all active borelog assignments
 export const getActiveAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getActiveAssignments');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -437,6 +462,10 @@ export const getActiveAssignments = async (event: APIGatewayProxyEvent): Promise
 
 // Delete borelog assignment
 export const deleteAssignment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteAssignment');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -497,6 +526,10 @@ export const deleteAssignment = async (event: APIGatewayProxyEvent): Promise<API
 
 // Get borelog assignments for the current user (site engineer)
 export const getMyAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getMyAssignments');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

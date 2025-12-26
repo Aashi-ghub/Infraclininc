@@ -82,7 +82,21 @@ export const initializeAuth = () => {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('[AUTH] Attempting login', {
+        email,
+        apiBase: apiClient.defaults.baseURL,
+        endpoint: '/auth/login',
+        fullURL: `${apiClient.defaults.baseURL}/auth/login`
+      });
+      
       const response = await apiClient.post('/auth/login', { email, password });
+      
+      console.log('[AUTH] Login response received', {
+        status: response.status,
+        hasData: !!response.data,
+        hasToken: !!response.data?.data?.token
+      });
+      
       const { token: newToken, user: userData } = response.data.data;
       
       setToken(newToken);
@@ -90,8 +104,17 @@ export const initializeAuth = () => {
       localStorage.setItem('auth_token', newToken);
       localStorage.setItem('user_email', userData.email);
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-    } catch (error) {
-      console.error('Login error:', error);
+    } catch (error: any) {
+      console.error('[AUTH] Login error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        isNetworkError: !error.response,
+        isTimeout: error.code === 'ECONNABORTED',
+        isConnectionRefused: error.code === 'ECONNREFUSED'
+      });
       throw error;
     }
   };

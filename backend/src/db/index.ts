@@ -1,9 +1,44 @@
 import { Pool, PoolConfig } from 'pg';
+import { APIGatewayProxyResult } from 'aws-lambda';
 import { logger } from '../utils/logger';
+
+/**
+ * Database Disabled Mode
+ * 
+ * When DB_ENABLED is not "true", the database layer is completely disabled.
+ * This is used during migration from PostgreSQL to S3 + Parquet.
+ * 
+ * - No database connections will be attempted
+ * - All query/transaction calls will throw DbDisabledError
+ * - The app will start normally without database dependency
+ */
+export const DB_ENABLED = process.env.DB_ENABLED === 'true';
+
+/**
+ * Custom error class for when database is disabled
+ */
+export class DbDisabledError extends Error {
+  constructor(message: string = 'Database is disabled') {
+    super(message);
+    this.name = 'DbDisabledError';
+  }
+}
 
 let pool: Pool | null = null;
 
+// Log database status on module load
+if (!DB_ENABLED) {
+  logger.info('[DB DISABLED] Database layer is not initialized. Set DB_ENABLED=true to enable database connections.');
+  console.log('[DB DISABLED] Database layer is not initialized. Set DB_ENABLED=true to enable database connections.');
+}
+
 export async function getPool(): Promise<Pool> {
+  // Guard: Do not initialize pool if DB is disabled
+  if (!DB_ENABLED) {
+    logger.warn('[DB DISABLED] Attempted to get database pool when DB is disabled');
+    throw new DbDisabledError('Database pool is not available - DB_ENABLED is not set to true');
+  }
+
   if (pool) {
     return pool;
   }
@@ -12,6 +47,12 @@ export async function getPool(): Promise<Pool> {
 }
 
 async function initializePool(): Promise<Pool> {
+  // Guard: Do not initialize pool if DB is disabled
+  if (!DB_ENABLED) {
+    logger.warn('[DB DISABLED] Attempted to initialize database pool when DB is disabled');
+    throw new DbDisabledError('Cannot initialize database pool - DB_ENABLED is not set to true');
+  }
+
   // Close existing pool if it exists
   if (pool) {
     try {
@@ -96,6 +137,12 @@ process.on('SIGTERM', async () => {
 });
 
 export async function query<T>(text: string, params: any[] = []): Promise<T[]> {
+  // Guard: Do not execute queries if DB is disabled
+  if (!DB_ENABLED) {
+    logger.warn('[DB DISABLED] Attempted database query when DB is disabled', { query: text.substring(0, 100) });
+    throw new DbDisabledError('Database queries are not available - DB_ENABLED is not set to true');
+  }
+
   const start = Date.now();
   let retries = 0;
   const maxRetries = 3;
@@ -139,6 +186,12 @@ export async function query<T>(text: string, params: any[] = []): Promise<T[]> {
 }
 
 export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
+  // Guard: Do not execute transactions if DB is disabled
+  if (!DB_ENABLED) {
+    logger.warn('[DB DISABLED] Attempted database transaction when DB is disabled');
+    throw new DbDisabledError('Database transactions are not available - DB_ENABLED is not set to true');
+  }
+
   const dbPool = await getPool();
   const client = await dbPool.connect();
   
@@ -157,6 +210,12 @@ export async function transaction<T>(callback: (client: any) => Promise<T>): Pro
 
 // Function to check if the pool is healthy
 export async function checkPoolHealth(): Promise<boolean> {
+  // If DB is disabled, return false (pool is not healthy because it's not initialized)
+  if (!DB_ENABLED) {
+    logger.debug('[DB DISABLED] Pool health check - DB is disabled');
+    return false;
+  }
+
   try {
     const dbPool = await getPool();
     const client = await dbPool.connect();
@@ -167,4 +226,89 @@ export async function checkPoolHealth(): Promise<boolean> {
     logger.error('Pool health check failed', { error });
     return false;
   }
-} 
+}
+
+/**
+ * Check if database is enabled
+ * Utility function for handlers to check before attempting DB operations
+ */
+export function isDbEnabled(): boolean {
+  return DB_ENABLED;
+}
+
+/**
+ * Create a 503 response for when database is disabled
+ * Use this at the top of handlers that require database access
+ * 
+ * @param routeName - Name of the route for logging purposes
+ * @returns APIGatewayProxyResult with 503 status
+ */
+export function createDbDisabledResponse(routeName: string): APIGatewayProxyResult {
+  logger.warn(`[DB DISABLED] Attempted access to DB-based route: ${routeName}`);
+  console.log(`[DB DISABLED] Attempted access to DB-based route: ${routeName}`);
+  
+  return {
+    statusCode: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
+    },
+    body: JSON.stringify({
+      success: false,
+      message: 'This feature is temporarily unavailable',
+      error: 'Database functionality is currently disabled during migration'
+    })
+  };
+}
+
+/**
+ * Guard function for handlers that require database access
+ * Returns null if DB is enabled, otherwise returns a 503 response
+ * 
+ * Usage in handlers:
+ *   const dbGuard = guardDbRoute('listProjects');
+ *   if (dbGuard) return dbGuard;
+ * 
+ * @param routeName - Name of the route for logging purposes
+ * @returns null if DB is enabled, APIGatewayProxyResult if disabled
+ */
+export function guardDbRoute(routeName: string): APIGatewayProxyResult | null {
+  if (DB_ENABLED) {
+    return null;
+  }
+  return createDbDisabledResponse(routeName);
+}
+
+/**
+ * Check if an error is a DbDisabledError
+ * Use in catch blocks to return proper 503 response
+ * 
+ * Usage in handlers:
+ *   catch (error) {
+ *     if (isDbDisabledError(error)) {
+ *       return createDbDisabledResponse('routeName');
+ *     }
+ *     // handle other errors...
+ *   }
+ */
+export function isDbDisabledError(error: unknown): error is DbDisabledError {
+  return error instanceof DbDisabledError;
+}
+
+/**
+ * Handle error in catch block, returning 503 if it's a DbDisabledError
+ * 
+ * Usage in handlers:
+ *   catch (error) {
+ *     const dbErrorResponse = handleDbError(error, 'routeName');
+ *     if (dbErrorResponse) return dbErrorResponse;
+ *     // handle other errors...
+ *   }
+ */
+export function handleDbError(error: unknown, routeName: string): APIGatewayProxyResult | null {
+  if (isDbDisabledError(error)) {
+    return createDbDisabledResponse(routeName);
+  }
+  return null;
+}

@@ -124,7 +124,9 @@ async function seedUsersToDatabase() {
     console.error('Error seeding users:', error);
     process.exit(1);
   } finally {
-    await db.end();
+    // Close database pool
+    const pool = await db.getPool();
+    await pool.end();
   }
 }
 

@@ -3,9 +3,14 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Get pending reviews (for Approval Engineers and Admins)
 export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getPendingReviews');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -127,6 +132,10 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
 
 // Get lab assignments (for Lab Engineers)
 export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getLabAssignments');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -198,6 +207,10 @@ export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<AP
 
 // Get workflow statistics (for Project Managers and Admins)
 export const getWorkflowStatistics = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getWorkflowStatistics');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -313,6 +326,10 @@ export const getWorkflowStatistics = async (event: APIGatewayProxyEvent): Promis
 
 // Get submitted borelogs (for Site Engineers)
 export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('getSubmittedBorelogs');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

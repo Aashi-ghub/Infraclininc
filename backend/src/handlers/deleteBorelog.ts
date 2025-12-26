@@ -4,8 +4,13 @@ import { createResponse } from '../types/common';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { validate as validateUUID } from 'uuid';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('deleteBorelog');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

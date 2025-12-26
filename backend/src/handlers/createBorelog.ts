@@ -4,6 +4,7 @@ import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 // Borelog Creation Schema
 const CreateBorelogSchema = z.object({
@@ -48,6 +49,10 @@ const CreateBorelogSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent) => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createBorelog');
+  if (dbGuard) return dbGuard;
+
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 

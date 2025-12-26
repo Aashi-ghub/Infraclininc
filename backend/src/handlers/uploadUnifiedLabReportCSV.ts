@@ -5,6 +5,7 @@ import { createResponse } from '../types/common';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import * as db from '../db';
+import { guardDbRoute } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 
 // Header hints to auto-detect soil/rock presence and extract values
@@ -72,6 +73,10 @@ const normalizeRowFields = (
 };
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+	// Guard: Check if DB is enabled
+	const dbGuard = guardDbRoute('uploadUnifiedLabReportCSV');
+	if (dbGuard) return dbGuard;
+
 	const startTime = Date.now();
 	logRequest(event, { awsRequestId: 'local' });
 

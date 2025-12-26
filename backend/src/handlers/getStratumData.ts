@@ -1,10 +1,79 @@
+/**
+ * getStratumData Handler
+ * 
+ * =============================================================================
+ * ENDPOINT DOCUMENTATION
+ * =============================================================================
+ * 
+ * Route: GET /stratum-data
+ * 
+ * Request Parameters (Query String):
+ *   - borelog_id: UUID (required) - The borelog identifier
+ *   - version_no: number (required) - The version number to fetch
+ * 
+ * Response JSON Structure:
+ *   {
+ *     success: boolean,
+ *     message: string,
+ *     data: {
+ *       borelog_id: string,
+ *       version_no: number,
+ *       layers: [
+ *         {
+ *           id: string,
+ *           layer_order: number,
+ *           description: string,
+ *           depth_from_m: number,
+ *           depth_to_m: number,
+ *           thickness_m: number,
+ *           return_water_colour: string,
+ *           water_loss: string,
+ *           borehole_diameter: number,
+ *           remarks: string,
+ *           created_at: string (ISO timestamp),
+ *           created_by_user_id: string,
+ *           samples: [
+ *             {
+ *               id: string,
+ *               sample_order: number,
+ *               sample_type: string (SPT|UDS|DS|Core),
+ *               depth_mode: string (single|range),
+ *               depth_single_m: number,
+ *               depth_from_m: number,
+ *               depth_to_m: number,
+ *               run_length_m: number,
+ *               spt_15cm_1: number,
+ *               spt_15cm_2: number,
+ *               spt_15cm_3: number,
+ *               n_value: number,
+ *               total_core_length_cm: number,
+ *               tcr_percent: number,
+ *               rqd_length_cm: number,
+ *               rqd_percent: number,
+ *               created_at: string (ISO timestamp),
+ *               created_by_user_id: string
+ *             }
+ *           ]
+ *         }
+ *       ]
+ *     }
+ *   }
+ * 
+ * Database Tables (Previously Used):
+ *   - stratum_layers: Stores geological layers for each borelog version
+ *   - stratum_sample_points: Stores test samples within each layer
+ * 
+ * S3 Storage Path:
+ *   projects/project_{projectId}/borelogs/borelog_{borelogId}/v{version}/stratum.json
+ * 
+ * =============================================================================
+ */
+
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
-import { getPool } from '../db';
-
-let pool: Pool | null = null;
+import { guardDbRoute, isDbEnabled } from '../db';
+import { createStorageClient, StorageClient } from '../storage';
 
 // Schema for query parameters
 const GetStratumDataSchema = z.object({
@@ -12,9 +81,188 @@ const GetStratumDataSchema = z.object({
   version_no: z.string().transform(val => parseInt(val, 10)),
 });
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+// Interface for stratum layer as stored in S3
+interface StratumLayerS3 {
+  id: string;
+  layer_order: number;
+  description: string | null;
+  depth_from_m: number | null;
+  depth_to_m: number | null;
+  thickness_m: number | null;
+  return_water_colour: string | null;
+  water_loss: string | null;
+  borehole_diameter: number | null;
+  remarks: string | null;
+  created_at: string | null;
+  created_by_user_id: string | null;
+  samples: StratumSampleS3[];
+}
+
+// Interface for sample point as stored in S3
+interface StratumSampleS3 {
+  id: string;
+  sample_order: number;
+  sample_type: string | null;
+  depth_mode: string | null;
+  depth_single_m: number | null;
+  depth_from_m: number | null;
+  depth_to_m: number | null;
+  run_length_m: number | null;
+  spt_15cm_1: number | null;
+  spt_15cm_2: number | null;
+  spt_15cm_3: number | null;
+  n_value: number | null;
+  total_core_length_cm: number | null;
+  tcr_percent: number | null;
+  rqd_length_cm: number | null;
+  rqd_percent: number | null;
+  created_at: string | null;
+  created_by_user_id: string | null;
+}
+
+// Interface for stratum.json file structure
+interface StratumDataFile {
+  borelog_id: string;
+  version_no: number;
+  project_id: string;
+  layers: StratumLayerS3[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Interface for metadata.json file structure
+interface BorelogMetadata {
+  project_id: string;
+  borelog_id: string;
+  latest_version?: number;
+  latest_approved?: number;
+  versions?: Array<{
+    version: number;
+    status: string;
+    created_at?: string;
+    created_by?: string;
+  }>;
+}
+
+/**
+ * Find project_id for a borelog by scanning S3 for its metadata
+ * This is needed because we only have borelog_id but need project_id for the S3 path
+ */
+async function findProjectIdForBorelog(
+  storageClient: StorageClient,
+  borelogId: string
+): Promise<string | null> {
   try {
-    logger.info('Getting stratum data', { queryParams: event.queryStringParameters });
+    // List all projects
+    const projectsPrefix = 'projects/';
+    const projectFolders = await storageClient.listFiles(projectsPrefix, 100);
+    
+    // Extract unique project IDs
+    const projectIds: string[] = [];
+    for (const folder of projectFolders) {
+      const match = folder.match(/projects\/project_([^\/]+)\//);
+      if (match && !projectIds.includes(match[1])) {
+        projectIds.push(match[1]);
+      }
+    }
+
+    // Check each project for this borelog
+    for (const projectId of projectIds) {
+      const metadataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/metadata.json`;
+      const exists = await storageClient.fileExists(metadataKey);
+      if (exists) {
+        logger.debug('Found project for borelog', { projectId, borelogId });
+        return projectId;
+      }
+    }
+
+    logger.warn('Could not find project for borelog in S3', { borelogId });
+    return null;
+  } catch (error) {
+    logger.error('Error finding project for borelog', { error, borelogId });
+    return null;
+  }
+}
+
+/**
+ * Read metadata.json for a borelog
+ */
+async function readBorelogMetadata(
+  storageClient: StorageClient,
+  projectId: string,
+  borelogId: string
+): Promise<BorelogMetadata | null> {
+  try {
+    const metadataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/metadata.json`;
+    
+    if (!(await storageClient.fileExists(metadataKey))) {
+      logger.warn('Metadata file not found', { metadataKey });
+      return null;
+    }
+
+    const buffer = await storageClient.downloadFile(metadataKey);
+    const metadata = JSON.parse(buffer.toString('utf-8')) as BorelogMetadata;
+    
+    // Ensure project_id and borelog_id are set
+    metadata.project_id = projectId;
+    metadata.borelog_id = borelogId;
+    
+    logger.debug('Read borelog metadata', { projectId, borelogId, metadata });
+    return metadata;
+  } catch (error) {
+    logger.error('Error reading borelog metadata', { error, projectId, borelogId });
+    return null;
+  }
+}
+
+/**
+ * Read stratum.json for a specific borelog version
+ */
+async function readStratumData(
+  storageClient: StorageClient,
+  projectId: string,
+  borelogId: string,
+  versionNo: number
+): Promise<StratumDataFile | null> {
+  try {
+    const stratumKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/v${versionNo}/stratum.json`;
+    
+    logger.debug('Attempting to read stratum data', { stratumKey });
+
+    if (!(await storageClient.fileExists(stratumKey))) {
+      logger.warn('Stratum data file not found', { stratumKey });
+      return null;
+    }
+
+    const buffer = await storageClient.downloadFile(stratumKey);
+    const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
+    
+    logger.debug('Read stratum data', { 
+      projectId, 
+      borelogId, 
+      versionNo, 
+      layerCount: stratumData.layers?.length || 0 
+    });
+    
+    return stratumData;
+  } catch (error) {
+    logger.error('Error reading stratum data', { error, projectId, borelogId, versionNo });
+    return null;
+  }
+}
+
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled - if enabled, use DB path (legacy behavior)
+  // If DB is disabled, use S3 path (new behavior)
+  if (isDbEnabled()) {
+    // DB is enabled - return the guard response to indicate this should use DB
+    // This path should not be reached in production when DB is disabled
+    const dbGuard = guardDbRoute('getStratumData');
+    if (dbGuard) return dbGuard;
+  }
+
+  try {
+    logger.info('Getting stratum data from S3', { queryParams: event.queryStringParameters });
 
     // Parse and validate query parameters
     const queryParams = event.queryStringParameters || {};
@@ -22,111 +270,85 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const { borelog_id, version_no } = validatedParams;
 
-    pool = await getPool();
-    const client = await pool.connect();
+    // Log S3 read operation
+    logger.info(`[S3 READ ENABLED] getStratumData borelog=${borelog_id} version=${version_no}`);
+    console.log(`[S3 READ ENABLED] getStratumData borelog=${borelog_id} version=${version_no}`);
 
+    // Initialize storage client
+    let storageClient: StorageClient;
     try {
-      // Get stratum layers with their sample points
-      const result = await client.query(
-        `SELECT 
-          sl.id as layer_id,
-          sl.layer_order,
-          sl.description as layer_description,
-          sl.depth_from_m as layer_depth_from_m,
-          sl.depth_to_m as layer_depth_to_m,
-          sl.thickness_m as layer_thickness_m,
-          sl.return_water_colour as layer_return_water_colour,
-          sl.water_loss as layer_water_loss,
-          sl.borehole_diameter as layer_borehole_diameter,
-          sl.remarks as layer_remarks,
-          sl.created_at as layer_created_at,
-          sl.created_by_user_id as layer_created_by,
-          
-          ssp.id as sample_id,
-          ssp.sample_order as sample_order,
-          ssp.sample_type as sample_type,
-          ssp.depth_mode as sample_depth_mode,
-          ssp.depth_single_m as sample_depth_single_m,
-          ssp.depth_from_m as sample_depth_from_m,
-          ssp.depth_to_m as sample_depth_to_m,
-          ssp.run_length_m as sample_run_length_m,
-          ssp.spt_15cm_1 as sample_spt_15cm_1,
-          ssp.spt_15cm_2 as sample_spt_15cm_2,
-          ssp.spt_15cm_3 as sample_spt_15cm_3,
-          ssp.n_value as sample_n_value,
-          ssp.total_core_length_cm as sample_total_core_length_cm,
-          ssp.tcr_percent as sample_tcr_percent,
-          ssp.rqd_length_cm as sample_rqd_length_cm,
-          ssp.rqd_percent as sample_rqd_percent,
-          ssp.created_at as sample_created_at,
-          ssp.created_by_user_id as sample_created_by
-        FROM stratum_layers sl
-        LEFT JOIN stratum_sample_points ssp ON sl.id = ssp.stratum_layer_id
-        WHERE sl.borelog_id = $1 AND sl.version_no = $2
-        ORDER BY sl.layer_order, ssp.sample_order`,
-        [borelog_id, version_no]
-      );
+      storageClient = createStorageClient();
+    } catch (error) {
+      logger.error('Failed to create storage client', { error });
+      return {
+        statusCode: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: 'Failed to initialize storage',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+      };
+    }
 
-      // Transform the flat result into nested structure
-      const layersMap = new Map();
-      
-      result.rows.forEach(row => {
-        const layerId = row.layer_id;
-        
-        if (!layersMap.has(layerId)) {
-          // Create new layer
-          layersMap.set(layerId, {
-            id: layerId,
-            layer_order: row.layer_order,
-            description: row.layer_description,
-            depth_from_m: row.layer_depth_from_m,
-            depth_to_m: row.layer_depth_to_m,
-            thickness_m: row.layer_thickness_m,
-            return_water_colour: row.layer_return_water_colour,
-            water_loss: row.layer_water_loss,
-            borehole_diameter: row.layer_borehole_diameter,
-            remarks: row.layer_remarks,
-            created_at: row.layer_created_at,
-            created_by_user_id: row.layer_created_by,
-            samples: []
-          });
-        }
-        
-        // Add sample point if it exists
-        if (row.sample_id) {
-          const layer = layersMap.get(layerId);
-          layer.samples.push({
-            id: row.sample_id,
-            sample_order: row.sample_order,
-            sample_type: row.sample_type,
-            depth_mode: row.sample_depth_mode,
-            depth_single_m: row.sample_depth_single_m,
-            depth_from_m: row.sample_depth_from_m,
-            depth_to_m: row.sample_depth_to_m,
-            run_length_m: row.sample_run_length_m,
-            spt_15cm_1: row.sample_spt_15cm_1,
-            spt_15cm_2: row.sample_spt_15cm_2,
-            spt_15cm_3: row.sample_spt_15cm_3,
-            n_value: row.sample_n_value,
-            total_core_length_cm: row.sample_total_core_length_cm,
-            tcr_percent: row.sample_tcr_percent,
-            rqd_length_cm: row.sample_rqd_length_cm,
-            rqd_percent: row.sample_rqd_percent,
-            created_at: row.sample_created_at,
-            created_by_user_id: row.sample_created_by
-          });
-        }
-      });
+    // Step 1: Find project_id for this borelog
+    const projectId = await findProjectIdForBorelog(storageClient, borelog_id);
+    
+    if (!projectId) {
+      logger.warn('Borelog not found in S3 storage', { borelog_id });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: 'Borelog not found',
+          error: `No borelog found with ID: ${borelog_id}`
+        })
+      };
+    }
 
-      // Convert map to array and sort by layer_order
-      const layers = Array.from(layersMap.values()).sort((a, b) => a.layer_order - b.layer_order);
+    // Step 2: Read metadata to verify version exists
+    const metadata = await readBorelogMetadata(storageClient, projectId, borelog_id);
+    
+    if (!metadata) {
+      logger.warn('Borelog metadata not found', { projectId, borelog_id });
+      return {
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: 'Borelog metadata not found',
+          error: `Could not read metadata for borelog: ${borelog_id}`
+        })
+      };
+    }
 
-      logger.info('Stratum data retrieved successfully', { 
+    // Step 3: Read stratum data for the specified version
+    const stratumData = await readStratumData(storageClient, projectId, borelog_id, version_no);
+
+    if (!stratumData) {
+      // Return empty layers array if stratum data not found
+      // This matches the behavior when DB returns no results
+      logger.info('No stratum data found for version, returning empty layers', { 
         borelog_id, 
-        version_no, 
-        layers_count: layers.length 
+        version_no 
       });
-
+      
       return {
         statusCode: 200,
         headers: {
@@ -141,17 +363,99 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           data: {
             borelog_id,
             version_no,
-            layers
+            layers: []
           }
         })
       };
-
-    } finally {
-      client.release();
     }
+
+    // Step 4: Transform data to match expected response format
+    // The stratum.json file should already have the nested structure,
+    // but we ensure all fields are present and sorted correctly
+    const layers = (stratumData.layers || [])
+      .map(layer => ({
+        id: layer.id,
+        layer_order: layer.layer_order,
+        description: layer.description,
+        depth_from_m: layer.depth_from_m,
+        depth_to_m: layer.depth_to_m,
+        thickness_m: layer.thickness_m,
+        return_water_colour: layer.return_water_colour,
+        water_loss: layer.water_loss,
+        borehole_diameter: layer.borehole_diameter,
+        remarks: layer.remarks,
+        created_at: layer.created_at,
+        created_by_user_id: layer.created_by_user_id,
+        samples: (layer.samples || [])
+          .map(sample => ({
+            id: sample.id,
+            sample_order: sample.sample_order,
+            sample_type: sample.sample_type,
+            depth_mode: sample.depth_mode,
+            depth_single_m: sample.depth_single_m,
+            depth_from_m: sample.depth_from_m,
+            depth_to_m: sample.depth_to_m,
+            run_length_m: sample.run_length_m,
+            spt_15cm_1: sample.spt_15cm_1,
+            spt_15cm_2: sample.spt_15cm_2,
+            spt_15cm_3: sample.spt_15cm_3,
+            n_value: sample.n_value,
+            total_core_length_cm: sample.total_core_length_cm,
+            tcr_percent: sample.tcr_percent,
+            rqd_length_cm: sample.rqd_length_cm,
+            rqd_percent: sample.rqd_percent,
+            created_at: sample.created_at,
+            created_by_user_id: sample.created_by_user_id
+          }))
+          .sort((a, b) => (a.sample_order || 0) - (b.sample_order || 0))
+      }))
+      .sort((a, b) => (a.layer_order || 0) - (b.layer_order || 0));
+
+    logger.info('Stratum data retrieved successfully from S3', { 
+      borelog_id, 
+      version_no, 
+      layers_count: layers.length 
+    });
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,OPTIONS'
+      },
+      body: JSON.stringify({
+        success: true,
+        message: 'Stratum data retrieved successfully',
+        data: {
+          borelog_id,
+          version_no,
+          layers
+        }
+      })
+    };
 
   } catch (error) {
     logger.error('Error getting stratum data:', error);
+    
+    // Check if it's a validation error
+    if (error instanceof z.ZodError) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: 'Invalid request parameters',
+          error: error.errors.map(e => e.message).join(', ')
+        })
+      };
+    }
     
     return {
       statusCode: 500,

@@ -1,16 +1,16 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+import * as db from '../db';
+import { guardDbRoute } from '../db';
 
 export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('createLabTest');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Lab Engineer'])(event);
@@ -49,9 +49,9 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
       LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
       WHERE b.borelog_id = $1
     `;
-    const borelogResult = await pool.query(borelogQuery, [body.borelog_id]);
+    const borelogResult = await db.query(borelogQuery, [body.borelog_id]);
     
-    if (borelogResult.rows.length === 0) {
+    if (borelogResult.length === 0) {
       return createResponse(404, {
         success: false,
         message: 'Borelog not found',
@@ -59,7 +59,7 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
       });
     }
 
-    const borelog = borelogResult.rows[0];
+    const borelog = borelogResult[0];
     const testId = uuidv4();
 
     // Create lab test record
@@ -83,7 +83,7 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
       body.remarks || null
     ];
 
-    const result = await pool.query(createQuery, values);
+    const result = await db.query(createQuery, values);
     
     logger.info('Lab test created successfully', { testId, borelogId: body.borelog_id });
 
@@ -91,7 +91,7 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
       success: true,
       message: 'Lab test created successfully',
       data: {
-        ...result.rows[0],
+        ...result[0],
         borelog: {
           borehole_number: borelog.borehole_number,
           project_name: borelog.project_name,
@@ -110,6 +110,10 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
 };
 
 export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  // Guard: Check if DB is enabled
+  const dbGuard = guardDbRoute('listLabTests');
+  if (dbGuard) return dbGuard;
+
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Lab Engineer', 'Project Manager'])(event);
@@ -167,9 +171,9 @@ export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGate
 
     query += ` ORDER BY ltr.created_at DESC`;
 
-    const result = await pool.query(query, queryParams);
+    const result = await db.query(query, queryParams);
 
-    const labTests = result.rows.map(row => ({
+    const labTests = result.map((row: any) => ({
       id: row.test_id,
       borelog_id: row.borelog_id,
       test_type: row.test_type,
@@ -198,4 +202,4 @@ export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGate
       error: 'Failed to retrieve lab tests'
     });
   }
-}; 
+};
