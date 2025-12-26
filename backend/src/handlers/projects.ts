@@ -2,16 +2,13 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
 import { getProjectsForSiteEngineer, getProjectDetailsForSiteEngineer } from '../utils/projectAccess';
 import { validate as validateUUID } from 'uuid';
+import { createStorageClient } from '../storage/s3Client';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('listProjects');
-  if (dbGuard) return dbGuard;
-
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -38,22 +35,84 @@ export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGate
     let projects;
 
     if (payload.role === 'Site Engineer') {
-      // For Site Engineers, get projects with assignment counts
+      // For Site Engineers, get projects with assignment counts (still uses DB)
       projects = await getProjectsForSiteEngineer(payload.userId);
     } else {
-      // For other roles, get all projects
-      const query = `
-        SELECT 
-          project_id,
-          name,
-          location,
-          created_at,
-          0 as assignment_count
-        FROM projects
-        ORDER BY name
-      `;
-      projects = await db.query(query);
+      // For other roles, get all projects from S3
+      const storageClient = createStorageClient();
+      
+      let projectJsonKeys: string[] = [];
+      
+      const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+      const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
+
+      // Handle local filesystem mode (offline) differently
+      if (isOffline) {
+        // For local filesystem, manually traverse directories
+        const localStoragePath = process.env.LOCAL_STORAGE_PATH || path.join(process.cwd(), 'local-storage');
+        const projectsDir = path.join(localStoragePath, 'projects');
+        
+        try {
+          const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+          
+          for (const entry of entries) {
+            if (entry.isDirectory() && entry.name.startsWith('project_')) {
+              const projectJsonPath = path.join(projectsDir, entry.name, 'project.json');
+              try {
+                await fs.access(projectJsonPath);
+                // Convert to S3 key format: projects/project_<id>/project.json
+                projectJsonKeys.push(`projects/${entry.name}/project.json`);
+              } catch {
+                // File doesn't exist, skip
+                continue;
+              }
+            }
+          }
+        } catch (error: any) {
+          // Directory might not exist yet, that's okay
+          if (error.code !== 'ENOENT') {
+            logger.error('Error listing local project directories:', error);
+          }
+        }
+      } else {
+        // For S3, use listFiles which handles recursive listing
+        const projectKeys = await storageClient.listFiles('projects/', 10000);
+        
+        // Filter to only project.json files matching the pattern
+        projectJsonKeys = projectKeys.filter(key => {
+          // Match pattern: projects/project_<uuid>/project.json
+          return key.match(/^projects\/project_[^\/]+\/project\.json$/) !== null;
+        });
+      }
+      
+      // Read and parse each project.json
+      const projectPromises = projectJsonKeys.map(async (key) => {
+        try {
+          const projectBuffer = await storageClient.downloadFile(key);
+          const project = JSON.parse(projectBuffer.toString('utf-8'));
+          
+          // Return in the exact same format as DB query
+          return {
+            project_id: project.project_id || project.id,
+            name: project.name,
+            location: project.location || null,
+            created_at: project.created_at,
+            assignment_count: 0
+          };
+        } catch (error) {
+          logger.error(`Error reading project from S3 key ${key}:`, error);
+          return null;
+        }
+      });
+      
+      const projectResults = await Promise.all(projectPromises);
+      projects = projectResults
+        .filter((p): p is NonNullable<typeof p> => p !== null)
+        .sort((a, b) => a.name.localeCompare(b.name));
     }
+
+    // Log with count
+    logger.info(`[S3 READ ENABLED] listProjects count=${projects.length}`);
 
     const response = createResponse(200, {
       success: true,
@@ -78,10 +137,6 @@ export const listProjects = async (event: APIGatewayProxyEvent): Promise<APIGate
 };
 
 export const getProject = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('getProject');
-  if (dbGuard) return dbGuard;
-
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -129,7 +184,7 @@ export const getProject = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     let project;
 
     if (payload.role === 'Site Engineer') {
-      // For Site Engineers, get project with assignment details
+      // For Site Engineers, get project with assignment details (still uses DB)
       project = await getProjectDetailsForSiteEngineer(payload.userId, projectId);
       
       if (!project) {
@@ -142,29 +197,34 @@ export const getProject = async (event: APIGatewayProxyEvent): Promise<APIGatewa
         return response;
       }
     } else {
-      // For other roles, get project details
-      const query = `
-        SELECT 
-          project_id,
-          name,
-          location,
-          created_at
-        FROM projects
-        WHERE project_id = $1
-      `;
-      const result = await db.query(query, [projectId]);
+      // For other roles, get project details from S3
+      const storageClient = createStorageClient();
+      const s3Key = `projects/project_${projectId}/project.json`;
       
-      if (result.length === 0) {
-        const response = createResponse(404, {
-          success: false,
-          message: 'Project not found',
-          error: 'Project with the specified ID does not exist'
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
+      try {
+        const projectBuffer = await storageClient.downloadFile(s3Key);
+        const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+        
+        // Return in the same format as DB query
+        project = {
+          project_id: projectData.project_id || projectData.id,
+          name: projectData.name,
+          location: projectData.location || null,
+          created_at: projectData.created_at
+        };
+      } catch (error: any) {
+        // Check if it's a "not found" error
+        if (error.message?.includes('Failed to download') || error.message?.includes('ENOENT')) {
+          const response = createResponse(404, {
+            success: false,
+            message: 'Project not found',
+            error: 'Project with the specified ID does not exist'
+          });
+          logResponse(response, Date.now() - startTime);
+          return response;
+        }
+        throw error;
       }
-      
-      project = result[0];
     }
 
     const response = createResponse(200, {

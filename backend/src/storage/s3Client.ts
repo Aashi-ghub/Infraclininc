@@ -41,7 +41,9 @@ export class StorageClient {
   constructor(config: S3ClientConfig) {
     this.bucketName = config.bucketName;
     this.region = config.region;
-    this.isOffline = process.env.IS_OFFLINE === 'true';
+    const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+    const forceS3 = storageMode === 's3';
+    this.isOffline = !forceS3 && process.env.IS_OFFLINE === 'true';
     this.localStoragePath = config.localStoragePath || path.join(process.cwd(), 'local-storage');
 
     if (this.isOffline) {

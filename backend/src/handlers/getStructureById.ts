@@ -1,9 +1,9 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
-import { getStructureById } from '../models/structures';
 import { createResponse } from '../types/common';
 import { validate as validateUUID } from 'uuid';
+import { createStorageClient } from '../storage/s3Client';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
@@ -50,7 +50,27 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const structure = await getStructureById(structureId);
+    const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+    const useS3 = storageMode === 's3';
+    let structure: any = null;
+
+    if (useS3) {
+      const storageClient = createStorageClient();
+      const projectKeys = await storageClient.listFiles('projects/', 10000);
+      const structureKey = projectKeys.find(k =>
+        k.includes(`structures/structure_${structureId}/structure.json`)
+      );
+
+      if (structureKey) {
+        const buffer = await storageClient.downloadFile(structureKey);
+        structure = JSON.parse(buffer.toString('utf-8'));
+      }
+    } else {
+      // Fallback to existing DB model when not using S3 mode
+      const { getStructureById } = await import('../models/structures');
+      structure = await getStructureById(structureId);
+    }
+
     if (!structure) {
       const response = createResponse(404, {
         success: false,

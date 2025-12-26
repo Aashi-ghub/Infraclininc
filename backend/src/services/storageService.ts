@@ -266,7 +266,8 @@ export function getStorageService(): StorageService {
     return storageServiceInstance;
   }
 
-  const isOffline = process.env.IS_OFFLINE === 'true';
+  const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+  const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
 
   if (isOffline) {
     storageServiceInstance = new MockStorageService();

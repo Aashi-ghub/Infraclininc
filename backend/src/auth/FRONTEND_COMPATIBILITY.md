@@ -250,3 +250,6 @@ apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 The backend migration to S3 storage is transparent to the frontend. All existing frontend code continues to work without modifications.
 
 
+
+
+

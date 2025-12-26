@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "npm run start:dev",
-    "start:dev": "set IS_OFFLINE=true && set AWS_REGION=us-east-1 && serverless offline",
+    "start:dev": "set AWS_REGION=us-east-1 && set IS_OFFLINE=false && serverless offline",
     "deploy": "serverless deploy",
     "test": "jest",
     "test:unit": "jest tests/unit"

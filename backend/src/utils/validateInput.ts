@@ -1,3 +1,18 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+console.log("[ENV CHECK]", {
+  IS_OFFLINE: process.env.IS_OFFLINE,
+  STORAGE_MODE: process.env.STORAGE_MODE,
+  S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
+  AWS_REGION: process.env.AWS_REGION,
+});
+
+// Force offline flag off when explicitly using S3 to avoid local fallback
+if ((process.env.STORAGE_MODE || '').toLowerCase() === 's3') {
+  process.env.IS_OFFLINE = 'false';
+}
+
 import { z } from 'zod';
 import { logger } from './logger';
 import { APIGatewayProxyResult } from 'aws-lambda';

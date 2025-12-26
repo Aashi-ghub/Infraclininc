@@ -1,9 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
-import { createStructure } from '../models/structures';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
+import { createStorageClient } from '../storage/s3Client';
+import { v4 as uuidv4 } from 'uuid';
 
 const CreateStructureSchema = z.object({
   project_id: z.string().uuid('Invalid project ID'),
@@ -61,16 +62,46 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const structureData = validation.data;
 
-    // Create structure with user ID
-    const structure = await createStructure({
-      ...structureData,
+    // Generate structure_id
+    const structureId = uuidv4();
+    const createdAt = new Date();
+
+    // Create structure object with required fields
+    const structure = {
+      structure_id: structureId,
+      project_id: structureData.project_id,
+      type: structureData.type,
+      description: structureData.description || null,
+      created_at: createdAt.toISOString(),
+      updated_at: createdAt.toISOString(),
       created_by_user_id: payload.userId
-    });
+    };
+
+    // Write to S3: projects/project_<projectId>/structures/structure_<structureId>/structure.json
+    const storageClient = createStorageClient();
+    const s3Key = `projects/project_${structureData.project_id}/structures/structure_${structureId}/structure.json`;
+    const structureJson = JSON.stringify(structure, null, 2);
+    
+    await storageClient.uploadFile(
+      s3Key,
+      Buffer.from(structureJson, 'utf-8'),
+      'application/json'
+    );
+
+    logger.info(`[S3 CREATE ENABLED] createStructure structure_id=${structureId} project_id=${structureData.project_id}`);
 
     const response = createResponse(201, {
       success: true,
       message: 'Structure created successfully',
-      data: structure
+      data: {
+        structure_id: structureId,
+        project_id: structureData.project_id,
+        type: structureData.type,
+        description: structureData.description,
+        created_at: createdAt,
+        updated_at: createdAt,
+        created_by_user_id: payload.userId
+      }
     });
 
     logResponse(response, Date.now() - startTime);

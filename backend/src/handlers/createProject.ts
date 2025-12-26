@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
-import { createProject } from '../models/projects';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
+import { v4 as uuidv4 } from 'uuid';
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
@@ -13,9 +13,7 @@ const CreateProjectSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('createProject');
-  if (dbGuard) return dbGuard;
+  logger.info('[S3 CREATE ENABLED] createProject');
 
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
@@ -66,16 +64,44 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const projectData = validation.data;
 
-    // Create project with user ID
-    const project = await createProject({
-      ...projectData,
-      created_by_user_id: payload.userId
-    });
+    // Generate project_id
+    const projectId = uuidv4();
+    const createdAt = new Date();
 
+    // Create project object with required fields
+    const project = {
+      id: projectId,
+      project_id: projectId,
+      name: projectData.name,
+      location: projectData.location || null,
+      created_by: projectData.created_by || payload.userId,
+      created_at: createdAt.toISOString()
+    };
+
+    // Write to S3: projects/project_<projectId>/project.json
+    const storageClient = createStorageClient();
+    const s3Key = `projects/project_${projectId}/project.json`;
+    const projectJson = JSON.stringify(project, null, 2);
+    
+    await storageClient.uploadFile(
+      s3Key,
+      Buffer.from(projectJson, 'utf-8'),
+      'application/json'
+    );
+
+    // Return same response format as before
     const response = createResponse(201, {
       success: true,
       message: 'Project created successfully',
-      data: project
+      data: {
+        project_id: projectId,
+        name: projectData.name,
+        location: projectData.location || null,
+        created_by: project.created_by,
+        created_at: createdAt,
+        updated_at: createdAt,
+        created_by_user_id: payload.userId
+      }
     });
 
     logResponse(response, Date.now() - startTime);

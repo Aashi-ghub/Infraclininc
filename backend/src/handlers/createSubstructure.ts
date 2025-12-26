@@ -1,9 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
-import { createSubstructure } from '../models/structures';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
+import { createStorageClient } from '../storage/s3Client';
+import { v4 as uuidv4 } from 'uuid';
 
 const CreateSubstructureSchema = z.object({
   structure_id: z.string().uuid('Invalid structure ID'),
@@ -62,16 +63,48 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const substructureData = validation.data;
 
-    // Create substructure with user ID
-    const substructure = await createSubstructure({
-      ...substructureData,
+    // Generate substructure_id
+    const substructureId = uuidv4();
+    const createdAt = new Date();
+
+    // Create substructure object with required fields
+    const substructure = {
+      substructure_id: substructureId,
+      structure_id: substructureData.structure_id,
+      project_id: substructureData.project_id,
+      type: substructureData.type,
+      remark: substructureData.remark || null,
+      created_at: createdAt.toISOString(),
+      updated_at: createdAt.toISOString(),
       created_by_user_id: payload.userId
-    });
+    };
+
+    // Write to S3: projects/project_<projectId>/structures/structure_<structureId>/substructures/substructure_<substructureId>/substructure.json
+    const storageClient = createStorageClient();
+    const s3Key = `projects/project_${substructureData.project_id}/structures/structure_${substructureData.structure_id}/substructures/substructure_${substructureId}/substructure.json`;
+    const substructureJson = JSON.stringify(substructure, null, 2);
+    
+    await storageClient.uploadFile(
+      s3Key,
+      Buffer.from(substructureJson, 'utf-8'),
+      'application/json'
+    );
+
+    logger.info(`[S3 CREATE ENABLED] createSubstructure substructure_id=${substructureId} structure_id=${substructureData.structure_id} project_id=${substructureData.project_id}`);
 
     const response = createResponse(201, {
       success: true,
       message: 'Substructure created successfully',
-      data: substructure
+      data: {
+        substructure_id: substructureId,
+        structure_id: substructureData.structure_id,
+        project_id: substructureData.project_id,
+        type: substructureData.type,
+        remark: substructureData.remark,
+        created_at: createdAt,
+        updated_at: createdAt,
+        created_by_user_id: payload.userId
+      }
     });
 
     logResponse(response, Date.now() - startTime);
