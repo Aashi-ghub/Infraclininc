@@ -63,7 +63,10 @@
  *   - stratum_layers: Stores geological layers for each borelog version
  *   - stratum_sample_points: Stores test samples within each layer
  * 
- * S3 Storage Path:
+ * S3 Storage Path (current):
+ *   projects/project_{projectId}/borelogs/borelog_{borelogId}/versions/v{version}/stratum/stratum.json
+ * 
+ * Legacy fallback path (pre-parquet refactor):
  *   projects/project_{projectId}/borelogs/borelog_{borelogId}/v{version}/stratum.json
  * 
  * =============================================================================
@@ -72,7 +75,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
-import { guardDbRoute, isDbEnabled } from '../db';
 import { createStorageClient, StorageClient } from '../storage';
 
 // Schema for query parameters
@@ -148,31 +150,28 @@ interface BorelogMetadata {
  * Find project_id for a borelog by scanning S3 for its metadata
  * This is needed because we only have borelog_id but need project_id for the S3 path
  */
-async function findProjectIdForBorelog(
+async function findBorelogBasePath(
   storageClient: StorageClient,
   borelogId: string
-): Promise<string | null> {
+): Promise<{ projectId: string; basePath: string } | null> {
   try {
-    // List all projects
-    const projectsPrefix = 'projects/';
-    const projectFolders = await storageClient.listFiles(projectsPrefix, 100);
-    
-    // Extract unique project IDs
-    const projectIds: string[] = [];
-    for (const folder of projectFolders) {
-      const match = folder.match(/projects\/project_([^\/]+)\//);
-      if (match && !projectIds.includes(match[1])) {
-        projectIds.push(match[1]);
-      }
-    }
+    const keys = await storageClient.listFiles('projects/', 20000);
+    const metadataKeys = keys.filter(k =>
+      k.endsWith('/metadata.json') &&
+      k.includes('/borelogs/') &&
+      !k.includes('/versions/')
+    );
 
-    // Check each project for this borelog
-    for (const projectId of projectIds) {
-      const metadataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/metadata.json`;
-      const exists = await storageClient.fileExists(metadataKey);
-      if (exists) {
-        logger.debug('Found project for borelog', { projectId, borelogId });
-        return projectId;
+    for (const key of metadataKeys) {
+      try {
+        const buf = await storageClient.downloadFile(key);
+        const meta = JSON.parse(buf.toString('utf-8'));
+        if (meta?.borelog_id === borelogId && meta?.project_id) {
+          const basePath = key.replace(/\/metadata\.json$/, '');
+          return { projectId: meta.project_id, basePath };
+        }
+      } catch {
+        continue;
       }
     }
 
@@ -189,11 +188,12 @@ async function findProjectIdForBorelog(
  */
 async function readBorelogMetadata(
   storageClient: StorageClient,
+  basePath: string,
   projectId: string,
   borelogId: string
 ): Promise<BorelogMetadata | null> {
   try {
-    const metadataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/metadata.json`;
+    const metadataKey = `${basePath}/metadata.json`;
     
     if (!(await storageClient.fileExists(metadataKey))) {
       logger.warn('Metadata file not found', { metadataKey });
@@ -220,47 +220,45 @@ async function readBorelogMetadata(
  */
 async function readStratumData(
   storageClient: StorageClient,
-  projectId: string,
-  borelogId: string,
+  basePath: string,
   versionNo: number
 ): Promise<StratumDataFile | null> {
   try {
-    const stratumKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/v${versionNo}/stratum.json`;
-    
-    logger.debug('Attempting to read stratum data', { stratumKey });
+    // New parquet-backed path (Node stores JSON alongside parquet for UI reads)
+    const stratumKey = `${basePath}/versions/v${versionNo}/stratum/stratum.json`;
+    // Legacy path kept for backward compatibility
+    const legacyStratumKey = `${basePath}/v${versionNo}/stratum.json`;
+    const keysToTry = [stratumKey, legacyStratumKey];
 
-    if (!(await storageClient.fileExists(stratumKey))) {
-      logger.warn('Stratum data file not found', { stratumKey });
-      return null;
+    for (const key of keysToTry) {
+      const exists = await storageClient.fileExists(key);
+      if (!exists) {
+        continue;
+      }
+
+      logger.debug('Attempting to read stratum data', { stratumKey: key });
+
+      const buffer = await storageClient.downloadFile(key);
+      const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
+
+      logger.debug('Read stratum data', { 
+        stratumKey: key,
+        versionNo, 
+        layerCount: stratumData.layers?.length || 0 
+      });
+
+      return stratumData;
     }
 
-    const buffer = await storageClient.downloadFile(stratumKey);
-    const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
-    
-    logger.debug('Read stratum data', { 
-      projectId, 
-      borelogId, 
-      versionNo, 
-      layerCount: stratumData.layers?.length || 0 
-    });
-    
-    return stratumData;
+    logger.warn('Stratum data file not found', { keysTried: keysToTry });
+    return null;
   } catch (error) {
-    logger.error('Error reading stratum data', { error, projectId, borelogId, versionNo });
+    logger.error('Error reading stratum data', { error, basePath, versionNo });
     return null;
   }
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled - if enabled, use DB path (legacy behavior)
-  // If DB is disabled, use S3 path (new behavior)
-  if (isDbEnabled()) {
-    // DB is enabled - return the guard response to indicate this should use DB
-    // This path should not be reached in production when DB is disabled
-    const dbGuard = guardDbRoute('getStratumData');
-    if (dbGuard) return dbGuard;
-  }
-
   try {
     logger.info('Getting stratum data from S3', { queryParams: event.queryStringParameters });
 
@@ -297,9 +295,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 1: Find project_id for this borelog
-    const projectId = await findProjectIdForBorelog(storageClient, borelog_id);
+    const borelogLookup = await findBorelogBasePath(storageClient, borelog_id);
     
-    if (!projectId) {
+    if (!borelogLookup) {
       logger.warn('Borelog not found in S3 storage', { borelog_id });
       return {
         statusCode: 404,
@@ -317,8 +315,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
+    const { projectId, basePath } = borelogLookup;
+
     // Step 2: Read metadata to verify version exists
-    const metadata = await readBorelogMetadata(storageClient, projectId, borelog_id);
+    const metadata = await readBorelogMetadata(storageClient, basePath, projectId, borelog_id);
     
     if (!metadata) {
       logger.warn('Borelog metadata not found', { projectId, borelog_id });
@@ -339,7 +339,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 3: Read stratum data for the specified version
-    const stratumData = await readStratumData(storageClient, projectId, borelog_id, version_no);
+    const stratumData = await readStratumData(storageClient, basePath, version_no);
 
     if (!stratumData) {
       // Return empty layers array if stratum data not found

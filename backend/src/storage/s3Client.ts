@@ -41,9 +41,24 @@ export class StorageClient {
   constructor(config: S3ClientConfig) {
     this.bucketName = config.bucketName;
     this.region = config.region;
-    const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
-    const forceS3 = storageMode === 's3';
-    this.isOffline = !forceS3 && process.env.IS_OFFLINE === 'true';
+
+    const storageModeRaw = process.env.STORAGE_MODE || '';
+    const isOfflineRaw = process.env.IS_OFFLINE || '';
+    const storageMode = storageModeRaw.trim().replace(/["']/g, '').toLowerCase();
+    const isOfflineFlag = isOfflineRaw.trim().replace(/["']/g, '').toLowerCase() === 'true';
+    const hasBucket = Boolean(config.bucketName);
+    const forceS3 = storageMode === 's3' || (!storageMode && hasBucket);
+
+    // Temporary diagnostics to verify environment at runtime
+    console.log('ENV CHECK', {
+      IS_OFFLINE: process.env.IS_OFFLINE,
+      STORAGE_MODE: process.env.STORAGE_MODE,
+      NODE_ENV: process.env.NODE_ENV,
+      AWS_EXECUTION_ENV: process.env.AWS_EXECUTION_ENV,
+    });
+
+    // STORAGE_MODE=s3 must force S3 regardless of IS_OFFLINE
+    this.isOffline = forceS3 ? false : isOfflineFlag;
     this.localStoragePath = config.localStoragePath || path.join(process.cwd(), 'local-storage');
 
     if (this.isOffline) {
@@ -380,18 +395,30 @@ export class StorageClient {
 
   private async listLocalFiles(prefix: string, maxKeys: number): Promise<string[]> {
     try {
-      const dirPath = path.join(this.localStoragePath, prefix);
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
-
       const keys: string[] = [];
-      for (const entry of entries.slice(0, maxKeys)) {
-        if (entry.isFile()) {
-          const relativePath = path.join(prefix, entry.name);
-          keys.push(relativePath);
-        }
-      }
+      const walk = async (dirPrefix: string) => {
+        if (keys.length >= maxKeys) return;
 
-      return keys;
+        const dirPath = path.join(this.localStoragePath, dirPrefix);
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (keys.length >= maxKeys) break;
+
+          const relativePath = path.join(dirPrefix, entry.name);
+
+          if (entry.isDirectory()) {
+            await walk(relativePath);
+          } else if (entry.isFile()) {
+            // Normalize path separators to match S3-style keys
+            keys.push(relativePath.replace(/\\/g, '/'));
+          }
+        }
+      };
+
+      await walk(prefix);
+
+      return keys.slice(0, maxKeys);
     } catch (error) {
       logger.error('Error listing local files', { error, prefix });
       throw new Error(`Failed to list local files: ${error instanceof Error ? error.message : 'Unknown error'}`);

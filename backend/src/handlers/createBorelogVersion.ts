@@ -2,12 +2,12 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
-import * as db from '../db';
 import { guardDbRoute } from '../db';
 import { validate as validateUUID } from 'uuid';
 import { z } from 'zod';
 import { convertScalarToRelational } from '../utils/stratumConverter';
 import { saveStratumData } from '../utils/stratumSaver';
+import { createStorageClient } from '../storage/s3Client';
 
 // Schema for creating new borelog versions
 const CreateBorelogVersionSchema = z.object({
@@ -59,9 +59,9 @@ const CreateBorelogVersionSchema = z.object({
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('createBorelogVersion');
-  if (dbGuard) return dbGuard;
+  // Note: DB guard removed for this handler - it now works with S3-only storage
+  // const dbGuard = guardDbRoute('createBorelogVersion');
+  // if (dbGuard) return dbGuard;
 
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
@@ -111,76 +111,69 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const borelogData = validationResult.data;
 
-    // Check if user has access to the project or borelog assignment
-    if (payload.role === 'Site Engineer') {
-      // For Site Engineers, check if they are assigned to this borelog
-      const assignmentQuery = `
-        SELECT 1 FROM borelog_assignments 
-        WHERE assigned_site_engineer = $1 
-        AND status = 'active'
-        AND (
-          borelog_id = $2 OR substructure_id = (
-            SELECT substructure_id FROM boreloge WHERE borelog_id = $2
-          )
-        )
-      `;
-      const assignmentCheck = await db.query(assignmentQuery, [payload.userId, borelogData.borelog_id]);
-      
-      if (assignmentCheck.length === 0) {
-        const response = createResponse(403, {
-          success: false,
-          message: 'Access denied: Borelog not assigned to you',
-          error: 'You can only edit borelogs that are assigned to you'
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
-    } else {
-      // For other roles, check project-level access
-      const projectAccessQuery = `
-        SELECT 1 FROM user_project_assignments 
-        WHERE project_id = $1 AND $2 = ANY(assignee)
-      `;
-      const projectAccess = await db.query(projectAccessQuery, [borelogData.project_id, payload.userId]);
-      
-      if (projectAccess.length === 0 && payload.role !== 'Admin') {
-        const response = createResponse(403, {
-          success: false,
-          message: 'Access denied: User not assigned to this project',
-          error: 'Insufficient permissions'
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
-    }
+    // Initialize S3 storage client
+    const storageClient = createStorageClient();
 
-    // Check if the borelog exists
-    const borelogCheckQuery = `
-      SELECT borelog_id FROM boreloge WHERE borelog_id = $1
-    `;
-    const borelogCheck = await db.query(borelogCheckQuery, [borelogData.borelog_id]);
-    
-    if (borelogCheck.length === 0) {
+    // Resolve borelog location: prefer new path, fall back to legacy-prefixed path for compatibility
+    const basePath = `projects/${borelogData.project_id}/borelogs/${borelogData.borelog_id}`;
+    const legacyBasePath = `projects/project_${borelogData.project_id}/borelogs/borelog_${borelogData.borelog_id}`;
+    const metadataNewKey = `${basePath}/metadata.json`;
+    const metadataLegacyKey = `${legacyBasePath}/metadata.json`;
+    const [metadataExists, legacyMetadataExists] = await Promise.all([
+      storageClient.fileExists(metadataNewKey),
+      storageClient.fileExists(metadataLegacyKey)
+    ]);
+
+    // Prefer new path; fallback to legacy if only legacy exists
+    const chosenBasePath = metadataExists ? basePath : (legacyMetadataExists ? legacyBasePath : basePath);
+    const indexKey = `${chosenBasePath}/index.json`;
+    const indexExists = await storageClient.fileExists(indexKey);
+
+    if (!indexExists && !metadataExists && !legacyMetadataExists) {
       const response = createResponse(404, {
         success: false,
         message: 'Borelog not found',
-        error: 'The specified borelog does not exist'
+        error: 'The specified borelog does not exist in S3 storage'
       });
       logResponse(response, Date.now() - startTime);
       return response;
     }
 
-    // Get the next version number from staging table (borelog_versions) falling back to details
-    const versionQuery = `
-      WITH v1 AS (
-        SELECT COALESCE(MAX(version_no), 0) AS v FROM borelog_versions WHERE borelog_id = $1
-      ), v2 AS (
-        SELECT COALESCE(MAX(version_no), 0) AS v FROM borelog_details WHERE borelog_id = $1
-      )
-      SELECT GREATEST((SELECT v FROM v1), (SELECT v FROM v2)) + 1 AS next_version;
-    `;
-    const versionResult = await db.query(versionQuery, [borelogData.borelog_id]);
-    const nextVersion = borelogData.version_no || versionResult[0].next_version;
+    // Read the current index.json if present; otherwise initialize a fresh index for first version
+    let currentIndex: { latest_version: number; approved_version?: number; versions: number[] } = {
+      latest_version: 0,
+      versions: []
+    };
+
+    if (indexExists) {
+      try {
+        const indexBuffer = await storageClient.downloadFile(indexKey);
+        currentIndex = JSON.parse(indexBuffer.toString('utf-8'));
+      } catch (error) {
+        logger.error('Failed to read index.json', { error, borelogId: borelogData.borelog_id });
+        const response = createResponse(500, {
+          success: false,
+          message: 'Internal server error',
+          error: 'Failed to read borelog index'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+    }
+
+    // Compute next version number (use provided version_no or increment latest_version)
+    const nextVersion = borelogData.version_no || (currentIndex.latest_version + 1);
+
+    // Safety check: prevent version overwrites
+    if (currentIndex.versions.includes(nextVersion)) {
+      const response = createResponse(409, {
+        success: false,
+        message: 'Version already exists',
+        error: `Version ${nextVersion} already exists for this borelog`
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
 
     // Parse stratum data from JSON if provided
     let stratumDescription = borelogData.stratum_description;
@@ -230,99 +223,95 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
-    // Insert new version into staging table (borelog_versions) with provided status or default to 'submitted'
-    const insertQuery = `
-      INSERT INTO borelog_versions (
-        borelog_id,
-        version_no,
-        number,
-        msl,
-        boring_method,
-        hole_diameter,
-        commencement_date,
-        completion_date,
-        standing_water_level,
-        termination_depth,
-        coordinate,
-        permeability_test_count,
-        spt_vs_test_count,
-        undisturbed_sample_count,
-        disturbed_sample_count,
-        water_sample_count,
-        stratum_description,
-        stratum_depth_from,
-        stratum_depth_to,
-        stratum_thickness_m,
-        sample_event_type,
-        sample_event_depth_m,
-        run_length_m,
-        spt_blows_per_15cm,
-        n_value_is_2131,
-        total_core_length_cm,
-        tcr_percent,
-        rqd_length_cm,
-        rqd_percent,
-        return_water_colour,
-        water_loss,
-        borehole_diameter,
-        job_code,
-        location,
-        chainage_km,
-        remarks,
-        created_by_user_id,
-        status
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38
-      ) RETURNING *;
-    `;
+    // Create timestamp for the new version
+    const createdAt = new Date().toISOString();
 
-    const insertValues = [
-      borelogData.borelog_id,
-      nextVersion,
-      borelogData.number,
-      borelogData.msl,
-      borelogData.boring_method,
-      borelogData.hole_diameter,
-      borelogData.commencement_date,
-      borelogData.completion_date,
-      borelogData.standing_water_level,
-      borelogData.termination_depth,
-      borelogData.coordinate ? `POINT(${borelogData.coordinate.coordinates[0]} ${borelogData.coordinate.coordinates[1]})` : null,
-      borelogData.permeability_test_count,
-      borelogData.spt_vs_test_count,
-      borelogData.undisturbed_sample_count,
-      borelogData.disturbed_sample_count,
-      borelogData.water_sample_count,
-      stratumDescription,
-      stratumDepthFrom,
-      stratumDepthTo,
-      stratumThicknessM,
-      sampleEventType,
-      sampleEventDepthM,
-      runLengthM,
-      sptBlowsPer15cm,
-      nValueIs2131,
-      totalCoreLengthCm,
-      tcrPercent,
-      rqdLengthCm,
-      rqdPercent,
-      returnWaterColour,
-      waterLoss,
-      boreholeDiameter,
-      borelogData.job_code,
-      borelogData.location,
-      borelogData.chainage_km,
-      borelogData.remarks,
-      payload.userId,
-      borelogData.status || 'submitted'
-    ];
+    // Create version metadata.json
+    const versionMetadata = {
+      version: nextVersion,
+      status: 'DRAFT', // As per requirements, default status is DRAFT
+      created_by: payload.userId,
+      created_at: createdAt,
+      source_version: currentIndex.latest_version || null
+    };
 
-    const result = await db.query(insertQuery, insertValues);
-    const newVersion = result[0];
+    // Create metadata.json key and upload
+    const metadataKey = `${chosenBasePath}/versions/v${nextVersion}/metadata.json`;
+    const metadataUpload = storageClient.uploadFile(
+      metadataKey,
+      Buffer.from(JSON.stringify(versionMetadata, null, 2), 'utf-8'),
+      'application/json'
+    );
 
-    // Convert scalar stratum data to relational format and save it
-    const scalarData = {
+    // TODO: Create Parquet data file with borelog tabular data
+    // For now, create a placeholder - this will be implemented in the next step
+    const dataKey = `${chosenBasePath}/versions/v${nextVersion}/data.parquet`;
+
+    // Placeholder Parquet data - in real implementation this would contain stratum data
+    const parquetPlaceholder = {
+      borelog_id: borelogData.borelog_id,
+      version: nextVersion,
+      stratum_data: {
+        stratum_description: stratumDescription,
+        stratum_depth_from: stratumDepthFrom,
+        stratum_depth_to: stratumDepthTo,
+        stratum_thickness_m: stratumThicknessM,
+        sample_event_type: sampleEventType,
+        sample_event_depth_m: sampleEventDepthM,
+        run_length_m: runLengthM,
+        spt_blows_per_15cm: sptBlowsPer15cm,
+        n_value_is_2131: nValueIs2131,
+        total_core_length_cm: totalCoreLengthCm,
+        tcr_percent: tcrPercent,
+        rqd_length_cm: rqdLengthCm,
+        rqd_percent: rqdPercent,
+        return_water_colour: returnWaterColour,
+        water_loss: waterLoss,
+        borehole_diameter: boreholeDiameter
+      },
+      _placeholder: true // Remove this when real Parquet implementation is added
+    };
+
+    const dataUpload = storageClient.uploadFile(
+      dataKey,
+      Buffer.from(JSON.stringify(parquetPlaceholder), 'utf-8'),
+      'application/parquet'
+    );
+
+    // Update index.json with new version
+    const updatedIndex = {
+      latest_version: nextVersion,
+      approved_version: currentIndex.approved_version,
+      versions: [...currentIndex.versions, nextVersion].sort((a, b) => a - b)
+    };
+
+    const indexUpload = storageClient.uploadFile(
+      indexKey,
+      Buffer.from(JSON.stringify(updatedIndex, null, 2), 'utf-8'),
+      'application/json'
+    );
+
+    // Perform uploads in parallel to minimize latency/timeouts
+    await Promise.all([metadataUpload, dataUpload, indexUpload]);
+
+    // Create response object matching the original DB-based response structure
+    const newVersion = {
+      borelog_id: borelogData.borelog_id,
+      version_no: nextVersion,
+      number: borelogData.number,
+      msl: borelogData.msl,
+      boring_method: borelogData.boring_method,
+      hole_diameter: borelogData.hole_diameter,
+      commencement_date: borelogData.commencement_date,
+      completion_date: borelogData.completion_date,
+      standing_water_level: borelogData.standing_water_level,
+      termination_depth: borelogData.termination_depth,
+      coordinate: borelogData.coordinate,
+      permeability_test_count: borelogData.permeability_test_count,
+      spt_vs_test_count: borelogData.spt_vs_test_count,
+      undisturbed_sample_count: borelogData.undisturbed_sample_count,
+      disturbed_sample_count: borelogData.disturbed_sample_count,
+      water_sample_count: borelogData.water_sample_count,
       stratum_description: stratumDescription,
       stratum_depth_from: stratumDepthFrom,
       stratum_depth_to: stratumDepthTo,
@@ -338,21 +327,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       rqd_percent: rqdPercent,
       return_water_colour: returnWaterColour,
       water_loss: waterLoss,
-      borehole_diameter: boreholeDiameter
+      borehole_diameter: boreholeDiameter,
+      job_code: borelogData.job_code,
+      location: borelogData.location,
+      chainage_km: borelogData.chainage_km,
+      remarks: borelogData.remarks,
+      created_by_user_id: payload.userId,
+      status: 'DRAFT'
     };
 
-    const relationalLayers = convertScalarToRelational(scalarData);
-    if (relationalLayers.length > 0) {
-      await saveStratumData(db.getPool(), borelogData.borelog_id, nextVersion, relationalLayers, payload.userId);
-    }
+    // Note: Stratum data is now stored directly in the Parquet file
+    // No additional relational storage needed for S3-based approach
 
     const response = createResponse(201, {
       success: true,
       message: 'Borelog version created successfully',
-      data: {
-        ...newVersion,
-        version_no: nextVersion
-      }
+      data: newVersion
     });
 
     logResponse(response, Date.now() - startTime);

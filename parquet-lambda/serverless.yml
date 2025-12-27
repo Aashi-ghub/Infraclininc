@@ -1,0 +1,55 @@
+service: parquet-repository
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.10
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  environment:
+    STORAGE_MODE: ${env:STORAGE_MODE, 's3'}
+    BASE_PATH: ${env:BASE_PATH, 'parquet-data'}
+    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+          Resource:
+            - arn:aws:s3:::${env:S3_BUCKET_NAME}
+            - arn:aws:s3:::${env:S3_BUCKET_NAME}/*
+
+package:
+  patterns:
+    # Ensure parquet_storage module is packaged into the Lambda artifact
+    - ../parquet_storage/**
+    - '!**/__pycache__/**'
+    - '!**/*.pyc'
+
+functions:
+  parquet-repository:
+    handler: parquet_storage/lambda_handler.lambda_handler
+    layers:
+      - arn:aws:lambda:us-east-1:770693421928:layer:AWSLambda-Python310-SciPy1x:2
+    package:
+      patterns:
+        - ../parquet_storage/**    # reuse existing parquet code
+        - '!**/__pycache__/**'
+        - '!**/*.pyc'
+
+custom:
+  pythonRequirements:
+    fileName: ../parquet_storage/requirements.txt
+    useDownloadCache: true
+    useStaticCache: true
+    slim: true
+    # Exclude native-heavy deps; rely on AWS managed SciPy layer for pandas/pyarrow
+    noDeploy:
+      - pandas
+      - pyarrow
+
+plugins:
+  - serverless-python-requirements
+

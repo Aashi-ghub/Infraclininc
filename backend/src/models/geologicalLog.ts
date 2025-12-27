@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../db';
 import { GeologicalLog } from '../types/common';
 import { GeologicalLogInput } from '../utils/validateInput';
 import { logger } from '../utils/logger';
@@ -9,9 +8,8 @@ import {
   updateParquetEntity,
   listParquetEntities,
   ParquetEntityType,
-  getProjectIdFromName,
-  getProjectIdFromBorelogId,
 } from '../services/parquetService';
+import { createStorageClient } from '../storage/s3Client';
 
 // Define PostgreSQL error interface
 interface PostgresError extends Error {
@@ -22,9 +20,9 @@ interface PostgresError extends Error {
 
 export async function insertGeologicalLog(data: GeologicalLogInput): Promise<GeologicalLog> {
   const borelog_id = data.borelog_id || uuidv4();
-  
-  // Get project_id from project_name
-  const projectId = await getProjectIdFromName(data.project_name);
+
+  // Get project_id from project_name (S3)
+  const projectId = await getProjectIdFromNameS3(data.project_name);
   if (!projectId) {
     throw new Error(`Project not found: ${data.project_name}`);
   }
@@ -107,8 +105,8 @@ export async function getGeologicalLogById(borelog_id: string): Promise<Geologic
   try {
     logger.info(`Fetching geological log with ID: ${borelog_id}`);
     
-    // Get project_id from borelog_id
-    const projectId = await getProjectIdFromBorelogId(borelog_id);
+    // Get project_id from borelog_id (S3)
+    const projectId = await getProjectIdFromBorelogIdS3(borelog_id);
     if (!projectId) {
       logger.warn(`Could not find project_id for borelog_id: ${borelog_id}`);
       return null;
@@ -162,8 +160,8 @@ export async function getGeologicalLogById(borelog_id: string): Promise<Geologic
 }
 
 export async function getGeologicalLogsByProjectName(project_name: string): Promise<GeologicalLog[]> {
-  // Get project_id from project_name
-  const projectId = await getProjectIdFromName(project_name);
+  // Get project_id from project_name (S3)
+  const projectId = await getProjectIdFromNameS3(project_name);
   if (!projectId) {
     logger.warn(`Project not found: ${project_name}`);
     return [];
@@ -210,18 +208,17 @@ export async function getGeologicalLogsByProjectName(project_name: string): Prom
 export async function getAllGeologicalLogs(): Promise<GeologicalLog[]> {
   try {
     logger.info('Fetching all geological logs');
-    
-    // Get all projects first
-    const projectsQuery = `SELECT project_id FROM projects`;
-    const projects = await query<{ project_id: string }>(projectsQuery);
-    
+
+    const storage = createStorageClient();
+    const projectIds = await listProjectIdsFromStorage(storage);
+
     // Fetch geological logs from all projects
     const allLogs: GeologicalLog[] = [];
-    for (const project of projects) {
+    for (const projectId of projectIds) {
       try {
         const logs = await listParquetEntities(
           ParquetEntityType.GEOLOGICAL_LOG,
-          project.project_id
+          projectId
         );
         
         // Transform and add to results
@@ -246,7 +243,7 @@ export async function getAllGeologicalLogs(): Promise<GeologicalLog[]> {
           } as GeologicalLog);
         });
       } catch (error) {
-        logger.warn(`Error fetching logs for project ${project.project_id}:`, error);
+        logger.warn(`Error fetching logs for project ${projectId}:`, error);
         // Continue with other projects
       }
     }
@@ -271,8 +268,8 @@ export async function updateGeologicalLog(borelog_id: string, data: Partial<Geol
   try {
     logger.info(`Updating geological log with ID: ${borelog_id}`);
     
-    // Get project_id from borelog_id
-    const projectId = await getProjectIdFromBorelogId(borelog_id);
+    // Get project_id from borelog_id (S3)
+    const projectId = await getProjectIdFromBorelogIdS3(borelog_id);
     if (!projectId) {
       logger.warn(`Could not find project_id for borelog_id: ${borelog_id}`);
       return null;
@@ -382,3 +379,81 @@ export async function deleteGeologicalLog(borelog_id: string): Promise<boolean> 
     throw error;
   }
 } 
+
+// ========== S3 Helpers ==========
+
+async function listProjectIdsFromStorage(storageClient = createStorageClient()): Promise<string[]> {
+  const keys = await storageClient.listFiles('projects/', 20000);
+  const ids = new Set<string>();
+
+  for (const key of keys) {
+    if (!key.endsWith('project.json')) continue;
+    const parts = key.split('/');
+    if (parts.length < 3) continue; // projects/<folder>/project.json
+    const folder = parts[1];
+    if (folder.startsWith('project_')) {
+      ids.add(folder.replace('project_', ''));
+    } else {
+      ids.add(folder);
+    }
+  }
+
+  return Array.from(ids);
+}
+
+async function getProjectIdFromNameS3(projectName: string): Promise<string | null> {
+  const storage = createStorageClient();
+  const projectJsonKeys = (await storage.listFiles('projects/', 20000)).filter(k => k.endsWith('project.json'));
+
+  for (const key of projectJsonKeys) {
+    try {
+      const buf = await storage.downloadFile(key);
+      const project = JSON.parse(buf.toString('utf-8'));
+      if (project?.name && project.name.toLowerCase() === projectName.toLowerCase()) {
+        // derive project_id from content or path
+        if (project.project_id) return project.project_id;
+        const parts = key.split('/');
+        const folder = parts[1];
+        return folder.startsWith('project_') ? folder.replace('project_', '') : folder;
+      }
+    } catch (err) {
+      logger.warn('Failed to parse project.json while matching name', { key, err });
+    }
+  }
+
+  return null;
+}
+
+async function getProjectIdFromBorelogIdS3(borelogId: string): Promise<string | null> {
+  const meta = await findBorelogMetadataById(borelogId);
+  return meta?.projectId || null;
+}
+
+async function findBorelogMetadataById(borelogId: string): Promise<{ projectId: string; basePath: string; metadata: any } | null> {
+  const storage = createStorageClient();
+  const allKeys = await storage.listFiles('projects/', 50000);
+  const metaKeys = allKeys.filter(k =>
+    k.endsWith('/metadata.json') &&
+    k.includes('/borelogs/') &&
+    !k.includes('/versions/')
+  );
+
+  for (const key of metaKeys) {
+    try {
+      const buf = await storage.downloadFile(key);
+      const meta = JSON.parse(buf.toString('utf-8'));
+      if (meta?.borelog_id === borelogId) {
+        const parts = key.split('/');
+        // key format: projects/(project_*|<id>)/borelogs/(borelog_*|<id>)/metadata.json
+        const projectFolder = parts[1];
+        const projectId = projectFolder.startsWith('project_') ? projectFolder.replace('project_', '') : projectFolder;
+        const basePath = key.replace(/\/metadata\.json$/, '');
+        return { projectId, basePath, metadata: meta };
+      }
+    } catch (err) {
+      logger.warn('Failed to parse borelog metadata during lookup', { key, err });
+    }
+  }
+
+  return null;
+}

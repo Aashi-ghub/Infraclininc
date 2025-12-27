@@ -48,7 +48,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     let structureKeys: string[] = [];
     
     const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
-    const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
+    const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'fals';
 
     // Handle local filesystem mode (offline) differently
     if (isOffline) {

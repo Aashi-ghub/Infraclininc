@@ -1,10 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { Pool } from 'pg';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
-import { getPool, guardDbRoute } from '../db';
-
-let pool: Pool | null = null;
+import { createStorageClient } from '../storage/s3Client';
+import { Lambda } from 'aws-sdk';
+import { validateToken } from '../utils/validateInput';
+import { v4 as uuidv4 } from 'uuid';
 
 // Schema for stratum layer data
 const StratumLayerSchema = z.object({
@@ -41,14 +41,10 @@ const SaveStratumDataSchema = z.object({
   borelog_id: z.string().uuid(),
   version_no: z.number(),
   layers: z.array(StratumLayerSchema),
-  user_id: z.string().uuid(),
+  user_id: z.string().uuid().optional(), // allow deriving from auth token
 });
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('saveStratumData');
-  if (dbGuard) return dbGuard;
-
   try {
     logger.info('Saving stratum data', { body: event.body });
 
@@ -56,129 +52,120 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const body = JSON.parse(event.body || '{}');
     const validatedData = SaveStratumDataSchema.parse(body);
 
-    const { borelog_id, version_no, layers, user_id } = validatedData;
+    // Derive user from token if not supplied (keeps behavior compatible with callers that omit user_id)
+    const authHeader = event.headers?.Authorization || event.headers?.authorization;
+    const payload = authHeader ? await validateToken(authHeader) : null;
+    const derivedUserId = validatedData.user_id || payload?.userId;
 
-    pool = await getPool();
-    const client = await pool.connect();
-    
-    // Set statement timeout to 30 seconds
-    await client.query('SET statement_timeout = 30000');
-
-    try {
-      logger.info('Starting transaction for stratum data save', { borelog_id, version_no, layer_count: layers.length });
-      await client.query('BEGIN');
-
-      // Delete existing stratum data for this borelog version
-      logger.info('Deleting existing stratum data');
-      await client.query(
-        `DELETE FROM stratum_layers WHERE borelog_id = $1 AND version_no = $2`,
-        [borelog_id, version_no]
-      );
-
-      // Insert new stratum layers
-      logger.info('Starting layer insertion');
-      for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
-        const layer = layers[layerIndex];
-        const layerOrder = layerIndex + 1;
-        logger.info(`Processing layer ${layerOrder}/${layers.length}`, {
-          sample_count: layer.samples?.length || 0
-        });
-
-        // Insert stratum layer
-        const layerResult = await client.query(
-          `INSERT INTO stratum_layers (
-            borelog_id, version_no, layer_order, description, depth_from_m, depth_to_m, thickness_m,
-            return_water_colour, water_loss, borehole_diameter, remarks, created_by_user_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-          [
-            borelog_id,
-            version_no,
-            layerOrder,
-            layer.description || null,
-            layer.depth_from_m,
-            layer.depth_to_m,
-            layer.thickness_m,
-            layer.return_water_colour || null,
-            layer.water_loss || null,
-            layer.borehole_diameter,
-            layer.remarks || null,
-            user_id
-          ]
-        );
-
-        const stratumLayerId = layerResult.rows[0].id;
-
-        // Insert sample points for this layer
-        if (layer.samples && layer.samples.length > 0) {
-          logger.info(`Inserting ${layer.samples.length} samples for layer ${layerOrder}`);
-          for (let sampleIndex = 0; sampleIndex < layer.samples.length; sampleIndex++) {
-            const sample = layer.samples[sampleIndex];
-            const sampleOrder = sampleIndex + 1;
-            logger.info(`Processing sample ${sampleOrder}/${layer.samples.length} for layer ${layerOrder}`, {
-              sample_type: sample.sample_type,
-              depth_mode: sample.depth_mode
-            });
-
-            await client.query(
-              `INSERT INTO stratum_sample_points (
-                stratum_layer_id, sample_order, sample_type, depth_mode, depth_single_m,
-                depth_from_m, depth_to_m, run_length_m, spt_15cm_1, spt_15cm_2, spt_15cm_3,
-                n_value, total_core_length_cm, tcr_percent, rqd_length_cm, rqd_percent,
-                created_by_user_id
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-              [
-                stratumLayerId,
-                sampleOrder,
-                sample.sample_type || null,
-                sample.depth_mode || 'single',
-                sample.depth_single_m,
-                sample.depth_from_m,
-                sample.depth_to_m,
-                sample.run_length_m,
-                sample.spt_15cm_1,
-                sample.spt_15cm_2,
-                sample.spt_15cm_3,
-                sample.n_value,
-                sample.total_core_length_cm,
-                sample.tcr_percent,
-                sample.rqd_length_cm,
-                sample.rqd_percent,
-                user_id
-              ]
-            );
-          }
-        }
-      }
-
-      await client.query('COMMIT');
-
-      logger.info('Stratum data saved successfully', { borelog_id, version_no, layers_count: layers.length });
-
-      return {
-        statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-          'Access-Control-Allow-Methods': 'POST,OPTIONS'
-        },
-        body: JSON.stringify({
-          success: true,
-          message: 'Stratum data saved successfully',
-          data: {
-            borelog_id,
-            version_no,
-            layers_saved: layers.length
-          }
-        })
-      };
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+    if (!derivedUserId) {
+      return createErrorResponse(400, 'Missing user_id', 'user_id is required');
     }
+
+    const { borelog_id, version_no, layers } = validatedData;
+
+    const storageClient = createStorageClient();
+
+    // Locate borelog metadata (new or legacy path) to derive project/base path
+    const borelogLookup = await findBorelogBasePath(storageClient, borelog_id);
+    if (!borelogLookup) {
+      return createErrorResponse(404, 'Borelog not found in storage', 'Borelog not found');
+    }
+
+    const { projectId, basePath } = borelogLookup;
+    const versionPath = `${basePath}/versions/v${version_no}`;
+    const versionMetadataKey = `${versionPath}/metadata.json`;
+
+    const versionExists = await storageClient.fileExists(versionMetadataKey);
+    if (!versionExists) {
+      return createErrorResponse(404, 'Borelog version not found', 'Requested borelog version does not exist');
+    }
+
+    // Persist a JSON snapshot alongside parquet so UI can read stratum data without parquet parsing
+    const stratumJsonKey = `${versionPath}/stratum/stratum.json`;
+    const nowIso = new Date().toISOString();
+    const snapshot = {
+      borelog_id,
+      version_no,
+      project_id: projectId,
+      created_at: nowIso,
+      updated_at: nowIso,
+      layers: (layers || []).map((layer, idx) => {
+        const samples = (layer.samples || []).map((sample, sIdx) => ({
+          id: sample.id || uuidv4(),
+          sample_order: sIdx + 1,
+          sample_type: sample.sample_type || null,
+          depth_mode: sample.depth_mode || null,
+          depth_single_m: sample.depth_single_m ?? null,
+          depth_from_m: sample.depth_from_m ?? null,
+          depth_to_m: sample.depth_to_m ?? null,
+          run_length_m: sample.run_length_m ?? null,
+          spt_15cm_1: sample.spt_15cm_1 ?? null,
+          spt_15cm_2: sample.spt_15cm_2 ?? null,
+          spt_15cm_3: sample.spt_15cm_3 ?? null,
+          n_value: sample.n_value ?? null,
+          total_core_length_cm: sample.total_core_length_cm ?? null,
+          tcr_percent: sample.tcr_percent ?? null,
+          rqd_length_cm: sample.rqd_length_cm ?? null,
+          rqd_percent: sample.rqd_percent ?? null,
+          created_at: nowIso,
+          created_by_user_id: derivedUserId,
+        }));
+
+        return {
+          id: layer.id || uuidv4(),
+          layer_order: idx + 1,
+          description: layer.description || null,
+          depth_from_m: layer.depth_from_m ?? null,
+          depth_to_m: layer.depth_to_m ?? null,
+          thickness_m: layer.thickness_m ?? null,
+          return_water_colour: layer.return_water_colour || null,
+          water_loss: layer.water_loss || null,
+          borehole_diameter: layer.borehole_diameter ?? null,
+          remarks: layer.remarks || null,
+          created_at: nowIso,
+          created_by_user_id: derivedUserId,
+          samples,
+        };
+      }),
+    };
+
+    await storageClient.uploadFile(
+      stratumJsonKey,
+      Buffer.from(JSON.stringify(snapshot, null, 2), 'utf-8'),
+      'application/json'
+    );
+
+    // Delegate to Python wrapper to mutate Parquet (Node must not touch Parquet)
+    await invokeStratumLambda({
+      project_id: projectId,
+      borelog_id,
+      version_no,
+      user_id: derivedUserId,
+      layers,
+      stratum_data_key: `${versionPath}/stratum/data.parquet`,
+      stratum_metadata_key: `${versionPath}/stratum/metadata.json`
+    });
+
+    logger.info('Stratum data saved successfully (S3/Python path)', { borelog_id, version_no, layers_count: layers.length });
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+      },
+      body: JSON.stringify({
+        success: true,
+        message: 'Stratum data saved successfully',
+        data: {
+          borelog_id,
+          version_no,
+          layers_saved: layers.length
+        }
+      })
+    };
 
   } catch (error) {
     logger.error('Error saving stratum data:', error);
@@ -199,3 +186,92 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     };
   }
 };
+
+/**
+ * Find borelog base path by scanning metadata files in S3
+ */
+async function findBorelogBasePath(storageClient: ReturnType<typeof createStorageClient>, borelogId: string): Promise<{ projectId: string; basePath: string } | null> {
+  // Search metadata files under projects/ looking for matching borelog_id
+  const allKeys = await storageClient.listFiles('projects/', 20000);
+  const candidateKeys = allKeys.filter(k =>
+    k.endsWith('/metadata.json') &&
+    k.includes('/borelogs/') &&
+    !k.includes('/versions/')
+  );
+
+  for (const key of candidateKeys) {
+    try {
+      const buf = await storageClient.downloadFile(key);
+      const meta = JSON.parse(buf.toString('utf-8'));
+      if (meta?.borelog_id === borelogId && meta?.project_id) {
+        const basePath = key.replace(/\/metadata\.json$/, '');
+        return { projectId: meta.project_id, basePath };
+      }
+    } catch (err) {
+      logger.warn('Failed to parse borelog metadata during lookup', { key, err });
+    }
+  }
+
+  return null;
+}
+
+const lambda = new Lambda({ region: process.env.AWS_REGION || 'us-east-1' });
+// Resolve parquet Lambda name from env; sanitize to avoid whitespace/quotes
+const PARQUET_LAMBDA_FUNCTION_NAME = (() => {
+  const raw = process.env.PARQUET_LAMBDA_FUNCTION_NAME;
+  const cleaned = raw ? raw.trim().replace(/^["']|["']$/g, '') : '';
+  return cleaned || '';
+})();
+
+async function invokeStratumLambda(payload: any): Promise<void> {
+  if (!PARQUET_LAMBDA_FUNCTION_NAME) {
+    throw new Error('PARQUET_LAMBDA_FUNCTION_NAME is not set');
+  }
+
+  const params = {
+    FunctionName: PARQUET_LAMBDA_FUNCTION_NAME,
+    InvocationType: 'RequestResponse' as const,
+    Payload: JSON.stringify({
+      action: 'save_stratum',
+      ...payload
+    })
+  };
+
+  // Diagnostic: confirm which function name is being invoked at runtime
+  console.log('Invoking parquet Lambda', { FunctionName: PARQUET_LAMBDA_FUNCTION_NAME });
+
+  const result = await lambda.invoke(params).promise();
+
+  if (result.FunctionError) {
+    const payloadText = result.Payload ? result.Payload.toString() : '';
+    throw new Error(`Lambda function error: ${result.FunctionError} ${payloadText}`);
+  }
+
+  if (!result.Payload) {
+    throw new Error('Empty Lambda response');
+  }
+
+  const response = JSON.parse(result.Payload.toString());
+
+  if (response.statusCode && response.statusCode >= 400) {
+    const body = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+    throw new Error(body?.error || 'Stratum Lambda failed');
+  }
+}
+
+function createErrorResponse(statusCode: number, message: string, error: string): APIGatewayProxyResult {
+  return {
+    statusCode,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+      'Access-Control-Allow-Methods': 'POST,OPTIONS'
+    },
+    body: JSON.stringify({
+      success: false,
+      message,
+      error
+    })
+  };
+}

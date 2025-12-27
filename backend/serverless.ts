@@ -29,6 +29,7 @@ const serverlessConfiguration: AWS = {
       PGPASSWORD: process.env.PGPASSWORD || '',
       // JWT Secret for authentication
       JWT_SECRET: process.env.JWT_SECRET || '',
+      PARQUET_LAMBDA_FUNCTION_NAME: process.env.PARQUET_LAMBDA_FUNCTION_NAME || 'parquet-repository-dev-parquet-repository',
     },
     iam: {
       role: {
@@ -41,12 +42,39 @@ const serverlessConfiguration: AWS = {
             Resource: [
               process.env.IS_OFFLINE ? '*' : 'arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:infra/postgres/*'
             ]
+          },
+          {
+            Effect: 'Allow',
+            Action: [
+              's3:GetObject',
+              's3:PutObject'
+            ],
+            Resource: [
+              'arn:aws:s3:::${env:S3_BUCKET_NAME}',
+              'arn:aws:s3:::${env:S3_BUCKET_NAME}/*'
+            ]
           }
         ]
       }
     }
   },
   functions: {
+    // Parquet repository (Python) - internal invocation only
+    parquetRepository: {
+      handler: 'parquet_storage/lambda_handler.lambda_handler',
+      runtime: 'python3.10',
+      package: {
+        patterns: [
+          'parquet_storage/**'
+        ]
+      },
+      environment: {
+        STORAGE_MODE: process.env.STORAGE_MODE || 's3',
+        BASE_PATH: process.env.BASE_PATH || 'parquet-data',
+        S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || process.env.PARQUET_BUCKET_NAME || ''
+      }
+    },
+
     // Auth endpoints
     login: {
       handler: 'src/handlers/auth.login',
