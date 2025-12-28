@@ -2,8 +2,8 @@
  * S3 Client Abstraction Layer
  * 
  * Provides a unified interface for S3 operations that works in both:
- * - Production: Real S3 operations via AWS SDK
- * - Local Development: File system operations when IS_OFFLINE=true
+ * - S3 mode: Real S3 operations via AWS SDK
+ * - Local mode: File system operations (legacy/offline fallback)
  * 
  * This module does NOT contain business logic - it's a pure storage abstraction.
  */
@@ -42,12 +42,16 @@ export class StorageClient {
     this.bucketName = config.bucketName;
     this.region = config.region;
 
-    const storageModeRaw = process.env.STORAGE_MODE || '';
-    const isOfflineRaw = process.env.IS_OFFLINE || '';
+    const storageModeRaw = process.env.STORAGE_MODE || 's3';
+    // Fallback bucket names if S3_BUCKET_NAME is unset
+    if (!process.env.S3_BUCKET_NAME) {
+      process.env.S3_BUCKET_NAME =
+        process.env.PARQUET_BUCKET_NAME ||
+        process.env.PARQUET_BUCKET ||
+        '';
+    }
     const storageMode = storageModeRaw.trim().replace(/["']/g, '').toLowerCase();
-    const isOfflineFlag = isOfflineRaw.trim().replace(/["']/g, '').toLowerCase() === 'true';
-    const hasBucket = Boolean(config.bucketName);
-    const forceS3 = storageMode === 's3' || (!storageMode && hasBucket);
+    const useS3 = storageMode === 's3';
 
     // Temporary diagnostics to verify environment at runtime
     console.log('ENV CHECK', {
@@ -57,8 +61,8 @@ export class StorageClient {
       AWS_EXECUTION_ENV: process.env.AWS_EXECUTION_ENV,
     });
 
-    // STORAGE_MODE=s3 must force S3 regardless of IS_OFFLINE
-    this.isOffline = forceS3 ? false : isOfflineFlag;
+    // STORAGE_MODE is the single source of truth: s3 => S3, otherwise local
+    this.isOffline = !useS3;
     this.localStoragePath = config.localStoragePath || path.join(process.cwd(), 'local-storage');
 
     if (this.isOffline) {
@@ -412,8 +416,8 @@ export class StorageClient {
           } else if (entry.isFile()) {
             // Normalize path separators to match S3-style keys
             keys.push(relativePath.replace(/\\/g, '/'));
-          }
         }
+      }
       };
 
       await walk(prefix);

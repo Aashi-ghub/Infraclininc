@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 class StorageMode:
     """Storage mode constants"""
     MOCK = "mock"  # Always use mock storage backend
+    S3 = "s3"
+    LOCAL = "local"
 
 
 class ParquetStorageEngine:
@@ -75,12 +77,25 @@ class ParquetStorageEngine:
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
     ):
-        self.mode = StorageMode.MOCK  # Always use mock backend
+        # Honor requested mode; default to mock if not s3/local
+        normalized_mode = (mode or StorageMode.MOCK).lower()
+        if normalized_mode not in {StorageMode.S3, StorageMode.LOCAL, StorageMode.MOCK}:
+            normalized_mode = StorageMode.MOCK
+        self.mode = normalized_mode
         self.base_path = base_path.rstrip("/")
 
-        # Ensure mock_s3 directory exists
-        Path("mock_s3").mkdir(parents=True, exist_ok=True)
-        logger.info("Initialized mock storage engine using local filesystem")
+        if self.mode == StorageMode.S3:
+            if not bucket_name:
+                raise ValueError("bucket_name is required for S3 mode")
+            self.bucket_name = bucket_name
+            self.aws_region = aws_region
+            self.aws_access_key_id = aws_access_key_id
+            self.aws_secret_access_key = aws_secret_access_key
+            logger.info("Initialized S3 storage engine", extra={"bucket": bucket_name, "base_path": self.base_path})
+        else:
+            # LOCAL or MOCK both use local filesystem; keep mock_s3 path for compatibility
+            Path(MOCK_S3_ROOT).mkdir(parents=True, exist_ok=True)
+            logger.info("Initialized local/mock storage engine using filesystem", extra={"root": MOCK_S3_ROOT})
     
     def _generate_unique_path(self, base_path: str, filename: str) -> str:
         """
@@ -166,9 +181,14 @@ class ParquetStorageEngine:
             )
         
         try:
-            return self._write_to_mock(
-                full_path, dataframe, partition_cols, overwrite
-            )
+            if self.mode == StorageMode.S3:
+                return self._write_to_s3(full_path, dataframe, partition_cols, overwrite)
+            elif self.mode == StorageMode.LOCAL:
+                return self._write_to_local(full_path, dataframe, partition_cols, overwrite)
+            else:
+                return self._write_to_mock(
+                    full_path, dataframe, partition_cols, overwrite
+                )
         
         except Exception as e:
             logger.error(f"Failed to write Parquet file: {e}", exc_info=True)
@@ -276,6 +296,50 @@ class ParquetStorageEngine:
             )
         
         return file_path
+
+    def _write_to_s3(
+        self,
+        s3_path: str,
+        dataframe: pd.DataFrame,
+        partition_cols: Optional[list],
+        overwrite: bool,
+    ) -> str:
+        """Write DataFrame to S3 using pyarrow -> bytes."""
+        if partition_cols:
+            raise NotImplementedError("Partitioned writes to S3 not implemented")
+
+        table = pa.Table.from_pandas(dataframe)
+        output_buffer = pa.BufferOutputStream()
+        pq.write_table(table, output_buffer, use_dictionary=True, compression="snappy")
+        data = output_buffer.getvalue().to_pybytes()
+
+        import boto3
+
+        s3 = boto3.client(
+          "s3",
+          region_name=self.aws_region,
+          aws_access_key_id=self.aws_access_key_id,
+          aws_secret_access_key=self.aws_secret_access_key,
+        )
+
+        key = s3_path.lstrip("/")
+
+        if not overwrite:
+            try:
+                s3.head_object(Bucket=self.bucket_name, Key=key)
+                raise FileExistsError(f"File already exists at s3://{self.bucket_name}/{key}")
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "404":
+                    raise
+
+        s3.put_object(
+            Bucket=self.bucket_name,
+            Key=key,
+            Body=data,
+            ContentType="application/octet-stream"
+        )
+
+        return f"s3://{self.bucket_name}/{key}"
     
     def _upload_directory_to_mock(self, local_dir: str, mock_prefix: str) -> None:
         """Upload a directory tree to mock storage."""
@@ -307,7 +371,10 @@ class ParquetStorageEngine:
         full_path = f"{self.base_path}/{path.lstrip('/')}"
         
         try:
-            return self._read_from_mock(full_path, filters)
+            if self.mode == StorageMode.S3:
+                return self._read_from_s3(full_path, filters)
+            else:
+                return self._read_from_mock(full_path, filters)
         
         except Exception as e:
             logger.error(f"Failed to read Parquet file: {e}", exc_info=True)
@@ -330,6 +397,25 @@ class ParquetStorageEngine:
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+
+    def _read_from_s3(self, s3_path: str, filters: Optional[list]) -> pd.DataFrame:
+        """Read Parquet file from S3."""
+        import boto3
+        from io import BytesIO
+
+        s3 = boto3.client(
+            "s3",
+            region_name=self.aws_region,
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+        )
+
+        key = s3_path.lstrip("/")
+        obj = s3.get_object(Bucket=self.bucket_name, Key=key)
+        body = obj["Body"].read()
+
+        with BytesIO(body) as bio:
+            return pd.read_parquet(bio, filters=filters)
     
     @staticmethod
     def validate_schema(dataframe: pd.DataFrame, expected_schema: pa.Schema) -> None:

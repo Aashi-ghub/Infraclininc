@@ -32,7 +32,8 @@ functions:
   parquet-repository:
     handler: parquet_storage/lambda_handler.lambda_handler
     layers:
-      - arn:aws:lambda:us-east-1:770693421928:layer:AWSLambda-Python310-SciPy1x:2
+      # Use public pandas/pyarrow layer (override with env:PANDAS_LAYER_ARN if desired)
+      - ${env:PANDAS_LAYER_ARN, 'arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python310:10'}
     package:
       patterns:
         - ../parquet_storage/**    # reuse existing parquet code

@@ -78,16 +78,32 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       created_at: createdAt.toISOString()
     };
 
-    // Write to S3: projects/project_<projectId>/project.json
+    // Write to S3:
+    // - new path: projects/{projectId}/project.json  (primary)
+    // - legacy path: projects/project_{projectId}/project.json (backward compatibility)
     const storageClient = createStorageClient();
-    const s3Key = `projects/project_${projectId}/project.json`;
+    const primaryKey = `projects/${projectId}/project.json`;
+    const legacyKey = `projects/project_${projectId}/project.json`;
+    const minimalProject = {
+      project_id: projectId,
+      name: projectData.name,
+      location: projectData.location || null
+    };
     const projectJson = JSON.stringify(project, null, 2);
+    const minimalJson = JSON.stringify(minimalProject, null, 2);
     
-    await storageClient.uploadFile(
-      s3Key,
+    await Promise.all([
+      storageClient.uploadFile(
+        primaryKey,
+        Buffer.from(minimalJson, 'utf-8'),
+        'application/json'
+      ),
+      storageClient.uploadFile(
+        legacyKey,
       Buffer.from(projectJson, 'utf-8'),
       'application/json'
-    );
+      )
+    ]);
 
     // Return same response format as before
     const response = createResponse(201, {

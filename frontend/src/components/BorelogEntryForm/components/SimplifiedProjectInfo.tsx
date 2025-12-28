@@ -29,6 +29,34 @@ export function SimplifiedProjectInfo({
 }: SimplifiedProjectInfoProps) {
   const { register } = useFormContext();
 
+  // Deduplicate options to avoid duplicate keys in selects
+  const uniqueProjects = React.useMemo(() => {
+    const seen = new Set<string>();
+    return projects.filter(p => {
+      if (seen.has(p.project_id)) return false;
+      seen.add(p.project_id);
+      return true;
+    });
+  }, [projects]);
+
+  const uniqueStructures = React.useMemo(() => {
+    const seen = new Set<string>();
+    return structures.filter(s => {
+      if (seen.has(s.structure_id)) return false;
+      seen.add(s.structure_id);
+      return true;
+    });
+  }, [structures]);
+
+  const uniqueSubstructures = React.useMemo(() => {
+    const seen = new Set<string>();
+    return substructures.filter(s => {
+      if (seen.has(s.substructure_id)) return false;
+      seen.add(s.substructure_id);
+      return true;
+    });
+  }, [substructures]);
+
   return (
     <div className="space-y-6">
 
@@ -45,7 +73,7 @@ export function SimplifiedProjectInfo({
               <SelectValue placeholder="Select project" />
             </SelectTrigger>
             <SelectContent>
-              {projects.map((project) => (
+              {uniqueProjects.map((project) => (
                 <SelectItem key={project.project_id} value={project.project_id}>
                   {project.name}
                 </SelectItem>
@@ -64,7 +92,7 @@ export function SimplifiedProjectInfo({
               <SelectValue placeholder="Select structure" />
             </SelectTrigger>
             <SelectContent>
-              {structures.map((structure) => (
+              {uniqueStructures.map((structure) => (
                 <SelectItem key={structure.structure_id} value={structure.structure_id}>
                   {structure.type}
                 </SelectItem>
@@ -83,7 +111,7 @@ export function SimplifiedProjectInfo({
               <SelectValue placeholder="Select substructure" />
             </SelectTrigger>
             <SelectContent>
-              {substructures.map((s) => (
+              {uniqueSubstructures.map((s) => (
                 <SelectItem key={s.substructure_id} value={s.substructure_id}>
                   {s.type}
                 </SelectItem>

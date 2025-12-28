@@ -239,15 +239,15 @@ async function readStratumData(
       logger.debug('Attempting to read stratum data', { stratumKey: key });
 
       const buffer = await storageClient.downloadFile(key);
-      const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
-
-      logger.debug('Read stratum data', { 
+    const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
+    
+    logger.debug('Read stratum data', { 
         stratumKey: key,
-        versionNo, 
-        layerCount: stratumData.layers?.length || 0 
-      });
-
-      return stratumData;
+      versionNo, 
+      layerCount: stratumData.layers?.length || 0 
+    });
+    
+    return stratumData;
     }
 
     logger.warn('Stratum data file not found', { keysTried: keysToTry });
@@ -260,6 +260,18 @@ async function readStratumData(
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    // Force S3 mode for storage reads; local/offline is no longer used
+    process.env.STORAGE_MODE = 's3';
+    delete process.env.IS_OFFLINE;
+    // Ensure bucket env is present (fallback to alt envs if provided)
+    if (!process.env.S3_BUCKET_NAME) {
+      const fallback =
+        process.env.PARQUET_BUCKET_NAME ||
+        process.env.PARQUET_BUCKET ||
+        'bpc-cloud'; // hard fallback to known bucket
+      process.env.S3_BUCKET_NAME = fallback;
+    }
+
     logger.info('Getting stratum data from S3', { queryParams: event.queryStringParameters });
 
     // Parse and validate query parameters
@@ -277,7 +289,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     try {
       storageClient = createStorageClient();
     } catch (error) {
-      logger.error('Failed to create storage client', { error });
+      logger.error('Failed to create storage client', { error, storageMode: process.env.STORAGE_MODE, bucket: process.env.S3_BUCKET_NAME });
+      const errMsg =
+        !process.env.S3_BUCKET_NAME
+          ? 'S3 bucket name not configured (set S3_BUCKET_NAME or PARQUET_BUCKET_NAME)'
+          : error instanceof Error
+          ? error.message
+          : 'Unknown error';
+
       return {
         statusCode: 500,
         headers: {
@@ -289,7 +308,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         body: JSON.stringify({
           success: false,
           message: 'Failed to initialize storage',
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: errMsg
         })
       };
     }

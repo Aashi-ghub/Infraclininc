@@ -1,8 +1,7 @@
 # Parquet Storage Engine Requirements
 
 # Core dependencies
-pandas>=2.0.0
-pyarrow>=12.0.0
+# pandas and pyarrow are provided by the AWS SciPy layer to avoid bundling platform-specific binaries
 
 # AWS S3 support (optional, only needed for S3 mode)
 boto3>=1.28.0

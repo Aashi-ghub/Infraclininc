@@ -19,10 +19,14 @@ import json
 import logging
 import os
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 from .storage_engine import ParquetStorageEngine
+from .storage_engine import StorageMode
 from .versioned_storage import VersionedParquetStorage
 from .repository import ParquetRepository, EntityType
+import boto3
+import json
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -62,6 +66,7 @@ class LambdaHandler:
         # Initialize versioned storage and repository
         versioned_storage = VersionedParquetStorage(base_storage)
         self.repository = ParquetRepository(versioned_storage)
+        self.storage_engine = base_storage
     
     def _parse_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -120,6 +125,13 @@ class LambdaHandler:
                 "comment": event.get("comment"),
                 "version": event.get("version"),
                 "status": event.get("status"),
+                # passthrough fields for save_stratum and other direct invokes
+                "borelog_id": event.get("borelog_id"),
+                "version_no": event.get("version_no"),
+                "stratum_metadata_key": event.get("stratum_metadata_key"),
+                "stratum_data_key": event.get("stratum_data_key"),
+                "layers": event.get("layers"),
+                "user_id": event.get("user_id"),
             }
     
     def _create_response(
@@ -399,6 +411,66 @@ class LambdaHandler:
             logger.error(f"Error getting history: {e}", exc_info=True)
             return self._create_response(500, {"error": "Internal server error"})
     
+    def _handle_save_stratum(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle save_stratum action coming from Node handler.
+        Writes a minimal metadata file; data parquet is handled elsewhere/placeholder.
+        """
+        borelog_id = request.get("borelog_id")
+        version_no = request.get("version_no")
+        user_id = request.get("user_id")
+        layers = request.get("layers", [])
+        metadata_key = request.get("stratum_metadata_key")
+        data_key = request.get("stratum_data_key")
+
+        if not all([borelog_id, version_no, metadata_key]):
+            return self._create_response(400, {
+                "error": "Missing required fields for save_stratum",
+                "required": ["borelog_id", "version_no", "stratum_metadata_key"]
+            })
+
+        metadata_payload = {
+            "borelog_id": borelog_id,
+            "version_no": version_no,
+            "layers_count": len(layers),
+            "saved_by": user_id,
+            "saved_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+        try:
+            if self.storage_engine.mode == StorageMode.S3:
+                if not getattr(self.storage_engine, "bucket_name", None):
+                    raise ValueError("bucket_name not configured for S3 mode")
+                s3 = boto3.client("s3", region_name=self.storage_engine.aws_region)
+                s3.put_object(
+                    Bucket=self.storage_engine.bucket_name,
+                    Key=metadata_key,
+                    Body=json.dumps(metadata_payload, default=str),
+                    ContentType="application/json"
+                )
+                # Optionally store layers JSON alongside metadata for quick reads
+                if layers and data_key:
+                    s3.put_object(
+                        Bucket=self.storage_engine.bucket_name,
+                        Key=data_key.replace(".parquet", ".json"),
+                        Body=json.dumps({"layers": layers}, default=str),
+                        ContentType="application/json"
+                    )
+            else:
+                # Local/mock fallback: write to /tmp
+                from pathlib import Path
+                Path("/tmp/stratum").mkdir(parents=True, exist_ok=True)
+                with open("/tmp/stratum/metadata.json", "w", encoding="utf-8") as f:
+                    json.dump(metadata_payload, f)
+                if layers and data_key:
+                    with open("/tmp/stratum/layers.json", "w", encoding="utf-8") as f:
+                        json.dump({"layers": layers}, f)
+
+            return self._create_response(200, {"success": True, "message": "Stratum saved"})
+        except Exception as e:
+            logger.error(f"Error saving stratum: {e}", exc_info=True)
+            return self._create_response(500, {"error": "Failed to save stratum"})
+    
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """
         Main Lambda handler entry point.
@@ -434,6 +506,7 @@ class LambdaHandler:
                 "list": self._handle_list,
                 "get_version": self._handle_get_version,
                 "get_history": self._handle_get_history,
+                "save_stratum": self._handle_save_stratum,
             }
             
             handler = action_handlers.get(action)
