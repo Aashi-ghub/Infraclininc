@@ -3,14 +3,69 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { validate as validateUUID } from 'uuid';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
+
+/**
+ * Find borelog metadata and project info by scanning S3
+ */
+async function findBorelogMetadata(borelogId: string): Promise<{ projectId: string; basePath: string; metadata: any } | null> {
+  const storageClient = createStorageClient();
+  const keys = await storageClient.listFiles('projects/', 20000);
+  const metadataKeys = keys.filter(k =>
+    k.endsWith('/metadata.json') &&
+    k.includes('/borelogs/') &&
+    !k.includes('/versions/')
+  );
+
+  for (const key of metadataKeys) {
+    try {
+      const buf = await storageClient.downloadFile(key);
+      const meta = JSON.parse(buf.toString('utf-8'));
+      if (meta?.borelog_id === borelogId && meta?.project_id) {
+        const basePath = key.replace(/\/metadata\.json$/, '');
+        return { projectId: meta.project_id, basePath, metadata: meta };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if project exists in S3 (for Project Manager access validation)
+ */
+async function projectExists(projectId: string): Promise<boolean> {
+  const storageClient = createStorageClient();
+  const projectKey = `projects/project_${projectId}/project.json`;
+  try {
+    return await storageClient.fileExists(projectKey);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Delete all files under a borelog prefix in S3
+ */
+async function deleteBorelogFiles(basePath: string): Promise<void> {
+  const storageClient = createStorageClient();
+  const allFiles = await storageClient.listFiles(basePath, 10000);
+  
+  // Delete all files in parallel for optimal performance
+  const deletePromises = allFiles.map(file => 
+    storageClient.deleteFile(file).catch(err => {
+      // Log but don't fail on individual file deletion errors
+      logger.warn('Failed to delete file during borelog deletion', { file, error: err });
+    })
+  );
+  
+  await Promise.all(deletePromises);
+  logger.info('Deleted all borelog files', { basePath, fileCount: allFiles.length });
+}
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('deleteBorelog');
-  if (dbGuard) return dbGuard;
-
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -54,85 +109,43 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const pool = await db.getPool();
-    const client = await pool.connect();
+    // Find borelog metadata in S3
+    const borelogInfo = await findBorelogMetadata(borelogId);
+    if (!borelogInfo) {
+      const response = createResponse(404, {
+        success: false,
+        message: 'Borelog not found',
+        error: `No borelog found with ID ${borelogId}`
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
 
-    try {
-      await client.query('BEGIN');
+    const { projectId, basePath } = borelogInfo;
 
-      // Ensure borelog exists and get project info for Project Manager validation
-      const existsRes = await client.query(
-        'SELECT borelog_id, project_id FROM boreloge WHERE borelog_id = $1', 
-        [borelogId]
-      );
-      if (existsRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        const response = createResponse(404, {
+    // For Project Managers, verify project exists (best-effort access check without DB)
+    if (payload.role === 'Project Manager') {
+      const exists = await projectExists(projectId);
+      if (!exists) {
+        const response = createResponse(403, {
           success: false,
-          message: 'Borelog not found',
-          error: `No borelog found with ID ${borelogId}`
+          message: 'Access denied',
+          error: 'You do not have permission to delete borelogs from this project'
         });
         logResponse(response, Date.now() - startTime);
         return response;
       }
-
-      const borelog = existsRes.rows[0];
-
-      // For Project Managers, check if they have access to the project
-      if (payload.role === 'Project Manager') {
-        const projectAccessRes = await client.query(
-          'SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2 AND role = $3',
-          [borelog.project_id, payload.userId, 'Project Manager']
-        );
-        
-        if (projectAccessRes.rows.length === 0) {
-          await client.query('ROLLBACK');
-          const response = createResponse(403, {
-            success: false,
-            message: 'Access denied',
-            error: 'You do not have permission to delete borelogs from this project'
-          });
-          logResponse(response, Date.now() - startTime);
-          return response;
-        }
-      }
-
-      // Delete child records first (defensive if FK constraints lack cascade)
-      await client.query('DELETE FROM borelog_images WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      await client.query('DELETE FROM borelog_assignments WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      await client.query('DELETE FROM stratum_layers WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      await client.query('DELETE FROM borelog_details WHERE borelog_id = $1', [borelogId]).catch(() => {});
-      
-      // Delete borelog submissions related to this borelog
-      await client.query(
-        'DELETE FROM borelog_submissions WHERE borehole_id IN (SELECT borehole_id FROM borehole WHERE project_id = $1)',
-        [borelog.project_id]
-      ).catch(() => {});
-
-      // Finally delete borelog
-      await client.query('DELETE FROM boreloge WHERE borelog_id = $1', [borelogId]);
-
-      await client.query('COMMIT');
-
-      const response = createResponse(200, {
-        success: true,
-        message: 'Borelog deleted successfully'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      logger.error('Failed to delete borelog:', err);
-      const response = createResponse(500, {
-        success: false,
-        message: 'Internal server error',
-        error: 'Failed to delete borelog'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
-    } finally {
-      client.release();
     }
+
+    // Delete all files under the borelog prefix in S3
+    await deleteBorelogFiles(basePath);
+
+    const response = createResponse(200, {
+      success: true,
+      message: 'Borelog deleted successfully'
+    });
+    logResponse(response, Date.now() - startTime);
+    return response;
   } catch (error) {
     logger.error('Error in deleteBorelog handler:', error);
     const response = createResponse(500, {

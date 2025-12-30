@@ -134,9 +134,6 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId,
     setUploadProgress(0);
 
     try {
-      // Read file content
-      const fileContent = await selectedFile.text();
-      
       // Simulate upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
@@ -148,21 +145,26 @@ export function BorelogCSVUpload({ projects, onUploadSuccess, selectedProjectId,
         });
       }, 200);
 
-      // Determine file type
-      const fileExtension = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'));
-      const fileType = fileExtension === '.csv' ? 'csv' : 'xlsx';
-
-      // Prepare request data
-      const requestData = {
-        csvData: fileContent,
-        fileType: fileType,
-        projectId: selectedProject,
-        structureId: selectedStructureId,
-        substructureId: selectedSubstructureId,
-      };
+      // MIGRATED: Use multipart/form-data instead of JSON to preserve binary integrity
+      // This ensures XLSX files are uploaded as raw binary (not base64) and CSV files
+      // maintain proper encoding. The backend now rejects JSON-based uploads.
+      const formData = new FormData();
+      
+      // Append the file directly (native File object, no base64 encoding)
+      formData.append('file', selectedFile);
+      
+      // Append form fields
+      formData.append('projectId', selectedProject);
+      if (selectedStructureId) {
+        formData.append('structureId', selectedStructureId);
+      }
+      if (selectedSubstructureId) {
+        formData.append('substructureId', selectedSubstructureId);
+      }
 
       // Make API call via API client (handles base URL and auth)
-      const apiResponse = await geologicalLogApi.uploadBorelogCSV(requestData);
+      // The API client will send FormData as multipart/form-data (browser sets boundary)
+      const apiResponse = await geologicalLogApi.uploadBorelogCSV(formData);
 
       clearInterval(progressInterval);
       setUploadProgress(100);

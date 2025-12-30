@@ -59,13 +59,32 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // FIXED: Remove Content-Type header for FormData to let axios set multipart/form-data with boundary
+    // Axios automatically detects FormData and sets the correct Content-Type header with boundary
+    // We must remove it from all possible locations to prevent default JSON Content-Type from being used
+    if (config.data instanceof FormData) {
+      // Remove from all possible header locations
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+      // Also remove from common headers if they exist
+      if (config.headers.common) {
+        delete config.headers.common['Content-Type'];
+        delete config.headers.common['content-type'];
+      }
+      // Don't set to undefined - just delete it completely
+      // Axios will automatically detect FormData and set the correct multipart header
+    }
+    
     // Log request details for debugging
     console.log('[API Request]', {
       method: config.method?.toUpperCase(),
       url: config.url,
       baseURL: config.baseURL,
       fullURL: `${config.baseURL}${config.url}`,
-      hasAuth: !!token
+      hasAuth: !!token,
+      contentType: config.headers['Content-Type'],
+      isFormData: config.data instanceof FormData
     });
     return config;
   },
@@ -136,8 +155,17 @@ export const geologicalLogApi = {
   uploadCSV: (data: { csvData: string; projectId: string }) => 
     apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data),
   
-  uploadBorelogCSV: (data: { csvData: string; projectId: string; structureId?: string; substructureId?: string; fileType?: string }) => 
-    apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data),
+  // FIXED: Accept FormData for multipart/form-data uploads
+  // The interceptor removes Content-Type for FormData, allowing axios to set multipart/form-data with boundary
+  uploadBorelogCSV: (data: FormData | { csvData: string; projectId: string; structureId?: string; substructureId?: string; fileType?: string }) => {
+    // FormData path: interceptor removes Content-Type, axios automatically detects FormData and sets multipart/form-data; boundary=...
+    if (data instanceof FormData) {
+      // Just pass FormData - interceptor will handle Content-Type removal
+      return apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data);
+    }
+    // Legacy JSON path (deprecated - backend rejects this)
+    return apiClient.post<ApiResponse<any>>('/borelog/upload-csv', data);
+  },
 };
 
 // Borelog API - alias to geologicalLogApi for backward compatibility

@@ -1,0 +1,1 @@
+{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:211946440260:borelog-parser-dlq-dev\",\"maxReceiveCount\":\"3\"}"}

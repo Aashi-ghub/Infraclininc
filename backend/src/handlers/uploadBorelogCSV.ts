@@ -7,8 +7,12 @@ import { z } from 'zod';
 import * as db from '../db';
 import { isDbEnabled } from '../db';
 import * as ExcelJS from 'exceljs';
-import { getStorageService, validateFile, generateS3Key } from '../services/storageService';
+import { getStorageService, validateFile } from '../services/storageService';
+import { invokeBorelogParserLambda } from '../services/lambdaInvoker';
 import { v4 as uuidv4 } from 'uuid';
+// Import busboy for multipart/form-data parsing (v1.x uses factory function, not constructor)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const busboy = require('busboy');
 
 // CSV Schema for borelog header (first row contains borelog metadata)
 const BorelogHeaderSchema = z.object({
@@ -167,10 +171,77 @@ function mapStatusValue(status: string | undefined): 'draft' | 'submitted' | 'ap
   }
 }
 
+/**
+ * Parse multipart/form-data using Busboy and return the file buffer plus form fields
+ */
+function parseMultipartForm(
+  event: APIGatewayProxyEvent,
+  contentType: string
+): Promise<{
+  fileBuffer: Buffer;
+  fileName?: string;
+  fileType?: string;
+  fields: Record<string, string>;
+}> {
+  return new Promise((resolve, reject) => {
+    // Busboy v1.x uses a factory function, not a constructor
+    const parser = busboy({ headers: { 'content-type': contentType } });
+    const fields: Record<string, string> = {};
+    let fileBuffer: Buffer | null = null;
+    let fileName: string | undefined;
+    let fileType: string | undefined;
+
+    parser.on('file', (_fieldname: string, file: any, info: any) => {
+      const chunks: Buffer[] = [];
+      fileName = info?.filename;
+      const mime = info?.mimeType || info?.mimetype;
+      if (mime) {
+        if (mime.includes('sheet')) fileType = 'xlsx';
+        else if (mime.includes('csv')) fileType = 'csv';
+      }
+
+      file.on('data', (data: Buffer) => {
+        chunks.push(data);
+      });
+
+      file.on('end', () => {
+        fileBuffer = Buffer.concat(chunks);
+      });
+    });
+
+    parser.on('field', (name: string, val: string) => {
+      fields[name] = val;
+    });
+
+    parser.on('error', (err: Error) => {
+      reject(err);
+    });
+
+    parser.on('finish', () => {
+      if (!fileBuffer) {
+        return reject(new Error('No file part found in multipart/form-data'));
+      }
+      resolve({ fileBuffer, fileName, fileType, fields });
+    });
+
+    const body = event.body || '';
+    const bodyBuffer = event.isBase64Encoded ? Buffer.from(body, 'base64') : Buffer.from(body, 'binary');
+    parser.end(bodyBuffer);
+  });
+}
+
 // Helper function to parse Excel files with specific borelog format
 async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(fileBuffer);
+  try {
+    await workbook.xlsx.load(fileBuffer);
+  } catch (error) {
+    logger.error('ExcelJS load error:', {
+      error: error instanceof Error ? error.message : String(error),
+      bufferSize: fileBuffer.length
+    });
+    throw new Error(`Failed to load Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
   
   const worksheet = workbook.getWorksheet(1); // Get first worksheet
   if (!worksheet) {
@@ -714,7 +785,7 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
   return { header, stratumData };
 }
 
-// Helper function to detect file type and parse accordingly
+// Helper function to parse CSV data
 async function parseFileData(fileData: string, fileType: string): Promise<any[]> {
   logger.info(`parseFileData called with fileType: ${fileType}`);
   
@@ -734,15 +805,8 @@ async function parseFileData(fileData: string, fileType: string): Promise<any[]>
       logger.info('First row keys:', Object.keys(result[0] as any));
     }
     return result;
-  } else if (fileType.toLowerCase() === 'xlsx' || fileType.toLowerCase() === 'xls') {
-    logger.info('Parsing as Excel...');
-    // Convert base64 to buffer for Excel files
-    const buffer = Buffer.from(fileData, 'base64');
-    const result = await parseExcelFile(buffer);
-    logger.info(`Excel parsing result: ${result.length} rows`);
-    return result;
   } else {
-    throw new Error(`Unsupported file type: ${fileType}`);
+    throw new Error(`parseFileData only supports CSV. Use parseExcelFile for Excel files.`);
   }
 }
 
@@ -813,7 +877,29 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Parse and validate request body
+    const userId = payload.userId;
+
+    // Enforce multipart/form-data and reject JSON/base64 flows
+    const contentType = event.headers['content-type'] || event.headers['Content-Type'] || '';
+    if (!contentType || !contentType.toLowerCase().startsWith('multipart/form-data')) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Invalid Content-Type. Only multipart/form-data is accepted.',
+        error: 'JSON uploads are not supported for borelog CSV/XLSX. Please upload as multipart/form-data with a file part.'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+    if (contentType.toLowerCase().includes('application/json')) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'JSON uploads are not supported.',
+        error: 'Send the file using multipart/form-data with a file part. Base64/JSON uploads are rejected for binary integrity.'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
     if (!event.body) {
       const response = createResponse(400, {
         success: false,
@@ -824,21 +910,47 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-         const requestBody = JSON.parse(event.body);
-     const { csvData, fileType = 'csv', projectId, structureId, substructureId, fileName } = requestBody;
+    // Parse multipart form-data using Busboy
+    let fileBuffer: Buffer | null = null;
+    let fileName: string | undefined;
+    let detectedFileType: string | undefined;
+    const formFields: Record<string, string> = {};
 
-    logger.info('Request body parsed:', {
-      hasCsvData: !!csvData,
-      csvDataLength: csvData ? csvData.length : 0,
-      fileType: fileType,
-      requestBodyKeys: Object.keys(requestBody)
-    });
-
-    if (!csvData) {
+    try {
+      const parsed = await parseMultipartForm(event, contentType);
+      fileBuffer = parsed.fileBuffer;
+      fileName = parsed.fileName;
+      detectedFileType = parsed.fileType;
+      Object.assign(formFields, parsed.fields);
+    } catch (error) {
+      logger.error('Failed to parse multipart form-data:', error);
       const response = createResponse(400, {
         success: false,
-        message: 'Missing required fields',
-        error: 'csvData is required'
+        message: 'Invalid multipart/form-data payload',
+        error: error instanceof Error ? error.message : 'Failed to parse multipart body'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    const projectId = formFields.projectId || formFields.project_id;
+    const structureId = formFields.structureId || formFields.structure_id;
+    const substructureId = formFields.substructureId || formFields.substructure_id;
+    const fileType = (formFields.fileType || formFields.file_type || detectedFileType || 'xlsx').toLowerCase();
+
+    logger.info('Multipart body parsed:', {
+      hasFileBuffer: !!fileBuffer,
+      fileBufferSize: fileBuffer ? fileBuffer.length : 0,
+      fileType,
+      fileName,
+      formFieldsKeys: Object.keys(formFields)
+    });
+
+    if (!fileBuffer || fileBuffer.length === 0) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Missing file data',
+        error: 'File part is required and cannot be empty'
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -854,26 +966,36 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Convert CSV/Excel content to buffer and validate
-    // MIGRATED: File validation kept, but actual upload moved to storePendingCSVUpload for proper S3 path structure
-    let fileBuffer: Buffer;
-    let csvDataForParsing: string;
+    // For XLSX, enforce ZIP signature and minimum size
+    if (fileType === 'xlsx' || fileType === 'xls') {
+      if (fileBuffer.length < 4) {
+        const response = createResponse(400, {
+          success: false,
+          message: 'Invalid XLSX file format',
+          error: 'XLSX buffer too small (corrupt upload)'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+      if (!(fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4B && fileBuffer[2] === 0x03 && fileBuffer[3] === 0x04)) {
+        const response = createResponse(400, {
+          success: false,
+          message: 'Invalid XLSX file format',
+          error: 'XLSX must start with ZIP signature (PK\\x03\\x04)'
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+    }
 
-    // Check if csvData is base64 encoded
-    const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(csvData.trim());
-    
-    if (isBase64 && csvData.length > 100) {
-      // Likely base64 encoded file
-      fileBuffer = Buffer.from(csvData, 'base64');
-      csvDataForParsing = csvData; // Keep base64 for Excel parsing if needed
-    } else {
-      // Raw CSV text
-      fileBuffer = Buffer.from(csvData, 'utf-8');
-      csvDataForParsing = csvData;
+    // Convert file content for parsing
+    let csvDataForParsing = '';
+    if (fileType === 'csv') {
+      csvDataForParsing = fileBuffer.toString('utf-8');
     }
 
     // Determine MIME type based on fileType
-    const mimeType = fileType.toLowerCase() === 'csv' 
+    const mimeType = fileType === 'csv' 
       ? 'text/csv' 
       : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     
@@ -894,11 +1016,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     let parsedData;
     try {
       logger.info(`Parsing ${fileType.toUpperCase()} data...`);
-      logger.info('Raw data (first 500 chars):', csvDataForParsing.substring(0, 500));
       logger.info('File type detected:', fileType);
-      logger.info('Raw data length:', csvDataForParsing.length);
+      logger.info('File buffer size:', fileBuffer.length);
       
-      parsedData = await parseFileData(csvDataForParsing, fileType);
+      // For Excel files, pass the buffer directly; for CSV, pass the string
+      if (fileType === 'xlsx' || fileType === 'xls') {
+        parsedData = await parseExcelFile(fileBuffer);
+      } else {
+        logger.info('CSV data sample (first 200 chars):', csvDataForParsing.substring(0, 200));
+        parsedData = await parseFileData(csvDataForParsing, fileType);
+      }
       
       logger.info(`Parsed ${parsedData.length} rows from ${fileType.toUpperCase()}`);
       if (parsedData.length > 0) {
@@ -1001,10 +1128,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       water_samples_count: safeInt(normalizedHeader.water_samples_count),
       version_number: safeInt(normalizedHeader.version_number, 1),
       status: mapStatusValue(normalizedHeader.status),
-      edited_by: normalizedHeader.edited_by || (await payload).userId,
+      edited_by: normalizedHeader.edited_by || userId,
       editor_name: normalizedHeader.editor_name,
       remarks: normalizedHeader.remarks,
-      created_by_user_id: (await payload).userId
+      created_by_user_id: userId
     };
 
     logger.info('Processing borelog (normalized) header:', { job_code: borelogData.job_code, project_id: projectId });
@@ -1097,11 +1224,21 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       borelogData, 
       validatedStratumRows, 
       fileType, 
-      payload.userId,
+      userId,
       fileBuffer,
       fileName || `borelog_${Date.now()}.${fileType.toLowerCase()}`,
       borelogId
     );
+
+    await enqueueParserJob({
+      projectId,
+      borelogId,
+      uploadId: pendingUpload.upload_id,
+      csvKey: pendingUpload.csv_s3_key,
+      versionNo: pendingUpload.version_no,
+      fileType,
+      requestedBy: userId,
+    });
     
     const response = createResponse(201, {
       success: true,
@@ -1212,6 +1349,45 @@ async function storePendingCSVUpload(
   }
   
   return {
-    upload_id: uploadId
+    upload_id: uploadId,
+    csv_s3_key: csvS3Key,
+    manifest_s3_key: manifestS3Key,
+    version_no: versionNo,
   };
 } 
+
+async function enqueueParserJob(input: {
+  projectId: string;
+  borelogId: string;
+  uploadId: string;
+  csvKey?: string;
+  versionNo: number;
+  fileType: string;
+  requestedBy: string;
+}) {
+  const bucket = process.env.S3_BUCKET_NAME;
+  if (!bucket) {
+    logger.warn('Skipping parser Lambda invocation because S3_BUCKET_NAME is not configured');
+    return;
+  }
+
+  const csvKey = input.csvKey;
+  if (!csvKey) {
+    logger.warn('Skipping parser Lambda invocation because CSV key is missing', {
+      borelogId: input.borelogId,
+      uploadId: input.uploadId
+    });
+    return;
+  }
+
+  await invokeBorelogParserLambda({
+    bucket,
+    csvKey,
+    project_id: input.projectId,
+    borelog_id: input.borelogId,
+    upload_id: input.uploadId,
+    version_no: input.versionNo || 1,
+    fileType: input.fileType,
+    requestedBy: input.requestedBy,
+  });
+}

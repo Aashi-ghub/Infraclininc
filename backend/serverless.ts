@@ -30,6 +30,7 @@ const serverlessConfiguration: AWS = {
       // JWT Secret for authentication
       JWT_SECRET: process.env.JWT_SECRET || '',
       PARQUET_LAMBDA_FUNCTION_NAME: process.env.PARQUET_LAMBDA_FUNCTION_NAME || 'parquet-repository-dev-parquet-repository',
+      BORELOG_PARSER_QUEUE_URL: process.env.BORELOG_PARSER_QUEUE_URL || 'https://sqs.us-east-1.amazonaws.com/211946440260/borelog-parser-queue-dev',
     },
     iam: {
       role: {
@@ -53,6 +54,19 @@ const serverlessConfiguration: AWS = {
               'arn:aws:s3:::${env:S3_BUCKET_NAME}',
               'arn:aws:s3:::${env:S3_BUCKET_NAME}/*'
             ]
+          },
+          {
+            Effect: 'Allow',
+            Action: [
+              'sqs:SendMessage',
+              'sqs:ReceiveMessage',
+              'sqs:DeleteMessage',
+              'sqs:GetQueueAttributes'
+            ],
+            Resource: [
+              { 'Fn::GetAtt': ['BorelogParserQueue', 'Arn'] },
+              { 'Fn::GetAtt': ['BorelogParserDLQ', 'Arn'] }
+            ]
           }
         ]
       }
@@ -73,6 +87,27 @@ const serverlessConfiguration: AWS = {
         BASE_PATH: process.env.BASE_PATH || 'parquet-data',
         S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || process.env.PARQUET_BUCKET_NAME || ''
       }
+    },
+    borelogParser: {
+      handler: 'borelog_parser/lambda_handler.handler',
+      runtime: 'python3.10',
+      package: {
+        patterns: [
+          'borelog_parser/**'
+        ]
+      },
+      environment: {
+        S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || process.env.PARQUET_BUCKET_NAME || '',
+        LOG_LEVEL: process.env.BORELOG_PARSER_LOG_LEVEL || 'INFO'
+      },
+      events: [
+        {
+          sqs: {
+            arn: { 'Fn::GetAtt': ['BorelogParserQueue', 'Arn'] },
+            batchSize: 1
+          }
+        }
+      ]
     },
 
     // Auth endpoints
@@ -1473,6 +1508,26 @@ const serverlessConfiguration: AWS = {
   },
   package: {
     individually: true
+  },
+  resources: {
+    Resources: {
+      BorelogParserDLQ: {
+        Type: 'AWS::SQS::Queue',
+        Properties: {
+          QueueName: 'borelog-parser-dlq-${self:provider.stage}'
+        }
+      },
+      BorelogParserQueue: {
+        Type: 'AWS::SQS::Queue',
+        Properties: {
+          QueueName: 'borelog-parser-queue-${self:provider.stage}',
+          RedrivePolicy: {
+            deadLetterTargetArn: { 'Fn::GetAtt': ['BorelogParserDLQ', 'Arn'] },
+            maxReceiveCount: 3
+          }
+        }
+      }
+    }
   },
   custom: {
     esbuild: {

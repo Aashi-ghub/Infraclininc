@@ -1,0 +1,10 @@
+{
+  "name": "borelog-parser-service",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "serverless": "^3.38.0"
+  }
+}
+
+
