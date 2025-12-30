@@ -5,9 +5,10 @@ import { createResponse } from '../types/common';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { isDbEnabled } from '../db';
 import * as ExcelJS from 'exceljs';
 import { getStorageService, validateFile, generateS3Key } from '../services/storageService';
+import { v4 as uuidv4 } from 'uuid';
 
 // CSV Schema for borelog header (first row contains borelog metadata)
 const BorelogHeaderSchema = z.object({
@@ -786,9 +787,8 @@ async function validateForeignKeys(borelogData: any) {
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('uploadBorelogCSV');
-  if (dbGuard) return dbGuard;
+  // MIGRATED: Removed DB guard since storage is now S3-based
+  // Foreign key validation is conditional based on DB availability
 
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
@@ -854,73 +854,37 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Convert CSV/Excel content to buffer and upload to S3
-    let fileUrl: string | null = null;
+    // Convert CSV/Excel content to buffer and validate
+    // MIGRATED: File validation kept, but actual upload moved to storePendingCSVUpload for proper S3 path structure
     let fileBuffer: Buffer;
     let csvDataForParsing: string;
 
-    try {
-      // Check if csvData is base64 encoded
-      const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(csvData.trim());
-      
-      if (isBase64 && csvData.length > 100) {
-        // Likely base64 encoded file
-        fileBuffer = Buffer.from(csvData, 'base64');
-        csvDataForParsing = csvData; // Keep base64 for Excel parsing if needed
-      } else {
-        // Raw CSV text
-        fileBuffer = Buffer.from(csvData, 'utf-8');
-        csvDataForParsing = csvData;
-      }
+    // Check if csvData is base64 encoded
+    const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(csvData.trim());
+    
+    if (isBase64 && csvData.length > 100) {
+      // Likely base64 encoded file
+      fileBuffer = Buffer.from(csvData, 'base64');
+      csvDataForParsing = csvData; // Keep base64 for Excel parsing if needed
+    } else {
+      // Raw CSV text
+      fileBuffer = Buffer.from(csvData, 'utf-8');
+      csvDataForParsing = csvData;
+    }
 
-      // Determine MIME type based on fileType
-      const mimeType = fileType.toLowerCase() === 'csv' 
-        ? 'text/csv' 
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      
-      // Validate file size and MIME type
-      const validation = validateFile(fileBuffer, mimeType, 'CSV');
-      
-      if (!validation.valid) {
-        const response = createResponse(400, {
-          success: false,
-          message: 'File validation failed',
-          error: validation.error
-        });
-        logResponse(response, Date.now() - startTime);
-        return response;
-      }
-
-      // Generate S3 key
-      const tempBorelogId = 'pending'; // Will be updated when borelog is created
-      const s3Key = generateS3Key(
-        projectId,
-        tempBorelogId,
-        'csv',
-        fileName || `borelog_${Date.now()}.${fileType.toLowerCase()}`
-      );
-
-      // Upload to S3
-      const storageService = getStorageService();
-      fileUrl = await storageService.uploadFile(
-        fileBuffer,
-        s3Key,
-        mimeType,
-        {
-          project_id: projectId,
-          structure_id: structureId,
-          substructure_id: substructureId,
-          file_type: fileType,
-        }
-      );
-
-      logger.info('File uploaded to S3', { fileUrl, s3Key });
-    } catch (error) {
-      logger.error('Error uploading file to S3:', error);
-      const response = createResponse(500, {
+    // Determine MIME type based on fileType
+    const mimeType = fileType.toLowerCase() === 'csv' 
+      ? 'text/csv' 
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    
+    // Validate file size and MIME type
+    const validation = validateFile(fileBuffer, mimeType, 'CSV');
+    
+    if (!validation.valid) {
+      const response = createResponse(400, {
         success: false,
-        message: 'Failed to upload file to S3',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'File validation failed',
+        error: validation.error
       });
       logResponse(response, Date.now() - startTime);
       return response;
@@ -1045,18 +1009,23 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     logger.info('Processing borelog (normalized) header:', { job_code: borelogData.job_code, project_id: projectId });
 
-    // Validate foreign keys before attempting to create
-    try {
-      await validateForeignKeys(borelogData);
-    } catch (fkError) {
-      logger.error('Foreign key validation failed:', fkError);
-      const response = createResponse(400, {
-        success: false,
-        message: 'Foreign key constraint violation',
-        error: (fkError as Error).message
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
+    // Validate foreign keys before attempting to create (only if DB is enabled)
+    // MIGRATED: Foreign key validation is now optional - skipped when DB is disabled
+    if (isDbEnabled()) {
+      try {
+        await validateForeignKeys(borelogData);
+      } catch (fkError) {
+        logger.error('Foreign key validation failed:', fkError);
+        const response = createResponse(400, {
+          success: false,
+          message: 'Foreign key constraint violation',
+          error: (fkError as Error).message
+        });
+        logResponse(response, Date.now() - startTime);
+        return response;
+      }
+    } else {
+      logger.info('Skipping foreign key validation - database is disabled');
     }
 
     // Validate stratum rows
@@ -1119,6 +1088,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       }
     }
 
+    // Generate borelog_id upfront for S3 storage path
+    const borelogId = uuidv4();
+    
     // Store the CSV upload in pending status for approval
     logger.info(`Storing CSV upload in pending status with ${validatedStratumRows.length} stratum rows`);
     const pendingUpload = await storePendingCSVUpload(
@@ -1126,8 +1098,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       validatedStratumRows, 
       fileType, 
       payload.userId,
-      fileUrl,
-      fileName || `borelog_${Date.now()}.${fileType.toLowerCase()}`
+      fileBuffer,
+      fileName || `borelog_${Date.now()}.${fileType.toLowerCase()}`,
+      borelogId
     );
     
     const response = createResponse(201, {
@@ -1166,86 +1139,79 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 };
 
 // Helper function to store CSV upload in pending status for approval
+// MIGRATED: Replaced database persistence with S3 storage
 async function storePendingCSVUpload(
   borelogData: any, 
   stratumRows: any[], 
   fileType: string, 
   userId: string,
-  fileUrl: string | null,
-  fileName: string
+  fileBuffer: Buffer,
+  fileName: string,
+  borelogId: string
 ) {
-  const pool = await db.getPool();
-  const client = await pool.connect();
-
+  // Generate upload_id for API compatibility
+  const uploadId = uuidv4();
+  
+  // Determine MIME type based on fileType
+  const mimeType = fileType.toLowerCase() === 'csv' 
+    ? 'text/csv' 
+    : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  
+  const versionNo = borelogData.version_number || 1;
+  
+  // Construct S3 key: projects/{project_id}/borelogs/{borelog_id}/versions/v{version_no}/uploads/csv/raw.csv
+  const csvS3Key = `projects/${borelogData.project_id}/borelogs/${borelogId}/versions/v${versionNo}/uploads/csv/raw.csv`;
+  
+  // Upload CSV file to S3 (streaming via buffer - file already in memory from request)
+  const storageService = getStorageService();
   try {
-    await client.query('BEGIN');
-
-    // Store the upload in pending_csv_uploads table
-    // Note: file_url column must exist (added via migration)
-    const uploadResult = await client.query(
-      `INSERT INTO pending_csv_uploads (
-        project_id, structure_id, substructure_id, uploaded_by, file_type, total_records,
-        borelog_header_data, stratum_rows_data, status, file_name, file_url
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING upload_id`,
-        [
-          borelogData.project_id,
-          borelogData.structure_id,
-        borelogData.substructure_id,
-        userId,
-        fileType,
-        stratumRows.length,
-        JSON.stringify(borelogData),
-        JSON.stringify(stratumRows),
-        'pending',
-        fileName,
-        fileUrl
-      ]
-    );
-
-    await client.query('COMMIT');
-
-    return {
-      upload_id: uploadResult.rows[0].upload_id
-    };
-
-  } catch (error) {
-    await client.query('ROLLBACK');
-    // If file_url column doesn't exist, log warning but don't fail
-    if (error instanceof Error && error.message.includes('column "file_url"')) {
-      logger.warn('file_url column does not exist yet. Run migration: add_file_url_to_pending_csv_uploads.sql');
-      // Retry without file_url
-      try {
-        await client.query('BEGIN');
-        const uploadResult = await client.query(
-          `INSERT INTO pending_csv_uploads (
-            project_id, structure_id, substructure_id, uploaded_by, file_type, total_records,
-            borelog_header_data, stratum_rows_data, status, file_name
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          RETURNING upload_id`,
-          [
-            borelogData.project_id,
-            borelogData.structure_id,
-            borelogData.substructure_id,
-            userId,
-            fileType,
-            stratumRows.length,
-            JSON.stringify(borelogData),
-            JSON.stringify(stratumRows),
-            'pending',
-            fileName
-          ]
-        );
-        await client.query('COMMIT');
-        logger.warn('Uploaded without file_url. File stored in S3 but URL not saved to DB.');
-        return { upload_id: uploadResult.rows[0].upload_id };
-      } catch (retryError) {
-        await client.query('ROLLBACK');
-        throw retryError;
+    await storageService.uploadFile(
+      fileBuffer,
+      csvS3Key,
+      mimeType,
+      {
+        project_id: borelogData.project_id,
+        structure_id: borelogData.structure_id,
+        substructure_id: borelogData.substructure_id,
+        file_type: fileType,
       }
-    }
-    throw error;
-  } finally {
-    client.release();
+    );
+    logger.info('CSV file uploaded to S3', { csvS3Key, borelogId });
+  } catch (error) {
+    logger.error('Error uploading CSV to S3:', error);
+    throw new Error(`Failed to upload CSV to S3: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+  
+  // Write manifest.json in the same folder
+  const manifest = {
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: userId,
+    original_filename: fileName,
+    version_no: versionNo,
+    status: 'UPLOADED'
+  };
+  
+  const manifestS3Key = `projects/${borelogData.project_id}/borelogs/${borelogId}/versions/v${versionNo}/uploads/csv/manifest.json`;
+  const manifestBuffer = Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8');
+  
+  try {
+    await storageService.uploadFile(
+      manifestBuffer,
+      manifestS3Key,
+      'application/json',
+      {
+        project_id: borelogData.project_id,
+        structure_id: borelogData.structure_id,
+        substructure_id: borelogData.substructure_id,
+      }
+    );
+    logger.info('Manifest file uploaded to S3', { manifestS3Key });
+  } catch (error) {
+    logger.error('Error uploading manifest to S3:', error);
+    throw new Error(`Failed to upload manifest to S3: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+  
+  return {
+    upload_id: uploadId
+  };
 } 

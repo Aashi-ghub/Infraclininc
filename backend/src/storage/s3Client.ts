@@ -42,7 +42,18 @@ export class StorageClient {
     this.bucketName = config.bucketName;
     this.region = config.region;
 
-    const storageModeRaw = process.env.STORAGE_MODE || 's3';
+    const defaultMode =
+      process.env.STORAGE_MODE ||
+      ((process.env.IS_OFFLINE === 'true' || (!process.env.AWS_EXECUTION_ENV && process.env.IS_OFFLINE !== 'false'))
+        ? 'local'
+        : 's3');
+
+    // Persist resolved mode so downstream code sees the decision
+    if (!process.env.STORAGE_MODE) {
+      process.env.STORAGE_MODE = defaultMode;
+    }
+
+    const storageModeRaw = defaultMode;
     // Fallback bucket names if S3_BUCKET_NAME is unset
     if (!process.env.S3_BUCKET_NAME) {
       process.env.S3_BUCKET_NAME =
@@ -445,16 +456,28 @@ export class StorageClient {
  * Create a StorageClient instance with default configuration
  */
 export function createStorageClient(): StorageClient {
+  const runningInLambda = !!process.env.AWS_EXECUTION_ENV;
+  const defaultMode =
+    process.env.STORAGE_MODE ||
+    ((process.env.IS_OFFLINE === 'true' || (!runningInLambda && process.env.IS_OFFLINE !== 'false'))
+      ? 'local'
+      : 's3');
+
+  const storageMode = defaultMode.trim().replace(/["']/g, '').toLowerCase();
+  process.env.STORAGE_MODE = storageMode;
+
   const bucketName = process.env.S3_BUCKET_NAME || process.env.PARQUET_BUCKET_NAME || '';
   const region = process.env.AWS_REGION || 'us-east-1';
   const localStoragePath = process.env.LOCAL_STORAGE_PATH;
 
-  if (!bucketName && process.env.IS_OFFLINE !== 'true') {
+  if (storageMode === 's3' && !bucketName) {
     throw new Error('S3_BUCKET_NAME or PARQUET_BUCKET_NAME environment variable is required');
   }
 
+  const effectiveBucket = bucketName || 'local-bucket';
+
   return new StorageClient({
-    bucketName,
+    bucketName: effectiveBucket,
     region,
     localStoragePath,
   });
