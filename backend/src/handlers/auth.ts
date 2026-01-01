@@ -238,7 +238,7 @@ export const me = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyRe
     }
     
     // Get user from auth service (TEMPORARY: from JSON file, will migrate to Cognito)
-    const user = authService.getUserById(decoded.userId);
+    const user = await authService.getUserById(decoded.userId);
     
     if (!user) {
       logger.warn('[AUTH] User not found', { userId: decoded.userId });

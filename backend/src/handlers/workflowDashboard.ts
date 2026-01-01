@@ -3,7 +3,63 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { createStorageClient } from '../storage/s3Client';
-import { guardDbRoute } from '../db';
+
+/**
+ * MIGRATED: This handler now reads from S3 instead of database
+ * S3 Structure:
+ * - Pending reviews: workflow/pending-reviews.json
+ * - Workflow stats: workflow/statistics.json
+ * - Submitted borelogs: workflow/submitted-borelogs.json
+ */
+
+/**
+ * List pending reviews from S3
+ */
+async function listPendingReviewsFromS3(payload: any): Promise<any[]> {
+  const storageClient = createStorageClient();
+  try {
+    const key = 'workflow/pending-reviews.json';
+    const buf = await storageClient.downloadFile(key);
+    const reviews = JSON.parse(buf.toString('utf-8')) as any[];
+    return reviews;
+  } catch (error) {
+    logger.warn('Could not read pending reviews from S3, returning empty array', { error });
+    return [];
+  }
+}
+
+/**
+ * Get workflow statistics from S3
+ */
+async function getWorkflowStatsFromS3(payload: any): Promise<any[]> {
+  const storageClient = createStorageClient();
+  try {
+    const key = 'workflow/statistics.json';
+    const buf = await storageClient.downloadFile(key);
+    const stats = JSON.parse(buf.toString('utf-8')) as any[];
+    return stats;
+  } catch (error) {
+    logger.warn('Could not read workflow statistics from S3, returning empty array', { error });
+    return [];
+  }
+}
+
+/**
+ * List submitted borelogs from S3
+ */
+async function listSubmittedBorelogsFromS3(payload: any): Promise<any[]> {
+  const storageClient = createStorageClient();
+  try {
+    const key = 'workflow/submitted-borelogs.json';
+    const buf = await storageClient.downloadFile(key);
+    const borelogs = JSON.parse(buf.toString('utf-8')) as any[];
+    // Filter by user if needed
+    return borelogs.filter((b: any) => b.submitted_by === payload.userId || payload.role === 'Admin');
+  } catch (error) {
+    logger.warn('Could not read submitted borelogs from S3, returning empty array', { error });
+    return [];
+  }
+}
 
 // Get pending reviews (for Approval Engineers and Admins)
 export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -55,12 +111,26 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
   }
 };
 
+/**
+ * Get lab assignments from S3
+ */
+async function getLabAssignmentsFromS3(payload: any): Promise<any[]> {
+  const storageClient = createStorageClient();
+  try {
+    const key = 'workflow/lab-assignments.json';
+    const buf = await storageClient.downloadFile(key);
+    const assignments = JSON.parse(buf.toString('utf-8')) as any[];
+    // Filter by assigned user
+    return assignments.filter((a: any) => a.assigned_to === payload.userId || payload.role === 'Admin');
+  } catch (error) {
+    logger.warn('Could not read lab assignments from S3, returning empty array', { error });
+    return [];
+  }
+}
+
 // Get lab assignments (for Lab Engineers)
 export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('getLabAssignments');
-  if (dbGuard) return dbGuard;
-
+  // MIGRATED: Removed DB guard - now S3-only
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -84,28 +154,7 @@ export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-         // Query lab assignments from the database
-     const labAssignmentsQuery = `
-       SELECT 
-         la.assignment_id as id,
-         la.borelog_id,
-         la.sample_ids,
-         la.assigned_at,
-         la.due_date,
-         la.priority,
-         la.notes,
-         p.name as project_name,
-         COALESCE(bd.number, gl.borehole_number) as borehole_number
-       FROM lab_test_assignments la
-       JOIN boreloge b ON la.borelog_id = b.borelog_id
-       JOIN projects p ON b.project_id = p.project_id
-       LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
-       LEFT JOIN geological_log gl ON b.borelog_id = gl.borelog_id
-       WHERE la.assigned_to = $1
-       ORDER BY la.assigned_at DESC
-     `;
-     
-     const labAssignments = await db.query(labAssignmentsQuery, [payload.userId]);
+    const labAssignments = await getLabAssignmentsFromS3(payload);
 
     const response = createResponse(200, {
       success: true,

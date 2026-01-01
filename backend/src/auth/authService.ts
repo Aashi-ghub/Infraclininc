@@ -80,8 +80,8 @@ export async function login(credentials: LoginCredentials): Promise<AuthResult> 
   const normalizedEmail = email.trim().toLowerCase();
   logger.debug('[AUTH] Login attempt', { email: normalizedEmail, passwordLength: password?.length });
 
-  // Find user (TEMPORARY: from JSON file)
-  const user = userStore.findUserByEmail(normalizedEmail);
+  // Find user (TEMPORARY: from S3)
+  const user = await userStore.findUserByEmail(normalizedEmail);
   
   if (!user) {
     logger.warn('[AUTH] Login attempt with invalid email', { email: normalizedEmail });
@@ -150,17 +150,17 @@ export async function register(data: RegisterData): Promise<AuthResult> {
   const { email, password, name, role } = data;
 
   // Check if user already exists
-  const existingUser = userStore.findUserByEmail(email);
+  const existingUser = await userStore.findUserByEmail(email);
   if (existingUser) {
     throw new Error('User with this email already exists');
   }
 
-  // Hash password (TEMPORARY: store in JSON)
+  // Hash password (TEMPORARY: store in S3)
   // In production with Cognito, password would be handled by Cognito
   const hashedPassword = await hashPassword(password);
 
-  // Create user (TEMPORARY: in JSON file)
-  const user = userStore.addUser({
+  // Create user (TEMPORARY: in S3)
+  const user = await userStore.addUser({
     email,
     password: hashedPassword, // Store hashed password
     name,
@@ -186,11 +186,11 @@ export async function register(data: RegisterData): Promise<AuthResult> {
 /**
  * Get user by ID
  * 
- * TEMPORARY: Reads from JSON file
+ * TEMPORARY: Reads from S3
  * Migration: Replace with Cognito user lookup
  */
-export function getUserById(userId: string) {
-  const user = userStore.findUserById(userId);
+export async function getUserById(userId: string) {
+  const user = await userStore.findUserById(userId);
   
   if (!user) {
     return null;

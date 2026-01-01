@@ -52,47 +52,212 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Get borelogs from S3
-    const storageClient = createStorageClient();
-    const borelogsPrefix = `projects/project_${projectId}/borelogs/`;
+    // Get borelogs from S3 (optimized - load all related data once)
+      const storageClient = createStorageClient();
+    const projectPrefix = `projects/project_${projectId}/`;
+    const borelogsPrefix = `${projectPrefix}borelogs/`;
     
-    let metadataKeys: string[] = [];
-    
-    const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
-    const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
+    // Load all related data in parallel for optimization
+    const [metadataKeys, projectInfo, structuresMap, substructuresMap] = await Promise.all([
+      // 1. Get all borelog metadata files
+      (async () => {
+      const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+      const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
 
-    // Handle local filesystem mode (offline) differently
-    if (isOffline) {
-      const localStoragePath = process.env.LOCAL_STORAGE_PATH || path.join(process.cwd(), 'local-storage');
-      const borelogsDir = path.join(localStoragePath, borelogsPrefix);
-      
-      try {
-        const entries = await fs.readdir(borelogsDir, { withFileTypes: true });
+      if (isOffline) {
+        const localStoragePath = process.env.LOCAL_STORAGE_PATH || path.join(process.cwd(), 'local-storage');
+        const borelogsDir = path.join(localStoragePath, borelogsPrefix);
+          const keys: string[] = [];
         
-        for (const entry of entries) {
-          if (entry.isDirectory() && entry.name.startsWith('borelog_')) {
-            const metadataPath = path.join(borelogsDir, entry.name, 'metadata.json');
-            try {
-              await fs.access(metadataPath);
-              metadataKeys.push(`${borelogsPrefix}${entry.name}/metadata.json`);
-            } catch {
-              continue;
+        try {
+          const entries = await fs.readdir(borelogsDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory() && entry.name.startsWith('borelog_')) {
+              const metadataPath = path.join(borelogsDir, entry.name, 'metadata.json');
+              try {
+                await fs.access(metadataPath);
+                  keys.push(`${borelogsPrefix}${entry.name}/metadata.json`);
+              } catch {
+                continue;
+              }
             }
           }
+        } catch (error: any) {
+          if (error.code !== 'ENOENT') {
+            logger.error('Error listing local borelog directories:', error);
+          }
         }
-      } catch (error: any) {
-        if (error.code !== 'ENOENT') {
-          logger.error('Error listing local borelog directories:', error);
+          return keys;
+      } else {
+          try {
+            const allKeys = await storageClient.listFiles(borelogsPrefix, 10000);
+            const keys = allKeys.filter(key => key.endsWith('/metadata.json'));
+            logger.info(`[S3] Found ${keys.length} metadata files for project ${projectId}`);
+            return keys;
+          } catch (error) {
+            logger.error('Error listing S3 files:', error);
+            return [];
+          }
         }
-      }
-    } else {
-      // For S3, use listFiles which handles recursive listing
-      const allKeys = await storageClient.listFiles(borelogsPrefix, 10000);
-      metadataKeys = allKeys.filter(key => key.endsWith('/metadata.json'));
-    }
+      })(),
+      
+      // 2. Load project info once
+      (async () => {
+        try {
+          const projectBuffer = await storageClient.downloadFile(`${projectPrefix}project.json`);
+          return JSON.parse(projectBuffer.toString('utf-8'));
+        } catch (error) {
+          logger.warn(`Could not load project info for project ${projectId}`);
+          return null;
+        }
+      })(),
+      
+      // 3. Load all structures once and create lookup map
+      (async () => {
+        const structuresPrefix = `${projectPrefix}structures/`;
+        const map = new Map<string, any>();
+        
+        try {
+          const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+          const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
+          let structureKeys: string[] = [];
+          
+          if (isOffline) {
+            const localStoragePath = process.env.LOCAL_STORAGE_PATH || path.join(process.cwd(), 'local-storage');
+            const structuresDir = path.join(localStoragePath, structuresPrefix);
+        try {
+              const entries = await fs.readdir(structuresDir, { withFileTypes: true });
+              for (const entry of entries) {
+                if (entry.isDirectory() && entry.name.startsWith('structure_')) {
+                  const structureJsonPath = path.join(structuresDir, entry.name, 'structure.json');
+                  try {
+                    await fs.access(structureJsonPath);
+                    structureKeys.push(`${structuresPrefix}${entry.name}/structure.json`);
+                  } catch {
+                    continue;
+                  }
+                }
+              }
+            } catch (error: any) {
+              if (error.code !== 'ENOENT') {
+                logger.error('Error listing local structure directories:', error);
+              }
+            }
+          } else {
+            const allKeys = await storageClient.listFiles(structuresPrefix, 10000);
+            structureKeys = allKeys.filter(key => key.endsWith('/structure.json') && !key.includes('/substructures/'));
+          }
+          
+          const structureBuffers = await Promise.all(
+            structureKeys.map(key => 
+              storageClient.downloadFile(key)
+                .then(buffer => ({ key, buffer }))
+                .catch(() => null)
+            )
+          );
+          
+          structureBuffers
+            .filter((item): item is { key: string; buffer: Buffer } => item !== null)
+            .forEach(item => {
+              try {
+                const structure = JSON.parse(item.buffer.toString('utf-8'));
+                map.set(structure.structure_id, structure);
+              } catch (error) {
+                logger.error(`Error parsing structure from ${item.key}:`, error);
+              }
+            });
+        } catch (error) {
+          logger.warn('Error loading structures:', error);
+        }
+        
+        return map;
+      })(),
+      
+      // 4. Load all substructures once and create lookup map
+      (async () => {
+        const structuresPrefix = `${projectPrefix}structures/`;
+        const map = new Map<string, any>();
+        
+        try {
+          const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
+          const isOffline = storageMode !== 's3' && process.env.IS_OFFLINE === 'true';
+          let substructureKeys: string[] = [];
+          
+          if (isOffline) {
+            const localStoragePath = process.env.LOCAL_STORAGE_PATH || path.join(process.cwd(), 'local-storage');
+            const structuresDir = path.join(localStoragePath, structuresPrefix);
+            
+            // Recursive function to find substructure.json files
+            const findSubstructureFiles = async (dir: string, basePath: string): Promise<string[]> => {
+              const keys: string[] = [];
+              try {
+                const entries = await fs.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                  const fullPath = path.join(dir, entry.name);
+                  if (entry.isDirectory() && entry.name.startsWith('structure_')) {
+                    // Check for substructures directory
+                    const substructuresDir = path.join(fullPath, 'substructures');
+                    try {
+                      const substructureEntries = await fs.readdir(substructuresDir, { withFileTypes: true });
+                      for (const subEntry of substructureEntries) {
+                        if (subEntry.isDirectory() && subEntry.name.startsWith('substructure_')) {
+                          const substructureJsonPath = path.join(substructuresDir, subEntry.name, 'substructure.json');
+                          try {
+                            await fs.access(substructureJsonPath);
+                            const relativePath = path.relative(basePath, substructureJsonPath);
+                            keys.push(`projects/${relativePath.replace(/\\/g, '/')}`);
+                          } catch {
+                            continue;
+                          }
+                        }
+                      }
+                    } catch {
+                      // No substructures directory, continue
+                    }
+                  }
+                }
+              } catch (error: any) {
+                if (error.code !== 'ENOENT') {
+                  logger.error('Error listing local substructure files:', error);
+                }
+              }
+              return keys;
+            };
+            
+            substructureKeys = await findSubstructureFiles(structuresDir, path.join(localStoragePath, 'projects'));
+          } else {
+            const allKeys = await storageClient.listFiles(structuresPrefix, 10000);
+            substructureKeys = allKeys.filter(key => key.endsWith('/substructure.json'));
+          }
+          
+          const substructureBuffers = await Promise.all(
+            substructureKeys.map(key => 
+              storageClient.downloadFile(key)
+                .then(buffer => ({ key, buffer }))
+                .catch(() => null)
+            )
+          );
+          
+          substructureBuffers
+            .filter((item): item is { key: string; buffer: Buffer } => item !== null)
+            .forEach(item => {
+              try {
+                const substructure = JSON.parse(item.buffer.toString('utf-8'));
+                map.set(substructure.substructure_id, substructure);
+              } catch (error) {
+                logger.error(`Error parsing substructure from ${item.key}:`, error);
+              }
+            });
+        } catch (error) {
+          logger.warn('Error loading substructures:', error);
+        }
+        
+        return map;
+      })()
+    ]);
 
-    // Read and parse each metadata.json, then enrich with structure/substructure data
-    const borelogPromises = metadataKeys.map(async (key) => {
+    // Process all borelog metadata files in parallel
+      const borelogPromises = metadataKeys.map(async (key) => {
       try {
         const metadataBuffer = await storageClient.downloadFile(key);
         const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
@@ -102,52 +267,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           ? metadata.versions[metadata.versions.length - 1]
           : null;
         
-        // Try to get substructure info
-        let substructureInfo: any = null;
-        let structureInfo: any = null;
-        try {
-          const substructureKeys = await storageClient.listFiles(
-            `projects/project_${projectId}/structures/`, 
-            10000
-          );
-          const substructureKey = substructureKeys.find(k => 
-            k.includes(`substructure_${metadata.substructure_id}/substructure.json`)
-          );
-          
-          if (substructureKey) {
-            const substructureBuffer = await storageClient.downloadFile(substructureKey);
-            substructureInfo = JSON.parse(substructureBuffer.toString('utf-8'));
-            
-            // Get structure info
-            const structureKeys = await storageClient.listFiles(
-              `projects/project_${projectId}/structures/`, 
-              10000
-            );
-            const structureKey = structureKeys.find(k => 
-              k.includes(`structure_${substructureInfo.structure_id}/structure.json`) &&
-              !k.includes('substructures')
-            );
-            
-            if (structureKey) {
-              const structureBuffer = await storageClient.downloadFile(structureKey);
-              structureInfo = JSON.parse(structureBuffer.toString('utf-8'));
-            }
-          }
-        } catch (error) {
-          // If we can't get structure/substructure info, continue without it
-          logger.warn(`Could not load structure/substructure info for borelog ${metadata.borelog_id}`);
-        }
-        
-        // Get project info
-        let projectInfo: any = null;
-        try {
-          const projectBuffer = await storageClient.downloadFile(
-            `projects/project_${projectId}/project.json`
-          );
-          projectInfo = JSON.parse(projectBuffer.toString('utf-8'));
-        } catch (error) {
-          // Continue without project info
-        }
+        // Get substructure and structure info from pre-loaded maps
+        const substructureInfo = substructuresMap.get(metadata.substructure_id) || null;
+        const structureInfo = substructureInfo 
+          ? structuresMap.get(substructureInfo.structure_id) || null
+          : null;
         
         return {
           borelog_id: metadata.borelog_id,
@@ -210,21 +334,29 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         logger.error(`Error reading borelog metadata from S3 key ${key}:`, error);
         return null;
       }
-    });
-    
-    const borelogResults = await Promise.all(borelogPromises);
+      });
+
+      const borelogResults = await Promise.all(borelogPromises);
     const borelogs = borelogResults
       .filter((b): b is NonNullable<typeof b> => b !== null)
       .sort((a, b) => {
-        // Sort by structure_type, substructure_type, then created_at
-        const structureCompare = (a.structure_type || '').localeCompare(b.structure_type || '');
-        if (structureCompare !== 0) return structureCompare;
-        const substructureCompare = (a.substructure_type || '').localeCompare(b.substructure_type || '');
-        if (substructureCompare !== 0) return substructureCompare;
-        return new Date(b.borelog_created_at).getTime() - new Date(a.borelog_created_at).getTime();
-      });
+      // Sort by structure_type, substructure_type, then created_at
+      const structureCompare = (a.structure_type || '').localeCompare(b.structure_type || '');
+      if (structureCompare !== 0) return structureCompare;
+      const substructureCompare = (a.substructure_type || '').localeCompare(b.substructure_type || '');
+      if (substructureCompare !== 0) return substructureCompare;
+      const aDate = new Date(a.borelog_created_at || 0).getTime();
+      const bDate = new Date(b.borelog_created_at || 0).getTime();
+      return bDate - aDate;
+    });
 
-    logger.info(`[S3 READ ENABLED] getBorelogsByProject count=${borelogs.length} project_id=${projectId}`);
+    logger.info(`[S3] Successfully loaded ${borelogs.length} borelogs from S3 for project ${projectId}`);
+    
+    if (borelogs.length === 0) {
+      logger.warn(`[S3] No borelogs found for project ${projectId}`);
+    } else {
+      logger.info(`[S3] Sample borelog IDs: ${borelogs.slice(0, 3).map(b => b.borelog_id).join(', ')}`);
+    }
 
     const response = createResponse(200, {
       success: true,

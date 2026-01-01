@@ -230,11 +230,168 @@ function parseMultipartForm(
   });
 }
 
+/**
+ * Normalize ExcelJS cell value to a primitive string or number.
+ * Handles richText, formula results, merged cells, and other object types.
+ */
+function normalizeCellValue(cell: ExcelJS.Cell): string | number | null {
+  if (cell.value === null || cell.value === undefined) {
+    return null;
+  }
+
+  const value = cell.value;
+
+  // Handle Date objects
+  if (value instanceof Date) {
+    const day = value.getDate().toString().padStart(2, '0');
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const year = value.getFullYear().toString().slice(-2);
+    return `${day}.${month}.${year}`;
+  }
+
+  // Handle primitive types
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'boolean') {
+    return String(value); // Convert boolean to string
+  }
+
+  // Handle objects (richText, formula results, etc.)
+  if (typeof value === 'object') {
+    // Check for richText array (formatted text)
+    if (Array.isArray((value as any).richText)) {
+      const richText = (value as any).richText;
+      return richText.map((rt: any) => rt.text || '').join('');
+    }
+
+    // Check for .text property (simple rich text object)
+    if ('text' in value && typeof (value as any).text === 'string') {
+      return (value as any).text;
+    }
+
+    // Check for .result property (formula result)
+    if ('result' in value) {
+      const result = (value as any).result;
+      if (result instanceof Date) {
+        const day = result.getDate().toString().padStart(2, '0');
+        const month = (result.getMonth() + 1).toString().padStart(2, '0');
+        const year = result.getFullYear().toString().slice(-2);
+        return `${day}.${month}.${year}`;
+      }
+      return normalizeCellValue({ value: result } as ExcelJS.Cell);
+    }
+
+    // Check for .formula property (if we need the formula itself)
+    if ('formula' in value) {
+      // For formulas, prefer result if available, otherwise return empty
+      return null;
+    }
+  }
+
+  // Fallback: convert to string
+  try {
+    return String(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Normalize a value to a string, handling objects and trimming whitespace.
+ */
+function normalizeValueToString(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  
+  // If it's already a string or number, convert and trim
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+  
+  // If it's an object (might be a cell value that wasn't normalized), try to extract text
+  if (typeof value === 'object') {
+    if (Array.isArray((value as any).richText)) {
+      return (value as any).richText.map((rt: any) => rt.text || '').join('').trim();
+    }
+    if ('text' in value) {
+      return String((value as any).text).trim();
+    }
+    if ('result' in value) {
+      return normalizeValueToString((value as any).result);
+    }
+  }
+  
+  // Fallback
+  return String(value).trim();
+}
+
+/**
+ * Normalize depth value - convert to number if possible, otherwise return trimmed string.
+ * Handles numeric 0, "-", empty strings, and "[object Object]" safely.
+ */
+function normalizeDepthValue(value: any): string {
+  // Handle null/undefined
+  if (value === null || value === undefined) {
+    return '';
+  }
+  
+  // Handle numeric values directly (including 0)
+  if (typeof value === 'number') {
+    if (isNaN(value)) return '';
+    return value.toString();
+  }
+  
+  // Handle boolean
+  if (typeof value === 'boolean') {
+    return '';
+  }
+  
+  // Handle objects (skip "[object Object]")
+  if (typeof value === 'object') {
+    // Try to extract meaningful value from object
+    if (Array.isArray((value as any).richText)) {
+      const richText = (value as any).richText;
+      const text = richText.map((rt: any) => rt.text || '').join('').trim();
+      if (!text) return '';
+      // Recursively process extracted text
+      return normalizeDepthValue(text);
+    }
+    if ('text' in value && typeof (value as any).text === 'string') {
+      return normalizeDepthValue((value as any).text);
+    }
+    if ('result' in value) {
+      return normalizeDepthValue((value as any).result);
+    }
+    // Skip "[object Object]" and other objects
+    return '';
+  }
+  
+  // Handle string
+  const normalized = String(value).trim();
+  if (!normalized || normalized === '-' || normalized === '[object Object]') {
+    return '';
+  }
+  
+  // Remove common non-numeric characters but keep decimal point and minus sign
+  const cleaned = normalized.replace(/[^\d.-]/g, '');
+  
+  // If it's a valid number (including 0), return it as string
+  if (/^-?\d+(\.\d+)?$/.test(cleaned)) {
+    return cleaned;
+  }
+  
+  // Return empty if not a valid number
+  return '';
+}
+
 // Helper function to parse Excel files with specific borelog format
 async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(fileBuffer);
+    // ExcelJS expects Buffer - cast to satisfy type checker
+    await workbook.xlsx.load(fileBuffer as any);
   } catch (error) {
     logger.error('ExcelJS load error:', {
       error: error instanceof Error ? error.message : String(error),
@@ -251,25 +408,13 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   logger.info(`Excel worksheet dimensions: ${worksheet.rowCount} rows, ${worksheet.columnCount} columns`);
   
   // Extract all rows first to analyze the structure
+  // Normalize ALL cell values during extraction to prevent "[object Object]" issues
   const allRows: any[][] = [];
   worksheet.eachRow((row: ExcelJS.Row, rowNumber: number) => {
     const rowValues: any[] = [];
     row.eachCell((cell: ExcelJS.Cell, colNumber: number) => {
-      let value = '';
-      if (cell.value !== null && cell.value !== undefined) {
-        if (typeof cell.value === 'object' && 'text' in cell.value) {
-          value = (cell.value as any).text;
-        } else if (cell.value instanceof Date) {
-          // Convert Excel date to DD.MM.YY format
-          const day = cell.value.getDate().toString().padStart(2, '0');
-          const month = (cell.value.getMonth() + 1).toString().padStart(2, '0');
-          const year = cell.value.getFullYear().toString().slice(-2);
-          value = `${day}.${month}.${year}`;
-        } else {
-          value = String(cell.value);
-        }
-      }
-      rowValues[colNumber - 1] = value;
+      const normalized = normalizeCellValue(cell);
+      rowValues[colNumber - 1] = normalized !== null ? normalized : '';
     });
     allRows.push(rowValues);
     logger.info(`Row ${rowNumber}:`, rowValues);
@@ -282,10 +427,10 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   for (let i = 0; i < allRows.length; i++) {
     const row = allRows[i];
     for (let j = 0; j < row.length; j++) {
-      const cellValue = String(row[j] || '').trim();
+      const cellValue = normalizeValueToString(row[j]);
       if (cellValue.includes('Description of Soil Stratum & Rock Methodology')) {
         headerRowIndex = i;
-        headerRow = row.map(cell => String(cell || '').trim());
+        headerRow = row.map(cell => normalizeValueToString(cell));
         logger.info(`Found header row at index ${i}:`, headerRow);
    logger.info('Header row details:');
    headerRow.forEach((header, index) => {
@@ -310,176 +455,278 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   for (let i = 0; i < headerRowIndex; i++) {
     const row = allRows[i];
     for (let j = 0; j < row.length; j++) {
-      const cellValue = String(row[j] || '').trim();
+      const cellValue = normalizeValueToString(row[j]);
       
       // Extract Job Code
       if (cellValue === 'Job Code' && j + 1 < row.length) {
-        borelogHeader.job_code = String(row[j + 1] || '').trim();
+        borelogHeader.job_code = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Section Name
       if (cellValue === 'Section Name' && j + 1 < row.length) {
-        borelogHeader.section_name = String(row[j + 1] || '').trim();
+        borelogHeader.section_name = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Chainage
       if (cellValue === 'Chainage (Km)' && j + 1 < row.length) {
-        borelogHeader.chainage_km = String(row[j + 1] || '').trim();
+        borelogHeader.chainage_km = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Location
       if (cellValue === 'Location' && j + 1 < row.length) {
-        borelogHeader.location = String(row[j + 1] || '').trim();
+        borelogHeader.location = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Borehole No
       if (cellValue === 'Borehole No.' && j + 1 < row.length) {
-        borelogHeader.borehole_no = String(row[j + 1] || '').trim();
+        borelogHeader.borehole_no = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Commencement Date
       if (cellValue === 'Commencement Date' && j + 1 < row.length) {
-        borelogHeader.commencement_date = String(row[j + 1] || '').trim();
+        borelogHeader.commencement_date = normalizeValueToString(row[j + 1]);
       }
       
       // Extract MSL
       if (cellValue === 'Mean Sea Level (MSL)' && j + 1 < row.length) {
-        borelogHeader.msl = String(row[j + 1] || '').trim();
+        borelogHeader.msl = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Completion Date
       if (cellValue === 'Completion Date' && j + 1 < row.length) {
-        borelogHeader.completion_date = String(row[j + 1] || '').trim();
+        borelogHeader.completion_date = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Method of Boring
       if (cellValue === 'Method of Boring / Drilling' && j + 1 < row.length) {
-        borelogHeader.method_of_boring = String(row[j + 1] || '').trim();
+        borelogHeader.method_of_boring = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Diameter of Hole
       if (cellValue === 'Diameter of Hole' && j + 1 < row.length) {
-        borelogHeader.diameter_of_hole = String(row[j + 1] || '').trim();
+        borelogHeader.diameter_of_hole = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Standing Water Level
       if (cellValue === 'Standing Water Level' && j + 1 < row.length) {
-        borelogHeader.standing_water_level = String(row[j + 1] || '').trim();
+        borelogHeader.standing_water_level = normalizeValueToString(row[j + 1]);
       }
       
       // Extract Termination Depth
       if (cellValue === 'Termination Depth' && j + 1 < row.length) {
-        borelogHeader.termination_depth = String(row[j + 1] || '').trim();
+        borelogHeader.termination_depth = normalizeValueToString(row[j + 1]);
       }
       
       // Extract test counts
       if (cellValue.includes('No. of Permeabilty test') && j + 1 < row.length) {
-        borelogHeader.permeability_tests_count = String(row[j + 1] || '').trim();
+        borelogHeader.permeability_tests_count = normalizeValueToString(row[j + 1]);
       }
       
       if (cellValue.includes('No. of SP test') && j + 1 < row.length) {
-        const spValue = String(row[j + 1] || '').trim();
+        const spValue = normalizeValueToString(row[j + 1]);
         borelogHeader.spt_tests_count = spValue;
       }
       
       if (cellValue.includes('No. of Undisturbed Sample') && j + 1 < row.length) {
-        borelogHeader.undisturbed_samples_count = String(row[j + 1] || '').trim();
+        borelogHeader.undisturbed_samples_count = normalizeValueToString(row[j + 1]);
       }
       
       if (cellValue.includes('No. of Disturbed Sample') && j + 1 < row.length) {
-        borelogHeader.disturbed_samples_count = String(row[j + 1] || '').trim();
+        borelogHeader.disturbed_samples_count = normalizeValueToString(row[j + 1]);
       }
       
       if (cellValue.includes('No. of Water Sample') && j + 1 < row.length) {
-        borelogHeader.water_samples_count = String(row[j + 1] || '').trim();
+        borelogHeader.water_samples_count = normalizeValueToString(row[j + 1]);
       }
     }
   }
   
   logger.info('Extracted borelog header:', borelogHeader);
   
-     // Extract stratum data rows
-   const stratumRows: any[] = [];
-   
-   // Find SPT blows column indices
-   const sptBlowsColumns: number[] = [];
-   for (let j = 0; j < headerRow.length; j++) {
-     const header = headerRow[j];
-     if (header && header.includes('Standard Penetration Test') && header.includes('15 cm')) {
-       sptBlowsColumns.push(j);
-     }
-   }
-   logger.info(`Found ${sptBlowsColumns.length} SPT blows columns at indices:`, sptBlowsColumns);
-   
-   for (let i = headerRowIndex + 1; i < allRows.length; i++) {
-     const row = allRows[i];
-     if (row.length === 0 || row.every(cell => !cell || String(cell).trim() === '')) {
-       continue; // Skip empty rows
-     }
-     
-     const rowData: any = {};
-     
-     // Map columns based on the header row
-     for (let j = 0; j < Math.min(row.length, headerRow.length); j++) {
-       const header = headerRow[j];
-       const value = String(row[j] || '').trim();
-       
-       if (header && value) {
-         // Map specific columns to our schema
-         if (header.includes('Description of Soil Stratum')) {
-           rowData.stratum_description = value;
-         } else if (header.includes('Depth of Stratum') && header.includes('From')) {
-           rowData.stratum_depth_from = value;
-         } else if (header.includes('Depth of Stratum') && header.includes('To')) {
-           rowData.stratum_depth_to = value;
-         } else if (header.includes('Thickness of Stratum')) {
-           rowData.stratum_thickness_m = value;
-         } else if (header.includes('Sample / Event') && header.includes('Type')) {
-           rowData.sample_event_type = value;
-         } else if (header.includes('Sample / Event') && header.includes('Depth')) {
-           rowData.sample_event_depth_m = value;
-         } else if (header.includes('Run Length')) {
-           rowData.run_length_m = value;
-         } else if (header.includes('N - Value')) {
-           rowData.n_value_is_2131 = value;
-         } else if (header.includes('Total Core Length')) {
-           rowData.total_core_length_cm = value;
-         } else if (header.includes('TCR (%)')) {
-           rowData.tcr_percent = value;
-         } else if (header.includes('RQD Length')) {
-           rowData.rqd_length_cm = value;
-         } else if (header.includes('RQD (%)')) {
-           rowData.rqd_percent = value;
-         } else if (header.includes('Colour of return water')) {
-           rowData.return_water_colour = value;
-         } else if (header.includes('Water loss')) {
-           rowData.water_loss = value;
-         } else if (header.includes('Diameter of Bore hole')) {
-           rowData.borehole_diameter = value;
-         } else if (header.includes('Remarks')) {
-           rowData.remarks = value;
-         }
-       }
-     }
-     
-     // Handle SPT blows columns separately
-     if (sptBlowsColumns.length >= 1) {
-       rowData.spt_blows_1 = String(row[sptBlowsColumns[0]] || '').trim();
-     }
-     if (sptBlowsColumns.length >= 2) {
-       rowData.spt_blows_2 = String(row[sptBlowsColumns[1]] || '').trim();
-     }
-     if (sptBlowsColumns.length >= 3) {
-       rowData.spt_blows_3 = String(row[sptBlowsColumns[2]] || '').trim();
-     }
-     
-     // Only add rows that have stratum description (actual data rows)
-     if (rowData.stratum_description && rowData.stratum_depth_from && rowData.stratum_depth_to) {
-       stratumRows.push(rowData);
-     }
-   }
+  // Check if there's a sub-header row (row after main header with "From", "To", "Thickness")
+  let subHeaderRowIndex = -1;
+  let subHeaderRow: string[] = [];
+  let dataStartIndex = headerRowIndex + 1;
   
-  logger.info(`Extracted ${stratumRows.length} stratum rows`);
+  if (headerRowIndex + 1 < allRows.length) {
+    const nextRow = allRows[headerRowIndex + 1];
+    const nextRowNormalized = nextRow.map(cell => normalizeValueToString(cell));
+    // Check if this row contains "From" and "To" (sub-header indicators)
+    const hasFrom = nextRowNormalized.some(cell => cell.includes('From'));
+    const hasTo = nextRowNormalized.some(cell => cell.includes('To'));
+    
+    if (hasFrom && hasTo) {
+      subHeaderRowIndex = headerRowIndex + 1;
+      subHeaderRow = nextRowNormalized;
+      dataStartIndex = headerRowIndex + 2; // Skip both header rows
+      logger.info(`Found sub-header row at index ${subHeaderRowIndex}, data starts at ${dataStartIndex}`);
+    }
+  }
+  
+  // Build column mapping based on header rows
+  // Use sub-header if available, otherwise use main header
+  const columnMap: { [key: string]: number } = {};
+  const mappingRow = subHeaderRow.length > 0 ? subHeaderRow : headerRow;
+  
+  for (let j = 0; j < mappingRow.length; j++) {
+    const header = mappingRow[j];
+    const normalizedHeader = normalizeValueToString(header);
+    
+    // Map by position and content
+    if (normalizedHeader.includes('Description of Soil Stratum')) {
+      columnMap.description = j;
+    } else if (normalizedHeader === 'From' || (normalizedHeader.includes('Depth') && normalizedHeader.includes('From'))) {
+      columnMap.depth_from = j;
+    } else if (normalizedHeader === 'To' || (normalizedHeader.includes('Depth') && normalizedHeader.includes('To'))) {
+      columnMap.depth_to = j;
+    } else if (normalizedHeader.includes('Thickness')) {
+      columnMap.thickness = j;
+    } else if (normalizedHeader.includes('Sample / Event') && normalizedHeader.includes('Type')) {
+      columnMap.sample_type = j;
+    } else if (normalizedHeader.includes('Sample / Event') && normalizedHeader.includes('Depth')) {
+      columnMap.sample_depth = j;
+    } else if (normalizedHeader.includes('Run Length')) {
+      columnMap.run_length = j;
+    } else if (normalizedHeader.includes('Standard Penetration Test') && normalizedHeader.includes('15 cm')) {
+      if (!columnMap.spt_blows_1) columnMap.spt_blows_1 = j;
+      else if (!columnMap.spt_blows_2) columnMap.spt_blows_2 = j;
+      else if (!columnMap.spt_blows_3) columnMap.spt_blows_3 = j;
+    } else if (normalizedHeader.includes('N - Value')) {
+      columnMap.n_value = j;
+    } else if (normalizedHeader.includes('Total Core Length')) {
+      columnMap.total_core_length = j;
+    } else if (normalizedHeader.includes('TCR (%)')) {
+      columnMap.tcr_percent = j;
+    } else if (normalizedHeader.includes('RQD Length')) {
+      columnMap.rqd_length = j;
+    } else if (normalizedHeader.includes('RQD (%)')) {
+      columnMap.rqd_percent = j;
+    } else if (normalizedHeader.includes('Colour of return water')) {
+      columnMap.return_water_colour = j;
+    } else if (normalizedHeader.includes('Water loss')) {
+      columnMap.water_loss = j;
+    } else if (normalizedHeader.includes('Diameter of Bore hole')) {
+      columnMap.borehole_diameter = j;
+    } else if (normalizedHeader.includes('Remarks')) {
+      columnMap.remarks = j;
+    }
+  }
+  
+  logger.info('Column mapping:', columnMap);
+  
+  // Extract stratum data rows
+  const stratumRows: any[] = [];
+  
+  for (let i = dataStartIndex; i < allRows.length; i++) {
+    const row = allRows[i];
+    
+    // Skip completely empty rows
+    if (row.length === 0 || row.every(cell => {
+      const normalized = normalizeValueToString(cell);
+      return !normalized || normalized.trim() === '';
+    })) {
+      continue;
+    }
+    
+    // Extract values using column mapping
+    const getValue = (colIndex: number | undefined): string => {
+      if (colIndex === undefined || colIndex >= row.length) return '';
+      const rawValue = row[colIndex];
+      return normalizeValueToString(rawValue);
+    };
+    
+    const getNumericValue = (colIndex: number | undefined): string => {
+      if (colIndex === undefined || colIndex >= row.length) return '';
+      const rawValue = row[colIndex];
+      const normalized = normalizeDepthValue(rawValue);
+      // Handle "-" and empty strings as empty
+      if (normalized === '-' || normalized === '') return '';
+      return normalized;
+    };
+    
+    const description = getValue(columnMap.description);
+    const depthFrom = getNumericValue(columnMap.depth_from);
+    const depthTo = getNumericValue(columnMap.depth_to);
+    const thickness = getNumericValue(columnMap.thickness);
+    
+    // CRITICAL: A row IS a stratum row if:
+    // - description is non-empty
+    // AND
+    // - (depth_from & depth_to are valid numbers) OR (thickness is a valid number)
+    const hasDescription = description && description.trim() !== '';
+    const hasFromDepth = depthFrom !== '' && !isNaN(parseFloat(depthFrom));
+    const hasToDepth = depthTo !== '' && !isNaN(parseFloat(depthTo));
+    const hasThickness = thickness !== '' && !isNaN(parseFloat(thickness));
+    const hasDepthInfo = (hasFromDepth && hasToDepth) || hasThickness;
+    
+    if (!hasDescription || !hasDepthInfo) {
+      logger.debug(`Skipped row ${i + 1}: hasDescription=${hasDescription}, hasDepthInfo=${hasDepthInfo} (from="${depthFrom}", to="${depthTo}", thickness="${thickness}")`);
+      continue;
+    }
+    
+    // Build row data object
+    const rowData: any = {
+      stratum_description: description.trim(),
+      stratum_depth_from: depthFrom,
+      stratum_depth_to: depthTo,
+      stratum_thickness_m: thickness || (hasFromDepth && hasToDepth ? (parseFloat(depthTo) - parseFloat(depthFrom)).toFixed(2) : ''),
+    };
+    
+    // Add optional fields (only if present and not "-" or empty)
+    const sampleType = getValue(columnMap.sample_type);
+    if (sampleType && sampleType !== '-') rowData.sample_event_type = sampleType;
+    
+    const sampleDepth = getNumericValue(columnMap.sample_depth);
+    if (sampleDepth && sampleDepth !== '-') rowData.sample_event_depth_m = sampleDepth;
+    
+    const runLength = getNumericValue(columnMap.run_length);
+    if (runLength && runLength !== '-') rowData.run_length_m = runLength;
+    
+    if (columnMap.spt_blows_1 !== undefined) {
+      const spt1 = getNumericValue(columnMap.spt_blows_1);
+      if (spt1 && spt1 !== '-') rowData.spt_blows_1 = spt1;
+    }
+    if (columnMap.spt_blows_2 !== undefined) {
+      const spt2 = getNumericValue(columnMap.spt_blows_2);
+      if (spt2 && spt2 !== '-') rowData.spt_blows_2 = spt2;
+    }
+    if (columnMap.spt_blows_3 !== undefined) {
+      const spt3 = getNumericValue(columnMap.spt_blows_3);
+      if (spt3 && spt3 !== '-') rowData.spt_blows_3 = spt3;
+    }
+    
+    const nValue = getValue(columnMap.n_value);
+    if (nValue && nValue !== '-' && nValue !== '[object Object]') rowData.n_value_is_2131 = nValue;
+    
+    const totalCoreLength = getNumericValue(columnMap.total_core_length);
+    if (totalCoreLength && totalCoreLength !== '-') rowData.total_core_length_cm = totalCoreLength;
+    
+    const tcrPercent = getNumericValue(columnMap.tcr_percent);
+    if (tcrPercent && tcrPercent !== '-') rowData.tcr_percent = tcrPercent;
+    
+    const rqdLength = getNumericValue(columnMap.rqd_length);
+    if (rqdLength && rqdLength !== '-') rowData.rqd_length_cm = rqdLength;
+    
+    const rqdPercent = getNumericValue(columnMap.rqd_percent);
+    if (rqdPercent && rqdPercent !== '-') rowData.rqd_percent = rqdPercent;
+    
+    const returnWaterColour = getValue(columnMap.return_water_colour);
+    if (returnWaterColour && returnWaterColour !== '-') rowData.return_water_colour = returnWaterColour;
+    
+    const waterLoss = getValue(columnMap.water_loss);
+    if (waterLoss && waterLoss !== '-') rowData.water_loss = waterLoss;
+    
+    const boreholeDiameter = getNumericValue(columnMap.borehole_diameter);
+    if (boreholeDiameter && boreholeDiameter !== '-') rowData.borehole_diameter = boreholeDiameter;
+    
+    const remarks = getValue(columnMap.remarks);
+    if (remarks && remarks !== '-') rowData.remarks = remarks;
+    
+    stratumRows.push(rowData);
+    logger.info(`Accepted stratum row ${i + 1}: description="${rowData.stratum_description.substring(0, 50)}...", from="${rowData.stratum_depth_from}", to="${rowData.stratum_depth_to}", thickness="${rowData.stratum_thickness_m}"`);
+  }
+  
+  logger.info(`Extracted ${stratumRows.length} stratum rows from ${allRows.length - dataStartIndex} data rows (starting at row ${dataStartIndex + 1})`);
   
   // Return the borelog header as the first row, followed by stratum rows
   return [borelogHeader, ...stratumRows];
@@ -1038,7 +1285,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (fileType.toLowerCase() !== 'csv') {
           logger.info('Trying fallback CSV parsing...');
           try {
-            const fallbackResult = parse(csvData, {
+            const fallbackResult = parse(csvDataForParsing, {
               columns: true,
               skip_empty_lines: true,
               trim: true,
@@ -1077,23 +1324,34 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Normalize CSV formats: template-style (scattered header) or standard (first-row header)
+    // For XLSX files, parseExcelFile already returns [header, ...stratumRows] structure
     let normalizedHeader: any;
     let normalizedStratumRows: any[];
 
-    const firstRow = parsedData[0] as any;
-    const keys = Object.keys(firstRow || {});
-    const values = Object.values(firstRow || {}).map(v => String(v || ''));
-    const isTemplateCsv = keys.some(k => k.includes('Project Name')) || values.some(v => v.includes('Description of Soil Stratum'));
-
-    if (isTemplateCsv) {
-      logger.info('Detected template-style CSV. Extracting scattered metadata and stratum.');
-      const { header, stratumData } = parseBorelogTemplateFormat(parsedData as any[]);
-      normalizedHeader = header;
-      normalizedStratumRows = stratumData;
-    } else {
-      // Assume standard CSV: first row header-like, rest stratum
+    // XLSX files parsed by parseExcelFile have structure: [borelogHeader, ...stratumRows]
+    // where borelogHeader is an object and stratumRows are objects
+    if (fileType === 'xlsx' || fileType === 'xls') {
+      logger.info('Processing XLSX file structure: [header, ...stratumRows]');
       normalizedHeader = parsedData[0];
       normalizedStratumRows = parsedData.slice(1);
+      logger.info(`XLSX: Extracted header and ${normalizedStratumRows.length} stratum rows`);
+    } else {
+      // For CSV files, check if it's template-style or standard
+      const firstRow = parsedData[0] as any;
+      const keys = Object.keys(firstRow || {});
+      const values = Object.values(firstRow || {}).map(v => String(v || ''));
+      const isTemplateCsv = keys.some(k => k.includes('Project Name')) || values.some(v => v.includes('Description of Soil Stratum'));
+
+      if (isTemplateCsv) {
+        logger.info('Detected template-style CSV. Extracting scattered metadata and stratum.');
+        const { header, stratumData } = parseBorelogTemplateFormat(parsedData as any[]);
+        normalizedHeader = header;
+        normalizedStratumRows = stratumData;
+      } else {
+        // Assume standard CSV: first row header-like, rest stratum
+        normalizedHeader = parsedData[0];
+        normalizedStratumRows = parsedData.slice(1);
+      }
     }
 
     const safeNumber = (val: any) => (val === undefined || val === null || val === '' ? null : parseFloat(String(val)));
@@ -1218,6 +1476,54 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // Generate borelog_id upfront for S3 storage path
     const borelogId = uuidv4();
     
+    // Create basic metadata.json immediately so borelog appears in listing
+    const storageService = getStorageService();
+    const createdAt = new Date().toISOString();
+    const metadata = {
+      borelog_id: borelogId,
+      project_id: projectId,
+      substructure_id: substructureId,
+      structure_id: structureId,
+      type: 'Geotechnical',
+      created_at: createdAt,
+      created_by_user_id: userId,
+      latest_version: borelogData.version_number || 1,
+      versions: [
+        {
+          version: borelogData.version_number || 1,
+          status: 'PENDING_PARSING', // Will be updated by parser
+          created_by: userId,
+          created_at: createdAt,
+          number: borelogData.job_code || null,
+          msl: borelogData.msl || null,
+          boring_method: borelogData.method_of_boring || null,
+          hole_diameter: borelogData.diameter_of_hole ? parseFloat(borelogData.diameter_of_hole) : null,
+          commencement_date: borelogData.commencement_date || null,
+          completion_date: borelogData.completion_date || null,
+          standing_water_level: borelogData.standing_water_level ? parseFloat(String(borelogData.standing_water_level)) : null,
+          termination_depth: borelogData.termination_depth ? parseFloat(String(borelogData.termination_depth)) : null
+        }
+      ]
+    };
+    
+    const metadataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/metadata.json`;
+    try {
+      await storageService.uploadFile(
+        Buffer.from(JSON.stringify(metadata, null, 2), 'utf-8'),
+        metadataKey,
+        'application/json',
+        {
+          project_id: projectId,
+          structure_id: structureId,
+          substructure_id: substructureId,
+        }
+      );
+      logger.info(`Created metadata.json for borelog ${borelogId} at ${metadataKey}`);
+    } catch (error) {
+      logger.error('Error creating metadata.json:', error);
+      // Continue - parser will create/update it later
+    }
+    
     // Store the CSV upload in pending status for approval
     logger.info(`Storing CSV upload in pending status with ${validatedStratumRows.length} stratum rows`);
     const pendingUpload = await storePendingCSVUpload(
@@ -1228,6 +1534,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       fileBuffer,
       fileName || `borelog_${Date.now()}.${fileType.toLowerCase()}`,
       borelogId
+    );
+
+    // Persist parsed stratum data immediately so it's available for getBorelogDetails
+    await persistParsedStratumData(
+      projectId,
+      borelogId,
+      pendingUpload.version_no,
+      normalizedHeader,
+      validatedStratumRows,
+      borelogData,
+      userId,
+      pendingUpload.upload_id,
+      fileType
     );
 
     await enqueueParserJob({
@@ -1279,7 +1598,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 // MIGRATED: Replaced database persistence with S3 storage
 async function storePendingCSVUpload(
   borelogData: any, 
-  stratumRows: any[], 
+  _stratumRows: any[], // Not used here, passed to persistParsedStratumData separately
   fileType: string, 
   userId: string,
   fileBuffer: Buffer,
@@ -1355,6 +1674,136 @@ async function storePendingCSVUpload(
     version_no: versionNo,
   };
 } 
+
+/**
+ * Persist parsed stratum data to S3 so it's immediately available for getBorelogDetails API
+ * Format matches what getBorelogDetailsByBorelogId expects
+ */
+async function persistParsedStratumData(
+  projectId: string,
+  borelogId: string,
+  versionNo: number,
+  header: any,
+  stratumRows: any[],
+  borelogData: any,
+  userId: string,
+  uploadId: string,
+  fileType: string
+): Promise<void> {
+  try {
+    const storageService = getStorageService();
+    const parsedAt = new Date().toISOString();
+    
+    // Transform stratum rows to match expected format
+    const strata = stratumRows.map((row) => {
+      const stratum: any = {
+        description: row.stratum_description || '',
+        depth_from: row.stratum_depth_from ? parseFloat(String(row.stratum_depth_from)) : null,
+        depth_to: row.stratum_depth_to ? parseFloat(String(row.stratum_depth_to)) : null,
+        thickness: row.stratum_thickness_m ? parseFloat(String(row.stratum_thickness_m)) : null,
+        colour_of_return_water: row.return_water_colour || null,
+        water_loss: row.water_loss || null,
+        diameter_of_borehole: row.borehole_diameter ? String(row.borehole_diameter) : null,
+        remarks: row.remarks || null,
+        tcr_percent: row.tcr_percent ? parseFloat(String(row.tcr_percent)) : null,
+        rqd_percent: row.rqd_percent ? parseFloat(String(row.rqd_percent)) : null,
+        samples: [],
+      };
+      
+      // Add sample data if present
+      if (row.sample_event_type || row.sample_event_depth_m || row.run_length_m || 
+          row.spt_blows_1 || row.spt_blows_2 || row.spt_blows_3 || row.n_value_is_2131 ||
+          row.total_core_length_cm || row.tcr_percent || row.rqd_length_cm || row.rqd_percent) {
+        const sample: any = {
+          sample_event_type: row.sample_event_type || null,
+          sample_event_depth_m: row.sample_event_depth_m ? parseFloat(String(row.sample_event_depth_m)) : null,
+          run_length_m: row.run_length_m ? parseFloat(String(row.run_length_m)) : null,
+          penetration_15cm: [
+            row.spt_blows_1 ? parseFloat(String(row.spt_blows_1)) : null,
+            row.spt_blows_2 ? parseFloat(String(row.spt_blows_2)) : null,
+            row.spt_blows_3 ? parseFloat(String(row.spt_blows_3)) : null,
+          ],
+          n_value: row.n_value_is_2131 || null,
+          total_core_length_cm: row.total_core_length_cm ? parseFloat(String(row.total_core_length_cm)) : null,
+          tcr_percent: row.tcr_percent ? parseFloat(String(row.tcr_percent)) : null,
+          rqd_length_cm: row.rqd_length_cm ? parseFloat(String(row.rqd_length_cm)) : null,
+          rqd_percent: row.rqd_percent ? parseFloat(String(row.rqd_percent)) : null,
+          remarks: row.remarks || null,
+        };
+        stratum.samples.push(sample);
+      }
+      
+      return stratum;
+    });
+    
+    // Build metadata object from header
+    const metadata: any = {
+      project_name: header.project_name || borelogData.project_name || null,
+      job_code: header.job_code || borelogData.job_code || null,
+      chainage_km: header.chainage_km || borelogData.chainage_km || null,
+      borehole_no: header.borehole_no || borelogData.borehole_no || null,
+      msl: header.msl || borelogData.msl || null,
+      method_of_boring: header.method_of_boring || borelogData.method_of_boring || null,
+      diameter_of_hole: header.diameter_of_hole || borelogData.diameter_of_hole || null,
+      section_name: header.section_name || borelogData.section_name || null,
+      location: header.location || borelogData.location || null,
+      coordinate_e: header.coordinate_e || borelogData.coordinate_e || null,
+      coordinate_l: header.coordinate_l || borelogData.coordinate_l || null,
+      commencement_date: header.commencement_date || borelogData.commencement_date || null,
+      completion_date: header.completion_date || borelogData.completion_date || null,
+      standing_water_level: header.standing_water_level || borelogData.standing_water_level || null,
+      termination_depth: header.termination_depth || borelogData.termination_depth || null,
+      permeability_tests_count: header.permeability_tests_count || borelogData.permeability_tests_count || null,
+      spt_tests_count: header.spt_tests_count || borelogData.spt_tests_count || null,
+      vs_tests_count: header.vs_tests_count || borelogData.vs_tests_count || null,
+      undisturbed_samples_count: header.undisturbed_samples_count || borelogData.undisturbed_samples_count || null,
+      disturbed_samples_count: header.disturbed_samples_count || borelogData.disturbed_samples_count || null,
+      water_samples_count: header.water_samples_count || borelogData.water_samples_count || null,
+      version_number: versionNo,
+      status: 'draft',
+      remarks: header.remarks || borelogData.remarks || null,
+    };
+    
+    // Format to match what getBorelogDetailsByBorelogId expects
+    const parsedData = {
+      borehole: {
+        project_id: projectId,
+        structure_id: borelogData.structure_id,
+        substructure_id: borelogData.substructure_id,
+        borelog_id: borelogId,
+        version_no: versionNo,
+        upload_id: uploadId,
+        file_type: fileType,
+        requested_by: userId,
+        job_code: metadata.job_code,
+        metadata: metadata,
+        parsed_at: parsedAt,
+      },
+      strata: strata,
+    };
+    
+    // Write to S3 at the path getBorelogDetailsByBorelogId expects
+    const strataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/parsed/v${versionNo}/strata.json`;
+    const strataBuffer = Buffer.from(JSON.stringify(parsedData, null, 2), 'utf-8');
+    
+    await storageService.uploadFile(
+      strataBuffer,
+      strataKey,
+      'application/json',
+      {
+        project_id: projectId,
+        structure_id: borelogData.structure_id,
+        substructure_id: borelogData.substructure_id,
+      }
+    );
+    
+    logger.info(`Persisted parsed stratum data to ${strataKey} with ${strata.length} strata`);
+  } catch (error) {
+    logger.error('Error persisting parsed stratum data:', error);
+    // Don't throw - upload should still succeed even if parsed data write fails
+    // The Python parser will create it later
+  }
+}
 
 async function enqueueParserJob(input: {
   projectId: string;

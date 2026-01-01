@@ -343,8 +343,37 @@ def _parse_template(
 ) -> Tuple[Dict, List[Dict]]:
     logger.info("Template-style CSV detected. Header row: %s", header_row)
     metadata = _build_template_metadata(metadata_rows)
-    column_map = _build_template_column_map(header_row)
-    strata = _build_template_strata(iterator, column_map)
+    
+    # Check if there's a sub-header row (row after main header with "From", "To", "Thickness")
+    # Convert iterator to list to allow peeking
+    remaining_rows = list(iterator)
+    
+    sub_header_row: Optional[List[str]] = None
+    data_start_index = 0
+    
+    if remaining_rows:
+        # Check first row to see if it's a sub-header
+        first_row = remaining_rows[0]
+        normalized_first = _normalize_row(first_row)
+        has_from = any("from" in cell.lower() for cell in normalized_first)
+        has_to = any("to" in cell.lower() and cell.lower() != "total" for cell in normalized_first)
+        
+        if has_from and has_to:
+            sub_header_row = normalized_first
+            data_start_index = 1  # Skip sub-header row
+            logger.info("Found sub-header row: %s", sub_header_row)
+            # Build column map from sub-header
+            column_map = _build_template_column_map(sub_header_row, header_row)
+        else:
+            # No sub-header, use main header
+            column_map = _build_template_column_map(header_row, None)
+    else:
+        # No more rows, use main header only
+        column_map = _build_template_column_map(header_row, None)
+    
+    # Create iterator from remaining rows (skipping sub-header if found)
+    data_iterator = iter(remaining_rows[data_start_index:])
+    strata = _build_template_strata(data_iterator, column_map)
     return metadata, strata
 
 
@@ -425,44 +454,86 @@ def _build_template_metadata(rows: List[List[str]]) -> Dict:
     return metadata
 
 
-def _build_template_column_map(header_row: List[str]) -> Dict[str, int]:
+def _build_template_column_map(
+    header_row: List[str], 
+    main_header_row: Optional[List[str]] = None
+) -> Dict[str, int]:
+    """
+    Build column mapping from header row(s).
+    If sub_header_row is provided, use it for precise mapping (From/To/Thickness).
+    Otherwise, use main_header_row for fuzzy matching.
+    """
     column_map: Dict[str, int] = {}
-    for idx, header in enumerate(header_row):
-        lowered = header.lower()
+    
+    # Use sub-header row if provided (more precise), otherwise use main header
+    mapping_row = header_row
+    
+    for idx, header in enumerate(mapping_row):
+        lowered = header.lower().strip()
+        
+        # Description column
         if "description of soil stratum" in lowered:
             column_map["description"] = idx
-        elif "depth" in lowered and "from" in lowered:
+        # Depth columns - check for exact "From" and "To" in sub-header
+        elif lowered == "from" or (lowered.startswith("from") and "depth" not in lowered):
             column_map["depth_from"] = idx
-        elif "depth" in lowered and "to" in lowered:
+        elif lowered == "to" or (lowered.startswith("to") and "depth" not in lowered and "total" not in lowered):
             column_map["depth_to"] = idx
+        elif "depth" in lowered and "from" in lowered:
+            if "depth_from" not in column_map:
+                column_map["depth_from"] = idx
+        elif "depth" in lowered and "to" in lowered and "total" not in lowered:
+            if "depth_to" not in column_map:
+                column_map["depth_to"] = idx
+        # Thickness
         elif "thickness" in lowered:
             column_map["thickness"] = idx
+        # Sample/Event columns
         elif "sample" in lowered and "type" in lowered:
             column_map["sample_type"] = idx
         elif "sample" in lowered and ("depth" in lowered or "(m)" in lowered):
-            column_map["sample_depth"] = idx
+            if "sample_depth" not in column_map:
+                column_map["sample_depth"] = idx
+        # Run Length
         elif "run length" in lowered:
             column_map["run_length"] = idx
+        # SPT Blows - handle multiple columns
         elif "15 cm" in lowered:
-            column_map["spt_blows"] = idx
-        elif "n - value" in lowered or "n value" in lowered:
+            if "spt_blows_1" not in column_map:
+                column_map["spt_blows_1"] = idx
+            elif "spt_blows_2" not in column_map:
+                column_map["spt_blows_2"] = idx
+            elif "spt_blows_3" not in column_map:
+                column_map["spt_blows_3"] = idx
+            # Legacy single column support
+            if "spt_blows" not in column_map:
+                column_map["spt_blows"] = idx
+        # N-Value
+        elif "n - value" in lowered or "n value" in lowered or "is - 2131" in lowered:
             column_map["n_value"] = idx
+        # Core Recovery
         elif "total core length" in lowered:
             column_map["total_core_length"] = idx
-        elif "tcr" in lowered:
+        elif "tcr" in lowered and "%" in lowered:
             column_map["tcr_percent"] = idx
+        # RQD
         elif "rqd length" in lowered:
             column_map["rqd_length"] = idx
         elif "rqd (%)" in lowered or "rqd %" in lowered:
             column_map["rqd_percent"] = idx
-        elif "colour of return water" in lowered:
+        # Water data
+        elif "colour of return water" in lowered or "color of return water" in lowered:
             column_map["return_water_colour"] = idx
         elif "water loss" in lowered:
             column_map["water_loss"] = idx
+        # Borehole diameter
         elif "diameter" in lowered and "bore hole" in lowered:
             column_map["borehole_diameter"] = idx
+        # Remarks
         elif "remarks" in lowered:
             column_map["remarks"] = idx
+    
+    logger.info("Column mapping built: %s", column_map)
     return column_map
 
 
@@ -470,6 +541,12 @@ def _build_template_strata(
     iterator: Iterator[List[str]],
     column_map: Dict[str, int],
 ) -> List[Dict]:
+    """
+    Build strata from template rows with RELAXED detection:
+    - Row IS a stratum if: description AND (depth_from & depth_to) OR thickness
+    - Do NOT require all fields to be present
+    - Capture ALL available fields precisely
+    """
     strata: List[Dict] = []
     current_stratum: Optional[Dict] = None
 
@@ -482,6 +559,11 @@ def _build_template_strata(
             logger.debug("Encountered footer/end marker row: %s", normalized)
             break
 
+        # Skip sub-header rows (rows that are just "From", "To", "Thickness", etc.)
+        if _is_sub_header_row(normalized):
+            logger.debug("Skipping sub-header row: %s", normalized)
+            continue
+
         description = _value_from_row(normalized, column_map.get("description"))
         depth_from = _safe_number(
             _value_from_row(normalized, column_map.get("depth_from"))
@@ -489,60 +571,148 @@ def _build_template_strata(
         depth_to = _safe_number(
             _value_from_row(normalized, column_map.get("depth_to"))
         )
+        thickness = _safe_number(
+            _value_from_row(normalized, column_map.get("thickness"))
+        )
 
-        if (not description or depth_from is None or depth_to is None) and description:
-            # Attempt to parse depths from the description cell itself
+        # Attempt to parse depths from description if missing
+        if description and (depth_from is None or depth_to is None):
             match = re.search(
-                r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)",
+                r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*m?",
                 description,
+                re.IGNORECASE,
             )
             if match:
-                depth_from = float(match.group(1))
-                depth_to = float(match.group(2))
-                description = description[: match.start()].strip() or description
+                if depth_from is None:
+                    depth_from = float(match.group(1))
+                if depth_to is None:
+                    depth_to = float(match.group(2))
+                # Clean description if it contains depth range
+                desc_clean = description[: match.start()].strip()
+                if desc_clean:
+                    description = desc_clean
 
-        if description and depth_from is not None and depth_to is not None:
+        # RELAXED stratum detection: description AND (from/to OR thickness)
+        has_description = bool(description and description.strip())
+        has_from_to = depth_from is not None and depth_to is not None
+        has_thickness = thickness is not None
+        is_stratum_row = has_description and (has_from_to or has_thickness)
+
+        if is_stratum_row:
+            # Calculate missing values
+            if thickness is None and has_from_to:
+                thickness = _calculate_thickness(depth_from, depth_to)
+            elif has_from_to is False and thickness is not None:
+                # Can't calculate from/to from thickness alone, but accept the row
+                depth_from = None
+                depth_to = None
+
             current_stratum = {
-                "description": description,
+                "description": description.strip(),
                 "depth_from": depth_from,
                 "depth_to": depth_to,
-                "thickness": _safe_number(
-                    _value_from_row(normalized, column_map.get("thickness"))
-                )
-                or _calculate_thickness(depth_from, depth_to),
-                "colour_of_return_water": _value_from_row(
-                    normalized, column_map.get("return_water_colour")
+                "thickness": thickness,
+                "colour_of_return_water": _safe_string(
+                    _value_from_row(normalized, column_map.get("return_water_colour"))
                 ),
-                "water_loss": _value_from_row(normalized, column_map.get("water_loss")),
-                "diameter_of_borehole": _value_from_row(
-                    normalized, column_map.get("borehole_diameter")
+                "water_loss": _safe_string(
+                    _value_from_row(normalized, column_map.get("water_loss"))
                 ),
-                "remarks": _value_from_row(normalized, column_map.get("remarks")),
+                "diameter_of_borehole": _safe_string(
+                    _value_from_row(normalized, column_map.get("borehole_diameter"))
+                ),
+                "remarks": _safe_string(
+                    _value_from_row(normalized, column_map.get("remarks"))
+                ),
+                "tcr_percent": _safe_number(
+                    _value_from_row(normalized, column_map.get("tcr_percent"))
+                ),
+                "rqd_percent": _safe_number(
+                    _value_from_row(normalized, column_map.get("rqd_percent"))
+                ),
                 "samples": [],
             }
             strata.append(current_stratum)
+            logger.debug(
+                "Created stratum: %s (%.2f-%.2fm, thickness=%.2f)",
+                description[:50],
+                depth_from or 0,
+                depth_to or 0,
+                thickness or 0,
+            )
+            
+            # Try to extract sample data from the same row
             sample = _build_sample_from_template_row(normalized, column_map)
             if sample:
                 current_stratum["samples"].append(sample)
             continue
 
+        # If we have a current stratum, this might be a sample/subdivision row
         if current_stratum:
             sample = _build_sample_from_template_row(normalized, column_map)
             if sample:
                 current_stratum["samples"].append(sample)
 
+    logger.info("Built %d strata from template", len(strata))
     return strata
+
+
+def _is_sub_header_row(row: List[str]) -> bool:
+    """
+    Check if a row is a sub-header row (contains only "From", "To", "Thickness", etc.)
+    """
+    if not row:
+        return False
+    
+    # Check if row contains only header-like labels
+    header_keywords = [
+        "from", "to", "thickness", "type", "depth", "sample", "event",
+        "run length", "15 cm", "n - value", "total core", "tcr", "rqd",
+        "colour", "water", "diameter", "remarks"
+    ]
+    
+    row_lower = " ".join(cell.lower() for cell in row if cell)
+    # If row contains only header keywords and no numeric data, it's likely a sub-header
+    has_numbers = any(re.search(r"\d", cell) for cell in row if cell)
+    has_header_keywords = any(keyword in row_lower for keyword in header_keywords)
+    
+    # Sub-header if it has header keywords but no meaningful numeric data
+    return has_header_keywords and not has_numbers and len([c for c in row if c.strip()]) <= 5
 
 
 def _build_sample_from_template_row(
     row: List[str],
     column_map: Dict[str, int],
 ) -> Optional[Dict]:
+    """
+    Build sample data from template row, capturing ALL available fields.
+    Returns None only if row has NO sample-related data at all.
+    """
     sample_type = _value_from_row(row, column_map.get("sample_type"))
     sample_depth = _safe_number(_value_from_row(row, column_map.get("sample_depth")))
     run_length = _safe_number(_value_from_row(row, column_map.get("run_length")))
-    spt_value = _value_from_row(row, column_map.get("spt_blows"))
-    blows = _parse_spt_blows(spt_value)
+    
+    # Handle multiple SPT blows columns
+    spt_blows_list = []
+    if "spt_blows_1" in column_map:
+        spt1 = _safe_number(_value_from_row(row, column_map.get("spt_blows_1")))
+        spt_blows_list.append(spt1)
+    if "spt_blows_2" in column_map:
+        spt2 = _safe_number(_value_from_row(row, column_map.get("spt_blows_2")))
+        spt_blows_list.append(spt2)
+    if "spt_blows_3" in column_map:
+        spt3 = _safe_number(_value_from_row(row, column_map.get("spt_blows_3")))
+        spt_blows_list.append(spt3)
+    
+    # Fallback to single spt_blows column if multiple columns not found
+    if not spt_blows_list and "spt_blows" in column_map:
+        spt_value = _value_from_row(row, column_map.get("spt_blows"))
+        spt_blows_list = _parse_spt_blows(spt_value)
+    
+    # Pad to 3 values
+    while len(spt_blows_list) < 3:
+        spt_blows_list.append(None)
+    
     n_value = _value_from_row(row, column_map.get("n_value"))
     total_core = _safe_number(_value_from_row(row, column_map.get("total_core_length")))
     tcr = _safe_number(_value_from_row(row, column_map.get("tcr_percent")))
@@ -550,10 +720,11 @@ def _build_sample_from_template_row(
     rqd_percent = _safe_number(_value_from_row(row, column_map.get("rqd_percent")))
     remarks = _value_from_row(row, column_map.get("remarks"))
 
-    has_blow_values = any(blow is not None for blow in blows)
-    if not any(
+    # Check if there's ANY sample-related data
+    has_blow_values = any(blow is not None for blow in spt_blows_list)
+    has_any_data = any(
         [
-            bool(sample_type),
+            bool(sample_type and sample_type.strip() and sample_type.strip() != "-"),
             sample_depth is not None,
             run_length is not None,
             total_core is not None,
@@ -561,22 +732,25 @@ def _build_sample_from_template_row(
             rqd_length is not None,
             rqd_percent is not None,
             has_blow_values,
-            bool(n_value),
+            bool(n_value and n_value.strip() and n_value.strip() != "-"),
+            bool(remarks and remarks.strip() and remarks.strip() != "-"),
         ]
-    ):
+    )
+    
+    if not has_any_data:
         return None
 
     return {
-        "sample_event_type": sample_type,
+        "sample_event_type": _safe_string(sample_type),
         "sample_event_depth_m": sample_depth,
         "run_length_m": run_length,
-        "penetration_15cm": blows or [None, None, None],
-        "n_value": n_value or None,
+        "penetration_15cm": spt_blows_list[:3],  # Ensure exactly 3 values
+        "n_value": _safe_string(n_value),
         "total_core_length_cm": total_core,
         "tcr_percent": tcr,
         "rqd_length_cm": rqd_length,
         "rqd_percent": rqd_percent,
-        "remarks": remarks or None,
+        "remarks": _safe_string(remarks),
     }
 
 
@@ -612,16 +786,27 @@ def _is_template_footer(row: List[str]) -> bool:
 
 
 def _safe_number(value: Optional[str]) -> Optional[float]:
+    """
+    Safely convert value to float, handling:
+    - None/empty strings
+    - "-" (dash indicating no value)
+    - "#VALUE!" (Excel error)
+    - "[object Object]" (object stringification)
+    - Numeric 0 (valid value, not None)
+    """
     if value is None:
         return None
     if isinstance(value, (int, float)):
+        # Numeric 0 is valid, return it
         return float(value)
     value = str(value).strip()
-    if not value or value in {"-", "#VALUE!"}:
+    if not value or value in {"-", "#VALUE!", "[object Object]", ""}:
         return None
     try:
-        return float(value)
-    except ValueError:
+        result = float(value)
+        # Return 0 if it's actually 0 (don't treat as missing)
+        return result
+    except (ValueError, TypeError):
         return None
 
 
