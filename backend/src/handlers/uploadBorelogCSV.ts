@@ -680,24 +680,64 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
       currentStratum.stratum_depth_from === depthFrom &&
       currentStratum.stratum_depth_to === depthTo;
     
-    if (isSameStratum) {
-      // This is a sample within the same stratum
+    const buildSampleFromRow = () => {
       const sampleType = getValue(row, columnMap.sample_type);
       const sampleDepth = getNumericValue(row, columnMap.sample_depth);
-      
-      if (sampleType || sampleDepth) {
-        const sample: any = {
-          type: sampleType || null,
-          depth_m: sampleDepth ? parseFloat(sampleDepth) : null,
-          remarks: getValue(row, columnMap.remarks) || null,
-        };
-        
-        // Add sample to current stratum if not already added
+      const runLength = getNumericValue(row, columnMap.run_length);
+      const spt1 = columnMap.spt_blows_1 !== undefined ? getNumericValue(row, columnMap.spt_blows_1) : '';
+      const spt2 = columnMap.spt_blows_2 !== undefined ? getNumericValue(row, columnMap.spt_blows_2) : '';
+      const spt3 = columnMap.spt_blows_3 !== undefined ? getNumericValue(row, columnMap.spt_blows_3) : '';
+      const nVal = getValue(row, columnMap.n_value);
+      const totalCoreLength = columnMap.total_core_length !== undefined ? getNumericValue(row, columnMap.total_core_length) : '';
+      const tcrPercent = columnMap.tcr_percent !== undefined ? getNumericValue(row, columnMap.tcr_percent) : '';
+      const rqdLength = columnMap.rqd_length !== undefined ? getNumericValue(row, columnMap.rqd_length) : '';
+      const rqdPercent = columnMap.rqd_percent !== undefined ? getNumericValue(row, columnMap.rqd_percent) : '';
+      const remarksVal = getValue(row, columnMap.remarks) || null;
+
+      const depthFromNum = sampleDepth ? parseFloat(sampleDepth) : null;
+      const runLenNum = runLength ? parseFloat(runLength) : null;
+      // Derive depth_to_m from depth_from_m + run_length_m (rounded to 2 decimals)
+      const depthToNum = depthFromNum !== null && runLenNum !== null 
+        ? Math.round((depthFromNum + runLenNum) * 100) / 100 
+        : null;
+
+      if (!(sampleType || sampleDepth || runLength || spt1 || spt2 || spt3 || nVal || remarksVal)) {
+        return null;
+      }
+
+      return {
+        type: sampleType || null,
+        sample_event_type: sampleType || null,
+        sample_event_depth_m: depthFromNum,
+        depth_from: depthFromNum,
+        depth_from_m: depthFromNum, // Use _m suffix for consistency
+        depth_to: depthToNum,
+        depth_to_m: depthToNum, // Use _m suffix for consistency
+        run_length_m: runLenNum,
+        spt_blows_1: spt1 ? parseFloat(spt1) : null,
+        spt_blows_2: spt2 ? parseFloat(spt2) : null,
+        spt_blows_3: spt3 ? parseFloat(spt3) : null,
+        spt_15cm_1: spt1 ? parseFloat(spt1) : null, // Also store with _15cm suffix
+        spt_15cm_2: spt2 ? parseFloat(spt2) : null,
+        spt_15cm_3: spt3 ? parseFloat(spt3) : null,
+        penetration_15cm: [spt1 ? parseFloat(spt1) : null, spt2 ? parseFloat(spt2) : null, spt3 ? parseFloat(spt3) : null],
+        n_value: nVal && nVal !== '[object Object]' ? parseFloat(nVal) : null,
+        total_core_length_cm: totalCoreLength ? parseFloat(totalCoreLength) : null,
+        tcr_percent: tcrPercent ? parseFloat(tcrPercent) : null,
+        rqd_length_cm: rqdLength ? parseFloat(rqdLength) : null,
+        rqd_percent: rqdPercent ? parseFloat(rqdPercent) : null,
+        remarks: remarksVal,
+      };
+    };
+
+    if (isSameStratum) {
+      const sample = buildSampleFromRow();
+      if (sample) {
         if (!currentStratum.samples) {
           currentStratum.samples = [];
         }
         currentStratum.samples.push(sample);
-        logger.info(`Added sample to stratum ${stratumRows.length}: type="${sampleType}", depth="${sampleDepth}"`);
+        logger.info(`Added sample to stratum ${stratumRows.length}: type="${sample.type}", depth_from="${sample.depth_from}", depth_to="${sample.depth_to}"`);
       }
     } else {
       // This is a new stratum - save previous if exists
@@ -714,18 +754,7 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
         samples: [],
       };
       
-      // Add stratum-level fields (from first row of this stratum)
-      const nValue = getValue(row, columnMap.n_value);
-      if (nValue && nValue !== '-' && nValue !== '[object Object]') {
-        currentStratum.n_value_is_2131 = nValue;
-      }
-      
-      const tcrPercent = getNumericValue(row, columnMap.tcr_percent);
-      if (tcrPercent && tcrPercent !== '-') currentStratum.tcr_percent = tcrPercent;
-      
-      const rqdPercent = getNumericValue(row, columnMap.rqd_percent);
-      if (rqdPercent && rqdPercent !== '-') currentStratum.rqd_percent = rqdPercent;
-      
+      // Stratum-level descriptive fields remain; test data now per-sample only
       const returnWaterColour = getValue(row, columnMap.return_water_colour);
       if (returnWaterColour && returnWaterColour !== '-') currentStratum.return_water_colour = returnWaterColour;
       
@@ -738,15 +767,9 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
       const remarks = getValue(row, columnMap.remarks);
       if (remarks && remarks !== '-') currentStratum.remarks = remarks;
       
-      // Check if this row also has sample data
-      const sampleType = getValue(row, columnMap.sample_type);
-      const sampleDepth = getNumericValue(row, columnMap.sample_depth);
-      if (sampleType || sampleDepth) {
-        const sample: any = {
-          type: sampleType || null,
-          depth_m: sampleDepth ? parseFloat(sampleDepth) : null,
-          remarks: remarks || null,
-        };
+      // Add sample for this row (first row of stratum may contain sample data)
+      const sample = buildSampleFromRow();
+      if (sample) {
         currentStratum.samples.push(sample);
       }
       
@@ -761,6 +784,16 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   
   logger.info(`Extracted ${stratumRows.length} strata (grouped from ${allRows.length - dataStartIndex} data rows)`);
   
+  // Normalize sample type from sample code
+  const normalizeSampleType = (code: string | null | undefined): string | null => {
+    if (!code) return null;
+    const codeUpper = String(code).trim().toUpperCase();
+    if (codeUpper.startsWith('S/D')) return 'SPT';
+    if (codeUpper.startsWith('U')) return 'UNDISTURBED';
+    if (codeUpper.startsWith('D')) return 'DISTURBED';
+    return 'UNKNOWN';
+  };
+
   // Generate sample codes for all samples across all strata
   const sampleCounters: { [key: string]: number } = { 'D': 0, 'U': 0, 'S/D': 0, 'W': 0 };
   
@@ -789,7 +822,33 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
           sampleCounters[prefix]++;
           sample.sample_code = `${prefix}-${sampleCounters[prefix]}`;
           
-          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}"`);
+          // Normalize sample_type from sample_code
+          sample.sample_type = normalizeSampleType(sample.sample_code);
+          
+          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}", normalized to "${sample.sample_type}"`);
+        }
+        
+        // Compute depth_to_m ONLY if missing (after parsing, not during persist)
+        if (
+          (sample.depth_to_m == null || sample.depth_to_m === undefined) &&
+          sample.depth_from_m != null &&
+          sample.run_length_m != null
+        ) {
+          sample.depth_to_m = Math.round((sample.depth_from_m + sample.run_length_m) * 100) / 100;
+        }
+        // Also check alternative field names
+        if (
+          (sample.depth_to == null || sample.depth_to === undefined) &&
+          (sample.depth_from != null || sample.depth_from_m != null) &&
+          sample.run_length_m != null
+        ) {
+          const depthFrom = sample.depth_from_m ?? sample.depth_from;
+          if (depthFrom != null) {
+            sample.depth_to = Math.round((depthFrom + sample.run_length_m) * 100) / 100;
+            if (!sample.depth_to_m) {
+              sample.depth_to_m = sample.depth_to;
+            }
+          }
         }
       }
     }
@@ -984,8 +1043,15 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
         columnMap.sample_depth = j;
       } else if (header.includes('Run Length')) {
         columnMap.run_length = j;
-      } else if (header.includes('15 cm')) {
-        columnMap.spt_blows = j;
+      } else if (header.includes('15 cm') || (header.includes('SPT') && header.includes('15'))) {
+        // Map SPT 15cm columns - there should be 3 of them
+        if (!columnMap.spt_blows_1) {
+          columnMap.spt_blows_1 = j;
+        } else if (!columnMap.spt_blows_2) {
+          columnMap.spt_blows_2 = j;
+        } else if (!columnMap.spt_blows_3) {
+          columnMap.spt_blows_3 = j;
+        }
       } else if (header.includes('N - Value')) {
         columnMap.n_value = j;
       } else if (header.includes('Total Core Length')) {
@@ -1087,20 +1153,60 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
     if (description && depthFrom && depthTo) {
       const mappedSampleType = columnMap.sample_type !== undefined ? row[columnMap.sample_type] : '';
       const mappedSampleDepth = columnMap.sample_depth !== undefined ? row[columnMap.sample_depth] : '';
+      const runLength = columnMap.run_length !== undefined ? row[columnMap.run_length] : '';
+      const spt1 = columnMap.spt_blows_1 !== undefined ? row[columnMap.spt_blows_1] : '';
+      const spt2 = columnMap.spt_blows_2 !== undefined ? row[columnMap.spt_blows_2] : '';
+      const spt3 = columnMap.spt_blows_3 !== undefined ? row[columnMap.spt_blows_3] : '';
+      const nVal = columnMap.n_value !== undefined ? row[columnMap.n_value] : '';
+      const totalCoreLength = columnMap.total_core_length !== undefined ? row[columnMap.total_core_length] : '';
+      const tcrPercent = columnMap.tcr_percent !== undefined ? row[columnMap.tcr_percent] : '';
+      const rqdLength = columnMap.rqd_length !== undefined ? row[columnMap.rqd_length] : '';
+      const rqdPercent = columnMap.rqd_percent !== undefined ? row[columnMap.rqd_percent] : '';
+      
       // Fallbacks for templates where sample type is in col 4 and depth may be absent
       const fallbackSampleType = row[4] && row[4] !== '-' ? String(row[4]).trim() : '';
       const sampleType = mappedSampleType || fallbackSampleType;
       const sampleDepth = mappedSampleDepth; // keep as-is; may be empty
 
       if (sampleType && currentStratum) {
+        const depthFromNum = sampleDepth ? parseFloat(String(sampleDepth)) : null;
+        const runLenNum = runLength ? parseFloat(String(runLength)) : null;
+        // Derive depth_to_m from depth_from_m + run_length_m (rounded to 2 decimals)
+        const depthToNum = depthFromNum !== null && runLenNum !== null 
+          ? Math.round((depthFromNum + runLenNum) * 100) / 100 
+          : null;
+        
         const sample = {
           type: sampleType,
-          depth_m: sampleDepth ? parseFloat(String(sampleDepth)) : null,
+          sample_event_type: sampleType,
+          sample_event_depth_m: depthFromNum,
+          depth_from: depthFromNum,
+          depth_from_m: depthFromNum,
+          depth_to: depthToNum,
+          depth_to_m: depthToNum,
+          depth_m: depthFromNum, // Keep for backward compatibility
+          run_length_m: runLenNum,
+          spt_blows_1: spt1 ? parseFloat(String(spt1)) : null,
+          spt_blows_2: spt2 ? parseFloat(String(spt2)) : null,
+          spt_blows_3: spt3 ? parseFloat(String(spt3)) : null,
+          spt_15cm_1: spt1 ? parseFloat(String(spt1)) : null,
+          spt_15cm_2: spt2 ? parseFloat(String(spt2)) : null,
+          spt_15cm_3: spt3 ? parseFloat(String(spt3)) : null,
+          penetration_15cm: [
+            spt1 ? parseFloat(String(spt1)) : null,
+            spt2 ? parseFloat(String(spt2)) : null,
+            spt3 ? parseFloat(String(spt3)) : null
+          ],
+          n_value: nVal && nVal !== '-' && nVal !== '[object Object]' ? parseFloat(String(nVal)) : null,
+          total_core_length_cm: totalCoreLength ? parseFloat(String(totalCoreLength)) : null,
+          tcr_percent: tcrPercent ? parseFloat(String(tcrPercent)) : null,
+          rqd_length_cm: rqdLength ? parseFloat(String(rqdLength)) : null,
+          rqd_percent: rqdPercent ? parseFloat(String(rqdPercent)) : null,
           remarks: columnMap.remarks !== undefined ? (row[columnMap.remarks] || null) : null,
         };
 
         currentStratum.samples.push(sample);
-        logger.info(`Added sample to stratum: type=${sampleType}${sampleDepth ? ` depth=${sampleDepth}m` : ''}`);
+        logger.info(`Added sample to stratum: type=${sampleType}${sampleDepth ? ` depth_from=${depthFromNum}m depth_to=${depthToNum}m` : ''} run_length=${runLenNum}m`);
       }
     }
   }
@@ -1112,6 +1218,16 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
   
   logger.info(`Extracted ${stratumData.length} stratum layers with samples`);
   
+  // Normalize sample type from sample code
+  const normalizeSampleType = (code: string | null | undefined): string | null => {
+    if (!code) return null;
+    const codeUpper = String(code).trim().toUpperCase();
+    if (codeUpper.startsWith('S/D')) return 'SPT';
+    if (codeUpper.startsWith('U')) return 'UNDISTURBED';
+    if (codeUpper.startsWith('D')) return 'DISTURBED';
+    return 'UNKNOWN';
+  };
+
   // Generate sample codes for all samples across all strata
   const sampleCounters: { [key: string]: number } = { 'D': 0, 'U': 0, 'S/D': 0, 'W': 0 };
   
@@ -1140,7 +1256,33 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
           sampleCounters[prefix]++;
           sample.sample_code = `${prefix}-${sampleCounters[prefix]}`;
           
-          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}"`);
+          // Normalize sample_type from sample_code
+          sample.sample_type = normalizeSampleType(sample.sample_code);
+          
+          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}", normalized to "${sample.sample_type}"`);
+        }
+        
+        // Compute depth_to_m ONLY if missing (after parsing, not during persist)
+        if (
+          (sample.depth_to_m == null || sample.depth_to_m === undefined) &&
+          sample.depth_from_m != null &&
+          sample.run_length_m != null
+        ) {
+          sample.depth_to_m = Math.round((sample.depth_from_m + sample.run_length_m) * 100) / 100;
+        }
+        // Also check alternative field names
+        if (
+          (sample.depth_to == null || sample.depth_to === undefined) &&
+          (sample.depth_from != null || sample.depth_from_m != null) &&
+          sample.run_length_m != null
+        ) {
+          const depthFrom = sample.depth_from_m ?? sample.depth_from;
+          if (depthFrom != null) {
+            sample.depth_to = Math.round((depthFrom + sample.run_length_m) * 100) / 100;
+            if (!sample.depth_to_m) {
+              sample.depth_to_m = sample.depth_to;
+            }
+          }
         }
       }
     }
@@ -1871,36 +2013,129 @@ async function persistParsedStratumData(
       }
       
       // Map all available sample fields to expected format
-      const samples = rawSamples.map((sample: any) => {
-        // Map sample fields - preserve all available data
+      // CRITICAL: Preserve all parsed sample fields - DO NOT rebuild from scratch
+      // Use null-coalescing to preserve existing values
+      const samples = rawSamples.map((parsedSample: any) => {
+        // Start with parsed sample - preserve all fields
+        const sample: any = { ...parsedSample };
+        
+        // Derive sample_type from sample_code if not explicitly provided (use null-coalescing)
+        if (!sample.sample_type) {
+          const sampleCode = sample.sample_code || '';
+          if (sampleCode) {
+            const codeUpper = String(sampleCode).trim().toUpperCase();
+            if (codeUpper.startsWith('S/D')) {
+              sample.sample_type = 'SPT';
+            } else if (codeUpper.startsWith('U')) {
+              sample.sample_type = 'UNDISTURBED';
+            } else if (codeUpper.startsWith('D')) {
+              sample.sample_type = 'DISTURBED';
+            }
+          }
+        }
+        
+        // Normalize depth_from_m - prefer existing value, then try alternatives
+        if (!sample.depth_from_m) {
+          if (sample.depth_from !== null && sample.depth_from !== undefined) {
+            sample.depth_from_m = typeof sample.depth_from === 'string' ? parseFloat(sample.depth_from) : sample.depth_from;
+          } else if (sample.sample_event_depth_m !== null && sample.sample_event_depth_m !== undefined) {
+            sample.depth_from_m = typeof sample.sample_event_depth_m === 'string' ? parseFloat(sample.sample_event_depth_m) : sample.sample_event_depth_m;
+          } else if (sample.depth_m !== null && sample.depth_m !== undefined) {
+            sample.depth_from_m = typeof sample.depth_m === 'string' ? parseFloat(sample.depth_m) : sample.depth_m;
+          }
+        }
+        
+        // Normalize depth_to_m - prefer existing value, then try alternatives
+        if (!sample.depth_to_m) {
+          if (sample.depth_to !== null && sample.depth_to !== undefined) {
+            sample.depth_to_m = typeof sample.depth_to === 'string' ? parseFloat(sample.depth_to) : sample.depth_to;
+          } else if (sample.depth_from_m !== null && sample.run_length_m !== null && sample.run_length_m !== undefined) {
+            // Compute depth_to_m ONLY if missing (after parsing, not during persist)
+            const runLen = typeof sample.run_length_m === 'string' ? parseFloat(sample.run_length_m) : sample.run_length_m;
+            sample.depth_to_m = Math.round((sample.depth_from_m + runLen) * 100) / 100;
+          }
+        }
+        
+        // Normalize run_length_m - preserve existing value
+        if (sample.run_length_m === null || sample.run_length_m === undefined) {
+          // Try to preserve from alternative field names if needed
+          if (sample.run_length !== null && sample.run_length !== undefined) {
+            sample.run_length_m = typeof sample.run_length === 'string' ? parseFloat(sample.run_length) : sample.run_length;
+          }
+        } else if (typeof sample.run_length_m === 'string') {
+          sample.run_length_m = parseFloat(sample.run_length_m);
+        }
+        
+        // Normalize SPT blows - preserve existing values, use null-coalescing
+        if (!sample.spt_15cm_1) {
+          if (sample.spt_blows_1 !== null && sample.spt_blows_1 !== undefined) {
+            sample.spt_15cm_1 = typeof sample.spt_blows_1 === 'string' ? parseFloat(sample.spt_blows_1) : sample.spt_blows_1;
+          } else if (sample.penetration_15cm && Array.isArray(sample.penetration_15cm) && sample.penetration_15cm[0] !== null && sample.penetration_15cm[0] !== undefined) {
+            sample.spt_15cm_1 = typeof sample.penetration_15cm[0] === 'string' ? parseFloat(sample.penetration_15cm[0]) : sample.penetration_15cm[0];
+          }
+        }
+        
+        if (!sample.spt_15cm_2) {
+          if (sample.spt_blows_2 !== null && sample.spt_blows_2 !== undefined) {
+            sample.spt_15cm_2 = typeof sample.spt_blows_2 === 'string' ? parseFloat(sample.spt_blows_2) : sample.spt_blows_2;
+          } else if (sample.penetration_15cm && Array.isArray(sample.penetration_15cm) && sample.penetration_15cm[1] !== null && sample.penetration_15cm[1] !== undefined) {
+            sample.spt_15cm_2 = typeof sample.penetration_15cm[1] === 'string' ? parseFloat(sample.penetration_15cm[1]) : sample.penetration_15cm[1];
+          }
+        }
+        
+        if (!sample.spt_15cm_3) {
+          if (sample.spt_blows_3 !== null && sample.spt_blows_3 !== undefined) {
+            sample.spt_15cm_3 = typeof sample.spt_blows_3 === 'string' ? parseFloat(sample.spt_blows_3) : sample.spt_blows_3;
+          } else if (sample.penetration_15cm && Array.isArray(sample.penetration_15cm) && sample.penetration_15cm[2] !== null && sample.penetration_15cm[2] !== undefined) {
+            sample.spt_15cm_3 = typeof sample.penetration_15cm[2] === 'string' ? parseFloat(sample.penetration_15cm[2]) : sample.penetration_15cm[2];
+          }
+        }
+        
+        // Normalize n_value - preserve existing value
+        if (sample.n_value !== null && sample.n_value !== undefined && typeof sample.n_value === 'string') {
+          sample.n_value = parseFloat(sample.n_value);
+        }
+        
+        // Normalize optional core recovery fields - preserve existing values
+        if (sample.total_core_length_cm !== null && sample.total_core_length_cm !== undefined && typeof sample.total_core_length_cm === 'string') {
+          sample.total_core_length_cm = parseFloat(sample.total_core_length_cm);
+        }
+        if (sample.tcr_percent !== null && sample.tcr_percent !== undefined && typeof sample.tcr_percent === 'string') {
+          sample.tcr_percent = parseFloat(sample.tcr_percent);
+        }
+        if (sample.rqd_length_cm !== null && sample.rqd_length_cm !== undefined && typeof sample.rqd_length_cm === 'string') {
+          sample.rqd_length_cm = parseFloat(sample.rqd_length_cm);
+        }
+        if (sample.rqd_percent !== null && sample.rqd_percent !== undefined && typeof sample.rqd_percent === 'string') {
+          sample.rqd_percent = parseFloat(sample.rqd_percent);
+        }
+        
+        // Ensure required fields are present (but don't overwrite with null)
         const mappedSample: any = {
-          sample_code: sample.sample_code || null,
-          sample_type: sample.sample_event_type || sample.type || null,
-          depth_m: sample.sample_event_depth_m || sample.depth_m || null,
-          remarks: sample.remarks || null,
+          sample_code: sample.sample_code ?? null,
+          sample_type: sample.sample_type ?? null,
+          depth_from_m: sample.depth_from_m ?? null,
+          depth_to_m: sample.depth_to_m ?? null,
+          run_length_m: sample.run_length_m ?? null,
+          spt_15cm_1: sample.spt_15cm_1 ?? null,
+          spt_15cm_2: sample.spt_15cm_2 ?? null,
+          spt_15cm_3: sample.spt_15cm_3 ?? null,
+          n_value: sample.n_value ?? null,
+          remarks: sample.remarks ?? null,
         };
         
-        // Include optional fields if present
-        if (sample.n_value !== null && sample.n_value !== undefined) {
-          mappedSample.n_value = typeof sample.n_value === 'string' ? parseFloat(sample.n_value) : sample.n_value;
-        }
-        if (sample.run_length_m !== null && sample.run_length_m !== undefined) {
-          mappedSample.run_length_m = typeof sample.run_length_m === 'string' ? parseFloat(sample.run_length_m) : sample.run_length_m;
-        }
-        if (sample.penetration_15cm !== null && sample.penetration_15cm !== undefined) {
-          mappedSample.spt_blows = sample.penetration_15cm;
-        }
+        // Include optional core recovery fields if present
         if (sample.total_core_length_cm !== null && sample.total_core_length_cm !== undefined) {
-          mappedSample.total_core_length_cm = typeof sample.total_core_length_cm === 'string' ? parseFloat(sample.total_core_length_cm) : sample.total_core_length_cm;
+          mappedSample.total_core_length_cm = sample.total_core_length_cm;
         }
         if (sample.tcr_percent !== null && sample.tcr_percent !== undefined) {
-          mappedSample.tcr_percent = typeof sample.tcr_percent === 'string' ? parseFloat(sample.tcr_percent) : sample.tcr_percent;
+          mappedSample.tcr_percent = sample.tcr_percent;
         }
         if (sample.rqd_length_cm !== null && sample.rqd_length_cm !== undefined) {
-          mappedSample.rqd_length_cm = typeof sample.rqd_length_cm === 'string' ? parseFloat(sample.rqd_length_cm) : sample.rqd_length_cm;
+          mappedSample.rqd_length_cm = sample.rqd_length_cm;
         }
         if (sample.rqd_percent !== null && sample.rqd_percent !== undefined) {
-          mappedSample.rqd_percent = typeof sample.rqd_percent === 'string' ? parseFloat(sample.rqd_percent) : sample.rqd_percent;
+          mappedSample.rqd_percent = sample.rqd_percent;
         }
         
         return mappedSample;
@@ -1974,6 +2209,29 @@ async function persistParsedStratumData(
     
     // Write to S3 at the path getBorelogDetailsByBorelogId expects
     const strataKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/parsed/v${versionNo}/strata.json`;
+    
+    // REQUIRED DEBUG ASSERT (TEMPORARY): Check for data loss before writing
+    for (const stratum of strata) {
+      if (stratum.samples && Array.isArray(stratum.samples)) {
+        for (const s of stratum.samples) {
+          if (s.run_length_m === null && s.spt_15cm_1 === null) {
+            logger.error("DATA LOSS: sample fields wiped", {
+              sample_code: s.sample_code,
+              sample_type: s.sample_type,
+              depth_from_m: s.depth_from_m,
+              depth_to_m: s.depth_to_m,
+              run_length_m: s.run_length_m,
+              spt_15cm_1: s.spt_15cm_1,
+              spt_15cm_2: s.spt_15cm_2,
+              spt_15cm_3: s.spt_15cm_3,
+              fullSample: s,
+              stratumDescription: stratum.description
+            });
+          }
+        }
+      }
+    }
+    
     const strataBuffer = Buffer.from(JSON.stringify(parsedData, null, 2), 'utf-8');
     
     await storageService.uploadFile(

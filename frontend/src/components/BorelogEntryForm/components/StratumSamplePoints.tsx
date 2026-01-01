@@ -1,25 +1,21 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Plus, Trash2 } from 'lucide-react';
-import { formatNumber, parseNumber } from './utils';
+import { formatNumber } from './utils';
 
 interface SamplePoint {
-  id: string;
-  sample_type: string;
-  depth_mode: 'single' | 'range';
-  depth_single?: number | null;
+  id?: string;
+  sample_type?: string | null;
+  sample_code?: string | null;
   depth_from?: number | null;
   depth_to?: number | null;
+  depth_single?: number | null;
   run_length?: number | null;
-  spt_15cm_1?: number | null;
-  spt_15cm_2?: number | null;
-  spt_15cm_3?: number | null;
+  run_length_m?: number | null;
+  spt_blows_1?: number | null;
+  spt_blows_2?: number | null;
+  spt_blows_3?: number | null;
+  penetration_15cm?: (number | null)[] | null;
   n_value?: number | null;
-  total_core_length_cm?: number | null;
-  tcr_percent?: number | null;
-  rqd_length?: number | null;
-  rqd_percent?: number | null;
+  remarks?: string | null;
 }
 
 interface StratumSamplePointsProps {
@@ -29,95 +25,27 @@ interface StratumSamplePointsProps {
 }
 
 export function StratumSamplePoints({ samples, onChange, canEdit }: StratumSamplePointsProps) {
-  const addSamplePoint = () => {
-    const newSample: SamplePoint = {
-      id: Math.random().toString(36).substr(2, 9),
-      sample_type: '',
-      depth_mode: 'single',
-      depth_single: 0,
-      depth_from: null,
-      depth_to: null,
-      run_length: null,
-      spt_15cm_1: 0,
-      spt_15cm_2: 0,
-      spt_15cm_3: 0,
-      n_value: 0,
-      total_core_length_cm: 0,
-      tcr_percent: 0,
-      rqd_length: 0,
-      rqd_percent: 0
-    };
-    onChange([...samples, newSample]);
+  const deriveSampleType = (sample: SamplePoint) => {
+    const code = (sample.sample_code || sample.sample_type || '').trim().toUpperCase();
+    if (code.startsWith('S/D')) return 'SPT';
+    if (code.startsWith('U')) return 'Undisturbed';
+    if (code.startsWith('D')) return 'Disturbed';
+    return sample.sample_type || code || '';
   };
 
-  const removeSamplePoint = (index: number) => {
-    onChange(samples.filter((_, i) => i !== index));
+  const displayVal = (val: any) => (val === null || val === undefined || val === '' ? '—' : val);
+  const displayDepth = (sample: SamplePoint) => {
+    const from = sample.depth_from ?? sample.depth_single;
+    const to = sample.depth_to;
+    return { from: from ?? null, to: to ?? null };
   };
-
-  const updateSamplePoint = (index: number, field: string, value: any) => {
-    const newSamples = [...samples];
-    const sample = { ...newSamples[index] };
-
-    // Update the field
-    (sample as any)[field] = value;
-
-    // Calculate N-value when SPT values change
-    if (field.startsWith('spt_15cm_')) {
-      const spt1 = sample.spt_15cm_1 || 0;
-      const spt2 = sample.spt_15cm_2 || 0;
-      const spt3 = sample.spt_15cm_3 || 0;
-      sample.n_value = spt1 + spt2 + spt3;
+  const getBlow = (sample: SamplePoint, idx: 0 | 1 | 2) => {
+    if (Array.isArray(sample.penetration_15cm)) {
+      return sample.penetration_15cm[idx] ?? null;
     }
-
-    // Calculate percentages if run_length exists
-    if (sample.run_length && sample.run_length > 0) {
-      if (field === 'total_core_length_cm') {
-        sample.tcr_percent = (value / sample.run_length) * 100;
-      }
-      if (field === 'rqd_length') {
-        sample.rqd_percent = (value / sample.run_length) * 100;
-      }
-    }
-
-    // Derived calculations for depth/range and run length
-    if (field === 'depth_mode') {
-      if (value === 'single') {
-        sample.depth_single = sample.depth_single ?? 0;
-        sample.depth_from = null;
-        sample.depth_to = null;
-        sample.run_length = null;
-      } else {
-        sample.depth_from = sample.depth_from ?? 0;
-        sample.depth_to = sample.depth_to ?? 0;
-        sample.depth_single = null;
-        const from = sample.depth_from ?? 0;
-        const to = sample.depth_to ?? 0;
-        sample.run_length = to - from;
-      }
-    }
-    if (['depth_from', 'depth_to'].includes(field)) {
-      if (sample.depth_mode === 'range') {
-        const from = sample.depth_from ?? 0;
-        const to = sample.depth_to ?? 0;
-        sample.run_length = to - from;
-      }
-    }
-
-    // Recalculate percentages if run_length changes
-    if (sample.run_length && sample.run_length > 0) {
-      if (typeof sample.total_core_length_cm === 'number') {
-        sample.tcr_percent = (sample.total_core_length_cm / sample.run_length) * 100;
-      }
-      if (typeof sample.rqd_length === 'number') {
-        sample.rqd_percent = (sample.rqd_length / sample.run_length) * 100;
-      }
-    } else {
-      sample.tcr_percent = 0;
-      sample.rqd_percent = 0;
-    }
-
-    newSamples[index] = sample;
-    onChange(newSamples);
+    if (idx === 0) return sample.spt_blows_1 ?? null;
+    if (idx === 1) return sample.spt_blows_2 ?? null;
+    return sample.spt_blows_3 ?? null;
   };
 
   return (
@@ -126,193 +54,52 @@ export function StratumSamplePoints({ samples, onChange, canEdit }: StratumSampl
         <table className="w-full border-collapse border border-gray-200">
           <thead>
             <tr className="bg-blue-50">
+              <th className="border p-2">Sample Code</th>
               <th className="border p-2">Type</th>
-              <th className="border p-2">Depth (m)</th>
-              <th className="border p-2">Run Length</th>
-              <th className="border p-2" colSpan={3}>SPT (15cm)</th>
-              <th className="border p-2">N-Value</th>
-              <th className="border p-2">Core Length</th>
-              <th className="border p-2">TCR %</th>
-              <th className="border p-2">RQD Length</th>
-              <th className="border p-2">RQD %</th>
-              {canEdit && <th className="border p-2">Actions</th>}
+              <th className="border p-2">Depth From (m)</th>
+              <th className="border p-2">Depth To (m)</th>
+              <th className="border p-2">Run Length (m)</th>
+              <th className="border p-2">SPT 15cm 1</th>
+              <th className="border p-2">SPT 15cm 2</th>
+              <th className="border p-2">SPT 15cm 3</th>
+              <th className="border p-2">N Value</th>
+              <th className="border p-2">Remarks</th>
             </tr>
           </thead>
           <tbody>
+            {samples.length === 0 && (
+              <tr>
+                <td className="border p-2 text-center text-sm text-gray-500" colSpan={6}>
+                  No samples
+                </td>
+              </tr>
+            )}
             {samples.map((sample, index) => (
-              <tr key={sample.id}>
+              <tr key={sample.id || index}>
+                <td className="border p-2">{displayVal(sample.sample_code)}</td>
+                <td className="border p-2">{displayVal(deriveSampleType(sample))}</td>
+                {(() => {
+                  const d = displayDepth(sample);
+                  return (
+                    <>
+                      <td className="border p-2">{displayVal(d.from)}</td>
+                      <td className="border p-2">{displayVal(d.to)}</td>
+                    </>
+                  );
+                })()}
                 <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    value={sample.sample_type}
-                    onChange={(e) => updateSamplePoint(index, 'sample_type', e.target.value)}
-                    placeholder="S/D-1, U-1"
-                    className="w-24"
-                  />
+                  {displayVal(sample.run_length_m ?? sample.run_length)}
                 </td>
-                <td className="border p-2">
-                  {sample.depth_mode === 'range' ? (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        disabled={!canEdit}
-                        type="number"
-                        step="0.01"
-                        value={formatNumber(sample.depth_from ?? 0)}
-                        onChange={(e) => updateSamplePoint(index, 'depth_from', parseNumber(e.target.value))}
-                        className="w-20"
-                      />
-                      <span>-</span>
-                      <Input
-                        disabled={!canEdit}
-                        type="number"
-                        step="0.01"
-                        value={formatNumber(sample.depth_to ?? 0)}
-                        onChange={(e) => updateSamplePoint(index, 'depth_to', parseNumber(e.target.value))}
-                        className="w-20"
-                      />
-                      {canEdit && (
-                        <button
-                          type="button"
-                          className="ml-2 text-xs px-2 py-1 border rounded"
-                          onClick={() => updateSamplePoint(index, 'depth_mode', 'single')}
-                          title="Switch to single depth"
-                        >
-                          Single
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        disabled={!canEdit}
-                        type="number"
-                        step="0.01"
-                        value={formatNumber(sample.depth_single ?? 0)}
-                        onChange={(e) => updateSamplePoint(index, 'depth_single', parseNumber(e.target.value))}
-                        className="w-20"
-                      />
-                      {canEdit && (
-                        <button
-                          type="button"
-                          className="text-xs px-2 py-1 border rounded"
-                          onClick={() => updateSamplePoint(index, 'depth_mode', 'range')}
-                          title="Switch to depth range"
-                        >
-                          Range
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={true}
-                    type="number"
-                    step="0.01"
-                    value={formatNumber(sample.run_length)}
-                    className="w-20 bg-gray-50"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    type="number"
-                    value={formatNumber(sample.spt_15cm_1)}
-                    onChange={(e) => updateSamplePoint(index, 'spt_15cm_1', parseNumber(e.target.value))}
-                    className="w-16"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    type="number"
-                    value={formatNumber(sample.spt_15cm_2)}
-                    onChange={(e) => updateSamplePoint(index, 'spt_15cm_2', parseNumber(e.target.value))}
-                    className="w-16"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    type="number"
-                    value={formatNumber(sample.spt_15cm_3)}
-                    onChange={(e) => updateSamplePoint(index, 'spt_15cm_3', parseNumber(e.target.value))}
-                    className="w-16"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={true}
-                    type="number"
-                    value={formatNumber(sample.n_value)}
-                    className="w-16 bg-gray-50"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    type="number"
-                    value={formatNumber(sample.total_core_length_cm)}
-                    onChange={(e) => updateSamplePoint(index, 'total_core_length_cm', parseNumber(e.target.value))}
-                    className="w-20"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={true}
-                    type="number"
-                    value={formatNumber(sample.tcr_percent)}
-                    className="w-16 bg-gray-50"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={!canEdit}
-                    type="number"
-                    value={formatNumber(sample.rqd_length)}
-                    onChange={(e) => updateSamplePoint(index, 'rqd_length', parseNumber(e.target.value))}
-                    className="w-20"
-                  />
-                </td>
-                <td className="border p-2">
-                  <Input
-                    disabled={true}
-                    type="number"
-                    value={formatNumber(sample.rqd_percent)}
-                    className="w-16 bg-gray-50"
-                  />
-                </td>
-                {canEdit && (
-                  <td className="border p-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeSamplePoint(index)}
-                      className="text-red-500"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
-                )}
+                <td className="border p-2">{displayVal(getBlow(sample, 0))}</td>
+                <td className="border p-2">{displayVal(getBlow(sample, 1))}</td>
+                <td className="border p-2">{displayVal(getBlow(sample, 2))}</td>
+                <td className="border p-2">{displayVal(sample.n_value)}</td>
+                <td className="border p-2">{displayVal(sample.remarks)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            onClick={addSamplePoint}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Sample
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

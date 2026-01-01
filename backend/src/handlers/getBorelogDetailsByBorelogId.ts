@@ -241,13 +241,34 @@ function transformStrataToVersionDetails(
     const borehole_diameter = stratum.borehole_diameter || stratum.diameter_of_borehole || undefined;
     
     // Transform samples array - ensure all required fields are present
-    // The parsed strata JSON already has samples with sample_code, sample_event_type, etc.
+    // The parsed strata JSON already has samples with all fields including depth_from_m, depth_to_m, spt_15cm_1/2/3, etc.
     const transformedSamples = (stratum.samples || []).map((sample: any) => {
-      // Handle penetration_15cm which can be an array or individual values
+      // Derive sample_type from sample_code if not explicitly provided
+      let sampleType = sample.sample_type || sample.sample_event_type || sample.type || null;
+      if (!sampleType && sample.sample_code) {
+        const codeUpper = String(sample.sample_code).trim().toUpperCase();
+        if (codeUpper.startsWith('S/D')) {
+          sampleType = 'SPT';
+        } else if (codeUpper.startsWith('U')) {
+          sampleType = 'UNDISTURBED';
+        } else if (codeUpper.startsWith('D')) {
+          sampleType = 'DISTURBED';
+        }
+      }
+      
+      // Handle depth - prefer depth_from_m/depth_to_m, fallback to depth_m
+      const depthFromM = sample.depth_from_m ?? sample.depth_from ?? null;
+      const depthToM = sample.depth_to_m ?? sample.depth_to ?? null;
+      const depthM = depthFromM ?? sample.sample_event_depth_m ?? sample.depth_m ?? null;
+      
+      // Handle SPT blows - prefer individual spt_15cm_1/2/3, fallback to penetration_15cm array
       let spt_blows = null;
-      if (sample.penetration_15cm) {
+      if (sample.spt_15cm_1 !== null && sample.spt_15cm_1 !== undefined) {
+        spt_blows = [sample.spt_15cm_1, sample.spt_15cm_2 ?? null, sample.spt_15cm_3 ?? null];
+      } else if (sample.spt_blows_1 !== null && sample.spt_blows_1 !== undefined) {
+        spt_blows = [sample.spt_blows_1, sample.spt_blows_2 ?? null, sample.spt_blows_3 ?? null];
+      } else if (sample.penetration_15cm) {
         if (Array.isArray(sample.penetration_15cm)) {
-          // If it's an array, use it directly or convert to a single value if needed
           spt_blows = sample.penetration_15cm;
         } else {
           spt_blows = sample.penetration_15cm;
@@ -255,18 +276,23 @@ function transformStrataToVersionDetails(
       }
       
       return {
-        sample_code: sample.sample_code || null,
-        sample_type: sample.sample_event_type || sample.type || null,
-        depth_m: sample.sample_event_depth_m || sample.depth_m || null,
-        run_length_m: sample.run_length_m !== null && sample.run_length_m !== undefined ? sample.run_length_m : null,
-        n_value: sample.n_value !== null && sample.n_value !== undefined ? sample.n_value : null,
-        remarks: sample.remarks || null,
+        sample_code: sample.sample_code ?? null,
+        sample_type: sampleType,
+        depth_m: depthM,
+        depth_from_m: depthFromM,
+        depth_to_m: depthToM,
+        run_length_m: sample.run_length_m ?? null,
+        spt_15cm_1: sample.spt_15cm_1 ?? sample.spt_blows_1 ?? (Array.isArray(sample.penetration_15cm) ? sample.penetration_15cm[0] : null) ?? null,
+        spt_15cm_2: sample.spt_15cm_2 ?? sample.spt_blows_2 ?? (Array.isArray(sample.penetration_15cm) ? sample.penetration_15cm[1] : null) ?? null,
+        spt_15cm_3: sample.spt_15cm_3 ?? sample.spt_blows_3 ?? (Array.isArray(sample.penetration_15cm) ? sample.penetration_15cm[2] : null) ?? null,
+        n_value: sample.n_value ?? null,
+        remarks: sample.remarks ?? null,
         // Additional test data fields
         spt_blows: spt_blows,
-        total_core_length_cm: sample.total_core_length_cm !== null && sample.total_core_length_cm !== undefined ? sample.total_core_length_cm : null,
-        tcr_percent: sample.tcr_percent !== null && sample.tcr_percent !== undefined ? sample.tcr_percent : null,
-        rqd_length_cm: sample.rqd_length_cm !== null && sample.rqd_length_cm !== undefined ? sample.rqd_length_cm : null,
-        rqd_percent: sample.rqd_percent !== null && sample.rqd_percent !== undefined ? sample.rqd_percent : null,
+        total_core_length_cm: sample.total_core_length_cm ?? null,
+        tcr_percent: sample.tcr_percent ?? null,
+        rqd_length_cm: sample.rqd_length_cm ?? null,
+        rqd_percent: sample.rqd_percent ?? null,
       };
     });
     

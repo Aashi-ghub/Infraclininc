@@ -415,10 +415,17 @@ export function BorelogEntryForm({
       const stratumRows = details.strata.map((stratum: any) => {
         // Transform samples from API format to form format
         const samples = (stratum.samples || []).map((sample: any) => {
-          // Determine depth mode
-          const hasRange = sample.run_length_m !== null && sample.run_length_m !== undefined;
-          const depthMode = hasRange ? 'range' : 'single';
-          
+          // Prefer explicit depth range when provided; otherwise use depth_m with run_length_m
+          const explicitFrom = sample.depth_from ?? sample.sample_event_depth_from ?? null;
+          const explicitTo = sample.depth_to ?? sample.sample_event_depth_to ?? null;
+          const hasExplicitRange = explicitFrom !== null && explicitTo !== null;
+          const runLength = toNumber(sample.run_length_m);
+          const depthFrom = toNumber(hasExplicitRange ? explicitFrom : (sample.depth_m ?? sample.sample_event_depth_m));
+          const depthTo = hasExplicitRange
+            ? toNumber(explicitTo)
+            : (runLength !== null && depthFrom !== null ? depthFrom + runLength : null);
+          const depthMode = hasExplicitRange || runLength !== null ? 'range' : 'single';
+
           // Parse SPT blows if it's an array
           let spt1 = null, spt2 = null, spt3 = null;
           if (Array.isArray(sample.spt_blows)) {
@@ -427,12 +434,13 @@ export function BorelogEntryForm({
           
           return {
             id: Math.random().toString(36).substr(2, 9),
+            sample_code: sample.sample_code || '',
             sample_type: sample.sample_type || sample.sample_code || '',
             depth_mode: depthMode,
-            depth_single: depthMode === 'single' ? toNumber(sample.depth_m) : null,
-            depth_from: depthMode === 'range' ? toNumber(sample.depth_m) : null,
-            depth_to: depthMode === 'range' && sample.run_length_m ? (toNumber(sample.depth_m) || 0) + toNumber(sample.run_length_m) : null,
-            run_length: toNumber(sample.run_length_m),
+            depth_single: depthMode === 'single' ? depthFrom : null,
+            depth_from: depthMode === 'range' ? depthFrom : null,
+            depth_to: depthMode === 'range' ? depthTo : null,
+            run_length: runLength,
             spt_15cm_1: toNumber(spt1),
             spt_15cm_2: toNumber(spt2),
             spt_15cm_3: toNumber(spt3),
@@ -441,6 +449,7 @@ export function BorelogEntryForm({
             tcr_percent: toNumber(sample.tcr_percent),
             rqd_length: toNumber(sample.rqd_length_cm),
             rqd_percent: toNumber(sample.rqd_percent),
+            remarks: sample.remarks || '',
           };
         });
         
