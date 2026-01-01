@@ -492,6 +492,14 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
         borelogHeader.msl = normalizeValueToString(row[j + 1]);
       }
       
+      // Extract Coordinates (E and L)
+      if ((cellValue === 'Coordinate E' || cellValue === 'E' || cellValue.includes('Coordinate') && cellValue.includes('E')) && j + 1 < row.length) {
+        borelogHeader.coordinate_e = normalizeValueToString(row[j + 1]);
+      }
+      if ((cellValue === 'Coordinate L' || cellValue === 'L' || cellValue.includes('Coordinate') && cellValue.includes('L')) && j + 1 < row.length) {
+        borelogHeader.coordinate_l = normalizeValueToString(row[j + 1]);
+      }
+      
       // Extract Completion Date
       if (cellValue === 'Completion Date' && j + 1 < row.length) {
         borelogHeader.completion_date = normalizeValueToString(row[j + 1]);
@@ -581,10 +589,13 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
       columnMap.depth_to = j;
     } else if (normalizedHeader.includes('Thickness')) {
       columnMap.thickness = j;
-    } else if (normalizedHeader.includes('Sample / Event') && normalizedHeader.includes('Type')) {
+    } else if (normalizedHeader.toLowerCase() === 'type' || (normalizedHeader.includes('Sample') && normalizedHeader.includes('Type'))) {
       columnMap.sample_type = j;
-    } else if (normalizedHeader.includes('Sample / Event') && normalizedHeader.includes('Depth')) {
-      columnMap.sample_depth = j;
+    } else if (normalizedHeader.includes('Depth (m)') && !normalizedHeader.includes('Stratum')) {
+      // Use the first Depth (m) column that's not related to Stratum depth
+      if (!columnMap.sample_depth) {
+        columnMap.sample_depth = j;
+      }
     } else if (normalizedHeader.includes('Run Length')) {
       columnMap.run_length = j;
     } else if (normalizedHeader.includes('Standard Penetration Test') && normalizedHeader.includes('15 cm')) {
@@ -614,8 +625,25 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
   
   logger.info('Column mapping:', columnMap);
   
-  // Extract stratum data rows
+  // Extract stratum data rows and group by depth range
+  // PART 2: Group consecutive rows with same depth range into ONE stratum
   const stratumRows: any[] = [];
+  let currentStratum: any = null;
+  
+  // Helper functions
+  const getValue = (row: any[], colIndex: number | undefined): string => {
+    if (colIndex === undefined || colIndex >= row.length) return '';
+    const rawValue = row[colIndex];
+    return normalizeValueToString(rawValue);
+  };
+  
+  const getNumericValue = (row: any[], colIndex: number | undefined): string => {
+    if (colIndex === undefined || colIndex >= row.length) return '';
+    const rawValue = row[colIndex];
+    const normalized = normalizeDepthValue(rawValue);
+    if (normalized === '-' || normalized === '') return '';
+    return normalized;
+  };
   
   for (let i = dataStartIndex; i < allRows.length; i++) {
     const row = allRows[i];
@@ -628,31 +656,12 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
       continue;
     }
     
-    // Extract values using column mapping
-    const getValue = (colIndex: number | undefined): string => {
-      if (colIndex === undefined || colIndex >= row.length) return '';
-      const rawValue = row[colIndex];
-      return normalizeValueToString(rawValue);
-    };
+    const description = getValue(row, columnMap.description);
+    const depthFrom = getNumericValue(row, columnMap.depth_from);
+    const depthTo = getNumericValue(row, columnMap.depth_to);
+    const thickness = getNumericValue(row, columnMap.thickness);
     
-    const getNumericValue = (colIndex: number | undefined): string => {
-      if (colIndex === undefined || colIndex >= row.length) return '';
-      const rawValue = row[colIndex];
-      const normalized = normalizeDepthValue(rawValue);
-      // Handle "-" and empty strings as empty
-      if (normalized === '-' || normalized === '') return '';
-      return normalized;
-    };
-    
-    const description = getValue(columnMap.description);
-    const depthFrom = getNumericValue(columnMap.depth_from);
-    const depthTo = getNumericValue(columnMap.depth_to);
-    const thickness = getNumericValue(columnMap.thickness);
-    
-    // CRITICAL: A row IS a stratum row if:
-    // - description is non-empty
-    // AND
-    // - (depth_from & depth_to are valid numbers) OR (thickness is a valid number)
+    // Check if this is a valid stratum row
     const hasDescription = description && description.trim() !== '';
     const hasFromDepth = depthFrom !== '' && !isNaN(parseFloat(depthFrom));
     const hasToDepth = depthTo !== '' && !isNaN(parseFloat(depthTo));
@@ -660,75 +669,133 @@ async function parseExcelFile(fileBuffer: Buffer): Promise<any[]> {
     const hasDepthInfo = (hasFromDepth && hasToDepth) || hasThickness;
     
     if (!hasDescription || !hasDepthInfo) {
-      logger.debug(`Skipped row ${i + 1}: hasDescription=${hasDescription}, hasDepthInfo=${hasDepthInfo} (from="${depthFrom}", to="${depthTo}", thickness="${thickness}")`);
+      logger.debug(`Skipped row ${i + 1}: hasDescription=${hasDescription}, hasDepthInfo=${hasDepthInfo}`);
       continue;
     }
     
-    // Build row data object
-    const rowData: any = {
-      stratum_description: description.trim(),
-      stratum_depth_from: depthFrom,
-      stratum_depth_to: depthTo,
-      stratum_thickness_m: thickness || (hasFromDepth && hasToDepth ? (parseFloat(depthTo) - parseFloat(depthFrom)).toFixed(2) : ''),
-    };
+    // Check if this row belongs to the current stratum (same depth range)
+    const depthFromNum = parseFloat(depthFrom);
+    const depthToNum = parseFloat(depthTo);
+    const isSameStratum = currentStratum && 
+      currentStratum.stratum_depth_from === depthFrom &&
+      currentStratum.stratum_depth_to === depthTo;
     
-    // Add optional fields (only if present and not "-" or empty)
-    const sampleType = getValue(columnMap.sample_type);
-    if (sampleType && sampleType !== '-') rowData.sample_event_type = sampleType;
-    
-    const sampleDepth = getNumericValue(columnMap.sample_depth);
-    if (sampleDepth && sampleDepth !== '-') rowData.sample_event_depth_m = sampleDepth;
-    
-    const runLength = getNumericValue(columnMap.run_length);
-    if (runLength && runLength !== '-') rowData.run_length_m = runLength;
-    
-    if (columnMap.spt_blows_1 !== undefined) {
-      const spt1 = getNumericValue(columnMap.spt_blows_1);
-      if (spt1 && spt1 !== '-') rowData.spt_blows_1 = spt1;
+    if (isSameStratum) {
+      // This is a sample within the same stratum
+      const sampleType = getValue(row, columnMap.sample_type);
+      const sampleDepth = getNumericValue(row, columnMap.sample_depth);
+      
+      if (sampleType || sampleDepth) {
+        const sample: any = {
+          type: sampleType || null,
+          depth_m: sampleDepth ? parseFloat(sampleDepth) : null,
+          remarks: getValue(row, columnMap.remarks) || null,
+        };
+        
+        // Add sample to current stratum if not already added
+        if (!currentStratum.samples) {
+          currentStratum.samples = [];
+        }
+        currentStratum.samples.push(sample);
+        logger.info(`Added sample to stratum ${stratumRows.length}: type="${sampleType}", depth="${sampleDepth}"`);
+      }
+    } else {
+      // This is a new stratum - save previous if exists
+      if (currentStratum) {
+        stratumRows.push(currentStratum);
+      }
+      
+      // Create new stratum
+      currentStratum = {
+        stratum_description: description.trim(),
+        stratum_depth_from: depthFrom,
+        stratum_depth_to: depthTo,
+        stratum_thickness_m: thickness || (hasFromDepth && hasToDepth ? (depthToNum - depthFromNum).toFixed(2) : ''),
+        samples: [],
+      };
+      
+      // Add stratum-level fields (from first row of this stratum)
+      const nValue = getValue(row, columnMap.n_value);
+      if (nValue && nValue !== '-' && nValue !== '[object Object]') {
+        currentStratum.n_value_is_2131 = nValue;
+      }
+      
+      const tcrPercent = getNumericValue(row, columnMap.tcr_percent);
+      if (tcrPercent && tcrPercent !== '-') currentStratum.tcr_percent = tcrPercent;
+      
+      const rqdPercent = getNumericValue(row, columnMap.rqd_percent);
+      if (rqdPercent && rqdPercent !== '-') currentStratum.rqd_percent = rqdPercent;
+      
+      const returnWaterColour = getValue(row, columnMap.return_water_colour);
+      if (returnWaterColour && returnWaterColour !== '-') currentStratum.return_water_colour = returnWaterColour;
+      
+      const waterLoss = getValue(row, columnMap.water_loss);
+      if (waterLoss && waterLoss !== '-') currentStratum.water_loss = waterLoss;
+      
+      const boreholeDiameter = getNumericValue(row, columnMap.borehole_diameter);
+      if (boreholeDiameter && boreholeDiameter !== '-') currentStratum.borehole_diameter = boreholeDiameter;
+      
+      const remarks = getValue(row, columnMap.remarks);
+      if (remarks && remarks !== '-') currentStratum.remarks = remarks;
+      
+      // Check if this row also has sample data
+      const sampleType = getValue(row, columnMap.sample_type);
+      const sampleDepth = getNumericValue(row, columnMap.sample_depth);
+      if (sampleType || sampleDepth) {
+        const sample: any = {
+          type: sampleType || null,
+          depth_m: sampleDepth ? parseFloat(sampleDepth) : null,
+          remarks: remarks || null,
+        };
+        currentStratum.samples.push(sample);
+      }
+      
+      logger.info(`Created new stratum ${stratumRows.length + 1}: description="${currentStratum.stratum_description.substring(0, 50)}...", from="${currentStratum.stratum_depth_from}", to="${currentStratum.stratum_depth_to}"`);
     }
-    if (columnMap.spt_blows_2 !== undefined) {
-      const spt2 = getNumericValue(columnMap.spt_blows_2);
-      if (spt2 && spt2 !== '-') rowData.spt_blows_2 = spt2;
-    }
-    if (columnMap.spt_blows_3 !== undefined) {
-      const spt3 = getNumericValue(columnMap.spt_blows_3);
-      if (spt3 && spt3 !== '-') rowData.spt_blows_3 = spt3;
-    }
-    
-    const nValue = getValue(columnMap.n_value);
-    if (nValue && nValue !== '-' && nValue !== '[object Object]') rowData.n_value_is_2131 = nValue;
-    
-    const totalCoreLength = getNumericValue(columnMap.total_core_length);
-    if (totalCoreLength && totalCoreLength !== '-') rowData.total_core_length_cm = totalCoreLength;
-    
-    const tcrPercent = getNumericValue(columnMap.tcr_percent);
-    if (tcrPercent && tcrPercent !== '-') rowData.tcr_percent = tcrPercent;
-    
-    const rqdLength = getNumericValue(columnMap.rqd_length);
-    if (rqdLength && rqdLength !== '-') rowData.rqd_length_cm = rqdLength;
-    
-    const rqdPercent = getNumericValue(columnMap.rqd_percent);
-    if (rqdPercent && rqdPercent !== '-') rowData.rqd_percent = rqdPercent;
-    
-    const returnWaterColour = getValue(columnMap.return_water_colour);
-    if (returnWaterColour && returnWaterColour !== '-') rowData.return_water_colour = returnWaterColour;
-    
-    const waterLoss = getValue(columnMap.water_loss);
-    if (waterLoss && waterLoss !== '-') rowData.water_loss = waterLoss;
-    
-    const boreholeDiameter = getNumericValue(columnMap.borehole_diameter);
-    if (boreholeDiameter && boreholeDiameter !== '-') rowData.borehole_diameter = boreholeDiameter;
-    
-    const remarks = getValue(columnMap.remarks);
-    if (remarks && remarks !== '-') rowData.remarks = remarks;
-    
-    stratumRows.push(rowData);
-    logger.info(`Accepted stratum row ${i + 1}: description="${rowData.stratum_description.substring(0, 50)}...", from="${rowData.stratum_depth_from}", to="${rowData.stratum_depth_to}", thickness="${rowData.stratum_thickness_m}"`);
   }
   
-  logger.info(`Extracted ${stratumRows.length} stratum rows from ${allRows.length - dataStartIndex} data rows (starting at row ${dataStartIndex + 1})`);
+  // Don't forget the last stratum
+  if (currentStratum) {
+    stratumRows.push(currentStratum);
+  }
   
-  // Return the borelog header as the first row, followed by stratum rows
+  logger.info(`Extracted ${stratumRows.length} strata (grouped from ${allRows.length - dataStartIndex} data rows)`);
+  
+  // Generate sample codes for all samples across all strata
+  const sampleCounters: { [key: string]: number } = { 'D': 0, 'U': 0, 'S/D': 0, 'W': 0 };
+  
+  for (const stratum of stratumRows) {
+    if (stratum.samples && Array.isArray(stratum.samples)) {
+      for (const sample of stratum.samples) {
+        if (sample.type) {
+          // Extract sample type prefix (D, U, S/D, W, etc.)
+          const typeUpper = String(sample.type).toUpperCase().trim();
+          let prefix = 'D'; // default
+          
+          if (typeUpper.includes('D') && typeUpper.includes('S')) {
+            prefix = 'S/D';
+          } else if (typeUpper.includes('U')) {
+            prefix = 'U';
+          } else if (typeUpper.includes('W')) {
+            prefix = 'W';
+          } else if (typeUpper.includes('D')) {
+            prefix = 'D';
+          }
+          
+          // Increment counter and generate code
+          if (!sampleCounters[prefix]) {
+            sampleCounters[prefix] = 0;
+          }
+          sampleCounters[prefix]++;
+          sample.sample_code = `${prefix}-${sampleCounters[prefix]}`;
+          
+          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}"`);
+        }
+      }
+    }
+  }
+  
+  // Return the borelog header as the first row, followed by grouped stratum rows
   return [borelogHeader, ...stratumRows];
 }
 
@@ -856,6 +923,16 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
         logger.info(`Found msl: ${header.msl}`);
       }
       
+      // Extract Coordinates
+      if (cellValue === 'Coordinate E' || cellValue === 'E' || (cellValue.includes('Coordinate') && cellValue.includes('E'))) {
+        header.coordinate_e = findValueInRow(row, j) || findValueInNextRow(allRows, i);
+        logger.info(`Found coordinate_e: ${header.coordinate_e}`);
+      }
+      if (cellValue === 'Coordinate L' || cellValue === 'L' || (cellValue.includes('Coordinate') && cellValue.includes('L'))) {
+        header.coordinate_l = findValueInRow(row, j) || findValueInNextRow(allRows, i);
+        logger.info(`Found coordinate_l: ${header.coordinate_l}`);
+      }
+      
       // Extract Completion Date
       if (cellValue === 'Completion Date') {
         header.completion_date = findValueInRow(row, j) || findValueInNextRow(allRows, i);
@@ -969,8 +1046,13 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
     const totalCoreLengthFromPos = row[2] && row[2] !== '-' ? String(row[2]).trim() : '';
     const sampleTypeFromPos = row[4] && row[4] !== '-' ? String(row[4]).trim() : '';
 
-    if (description && depthFrom && depthTo) {
-      // This is a new stratum layer
+    // PART 2: Group by depth range - check if this row belongs to current stratum
+    const isSameStratum = currentStratum && 
+      currentStratum.stratum_depth_from === depthFrom &&
+      currentStratum.stratum_depth_to === depthTo;
+    
+    if (description && depthFrom && depthTo && !isSameStratum) {
+      // This is a new stratum layer (different depth range)
       if (currentStratum) {
         stratumData.push(currentStratum);
       }
@@ -984,14 +1066,25 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
         water_loss: columnMap.water_loss !== undefined ? row[columnMap.water_loss] : '',
         borehole_diameter: columnMap.borehole_diameter !== undefined ? row[columnMap.borehole_diameter] : '',
         remarks: columnMap.remarks !== undefined ? row[columnMap.remarks] : '',
-        total_core_length_cm: totalCoreLengthFromPos,
-        sample_event_type: sampleTypeFromPos,
         samples: []
       };
       
+      // Add stratum-level fields if present
+      if (columnMap.n_value !== undefined && row[columnMap.n_value]) {
+        currentStratum.n_value_is_2131 = row[columnMap.n_value];
+      }
+      if (columnMap.tcr_percent !== undefined && row[columnMap.tcr_percent]) {
+        currentStratum.tcr_percent = row[columnMap.tcr_percent];
+      }
+      if (columnMap.rqd_percent !== undefined && row[columnMap.rqd_percent]) {
+        currentStratum.rqd_percent = row[columnMap.rqd_percent];
+      }
+      
       logger.info(`Created new stratum: ${description} (${depthFrom}-${depthTo}m)`);
-    } else if (currentStratum) {
-      // This is a sample/sub-division row within the current stratum
+    }
+    
+    // Check if this row has sample data (either new stratum or same stratum)
+    if (description && depthFrom && depthTo) {
       const mappedSampleType = columnMap.sample_type !== undefined ? row[columnMap.sample_type] : '';
       const mappedSampleDepth = columnMap.sample_depth !== undefined ? row[columnMap.sample_depth] : '';
       // Fallbacks for templates where sample type is in col 4 and depth may be absent
@@ -999,25 +1092,15 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
       const sampleType = mappedSampleType || fallbackSampleType;
       const sampleDepth = mappedSampleDepth; // keep as-is; may be empty
 
-      if (sampleType) {
+      if (sampleType && currentStratum) {
         const sample = {
-          sample_event_type: sampleType,
-          sample_event_depth_m: sampleDepth || '',
-          run_length_m: columnMap.run_length !== undefined ? row[columnMap.run_length] : '',
-          spt_blows_1: columnMap.spt_blows !== undefined ? row[columnMap.spt_blows] : '',
-          spt_blows_2: '',
-          spt_blows_3: '',
-          n_value_is_2131: columnMap.n_value !== undefined ? row[columnMap.n_value] : '',
-          total_core_length_cm: columnMap.total_core_length !== undefined ? row[columnMap.total_core_length] : '',
-          tcr_percent: columnMap.tcr_percent !== undefined ? row[columnMap.tcr_percent] : '',
-          rqd_length_cm: columnMap.rqd_length !== undefined ? row[columnMap.rqd_length] : '',
-          rqd_percent: columnMap.rqd_percent !== undefined ? row[columnMap.rqd_percent] : '',
-          remarks: columnMap.remarks !== undefined ? row[columnMap.remarks] : '',
-          is_subdivision: 'true'
+          type: sampleType,
+          depth_m: sampleDepth ? parseFloat(String(sampleDepth)) : null,
+          remarks: columnMap.remarks !== undefined ? (row[columnMap.remarks] || null) : null,
         };
 
         currentStratum.samples.push(sample);
-        logger.info(`Added subdivision/sample row: type=${sampleType}${sampleDepth ? ` depth=${sampleDepth}m` : ''}`);
+        logger.info(`Added sample to stratum: type=${sampleType}${sampleDepth ? ` depth=${sampleDepth}m` : ''}`);
       }
     }
   }
@@ -1028,6 +1111,40 @@ function parseBorelogTemplateFormat(csvRows: any[]): { header: any, stratumData:
   }
   
   logger.info(`Extracted ${stratumData.length} stratum layers with samples`);
+  
+  // Generate sample codes for all samples across all strata
+  const sampleCounters: { [key: string]: number } = { 'D': 0, 'U': 0, 'S/D': 0, 'W': 0 };
+  
+  for (const stratum of stratumData) {
+    if (stratum.samples && Array.isArray(stratum.samples)) {
+      for (const sample of stratum.samples) {
+        if (sample.type) {
+          // Extract sample type prefix (D, U, S/D, W, etc.)
+          const typeUpper = String(sample.type).toUpperCase().trim();
+          let prefix = 'D'; // default
+          
+          if (typeUpper.includes('D') && typeUpper.includes('S')) {
+            prefix = 'S/D';
+          } else if (typeUpper.includes('U')) {
+            prefix = 'U';
+          } else if (typeUpper.includes('W')) {
+            prefix = 'W';
+          } else if (typeUpper.includes('D')) {
+            prefix = 'D';
+          }
+          
+          // Increment counter and generate code
+          if (!sampleCounters[prefix]) {
+            sampleCounters[prefix] = 0;
+          }
+          sampleCounters[prefix]++;
+          sample.sample_code = `${prefix}-${sampleCounters[prefix]}`;
+          
+          logger.info(`Generated sample code: ${sample.sample_code} for type "${sample.type}"`);
+        }
+      }
+    }
+  }
   
   return { header, stratumData };
 }
@@ -1445,6 +1562,16 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           nValue = (blows2 + blows3).toString();
         }
 
+        // Preserve samples array from original row - schema validation doesn't include it
+        // Samples are added during parsing and must be preserved
+        const preservedSamples = row.samples || [];
+        
+        if (preservedSamples.length > 0) {
+          logger.info(`Preserving ${preservedSamples.length} samples for stratum row ${rowNumber}`, {
+            sampleCodes: preservedSamples.map((s: any) => s.sample_code || s.type).filter(Boolean)
+          });
+        }
+        
         validatedStratumRows.push({
           ...stratumData,
           stratum_depth_from: parseFloat(stratumData.stratum_depth_from),
@@ -1460,6 +1587,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
           tcr_percent: stratumData.tcr_percent ? parseFloat(stratumData.tcr_percent) : null,
           rqd_length_cm: stratumData.rqd_length_cm ? parseFloat(stratumData.rqd_length_cm) : null,
           rqd_percent: stratumData.rqd_percent ? parseFloat(stratumData.rqd_percent) : null,
+          // CRITICAL: Preserve samples array from parsed data - DO NOT lose during validation
+          samples: preservedSamples,
           borehole_diameter: stratumData.borehole_diameter ? parseFloat(stratumData.borehole_diameter) : null,
           is_subdivision: stratumData.is_subdivision ? stratumData.is_subdivision.toLowerCase() === 'true' || stratumData.is_subdivision === '1' : false
         });
@@ -1536,6 +1665,19 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       borelogId
     );
 
+    // Log validatedStratumRows before persisting to debug sample preservation
+    const totalSamplesBeforePersist = validatedStratumRows.reduce((sum, r) => sum + (r.samples?.length || 0), 0);
+    logger.info(`About to persist stratum data`, {
+      validatedStratumRowsCount: validatedStratumRows.length,
+      totalSamplesBeforePersist,
+      samplesPerRow: validatedStratumRows.map(r => ({
+        desc: r.stratum_description,
+        sampleCount: r.samples?.length || 0,
+        hasSamples: 'samples' in r,
+        samples: r.samples || []
+      }))
+    });
+    
     // Persist parsed stratum data immediately so it's available for getBorelogDetails
     await persistParsedStratumData(
       projectId,
@@ -1695,43 +1837,91 @@ async function persistParsedStratumData(
     const parsedAt = new Date().toISOString();
     
     // Transform stratum rows to match expected format
+    // Samples are already grouped per stratum - preserve ALL sample fields
     const strata = stratumRows.map((row) => {
+      // Calculate thickness if not provided
+      const depthFrom = row.stratum_depth_from ? parseFloat(String(row.stratum_depth_from)) : null;
+      const depthTo = row.stratum_depth_to ? parseFloat(String(row.stratum_depth_to)) : null;
+      const thickness = row.stratum_thickness_m 
+        ? parseFloat(String(row.stratum_thickness_m)) 
+        : (depthFrom !== null && depthTo !== null ? depthTo - depthFrom : null);
+      
+      // Preserve samples array - DO NOT reinitialize as empty
+      // Use samples directly from row - they were preserved during validation
+      const rawSamples = row.samples || [];
+      
+      logger.info(`Processing stratum samples for persist`, {
+        stratumDescription: row.stratum_description,
+        rawSamplesCount: rawSamples.length,
+        rawSamples: rawSamples.length > 0 ? rawSamples.map((s: any) => ({
+          type: s.type,
+          sample_code: s.sample_code,
+          depth_m: s.depth_m
+        })) : [],
+        rowHasSamples: 'samples' in row,
+        rowKeys: Object.keys(row)
+      });
+      
+      if (rawSamples.length === 0) {
+        logger.warn(`No samples found for stratum: ${row.stratum_description}`, {
+          rowKeys: Object.keys(row),
+          hasSamplesKey: 'samples' in row,
+          rowSampleValue: row.samples
+        });
+      }
+      
+      // Map all available sample fields to expected format
+      const samples = rawSamples.map((sample: any) => {
+        // Map sample fields - preserve all available data
+        const mappedSample: any = {
+          sample_code: sample.sample_code || null,
+          sample_type: sample.sample_event_type || sample.type || null,
+          depth_m: sample.sample_event_depth_m || sample.depth_m || null,
+          remarks: sample.remarks || null,
+        };
+        
+        // Include optional fields if present
+        if (sample.n_value !== null && sample.n_value !== undefined) {
+          mappedSample.n_value = typeof sample.n_value === 'string' ? parseFloat(sample.n_value) : sample.n_value;
+        }
+        if (sample.run_length_m !== null && sample.run_length_m !== undefined) {
+          mappedSample.run_length_m = typeof sample.run_length_m === 'string' ? parseFloat(sample.run_length_m) : sample.run_length_m;
+        }
+        if (sample.penetration_15cm !== null && sample.penetration_15cm !== undefined) {
+          mappedSample.spt_blows = sample.penetration_15cm;
+        }
+        if (sample.total_core_length_cm !== null && sample.total_core_length_cm !== undefined) {
+          mappedSample.total_core_length_cm = typeof sample.total_core_length_cm === 'string' ? parseFloat(sample.total_core_length_cm) : sample.total_core_length_cm;
+        }
+        if (sample.tcr_percent !== null && sample.tcr_percent !== undefined) {
+          mappedSample.tcr_percent = typeof sample.tcr_percent === 'string' ? parseFloat(sample.tcr_percent) : sample.tcr_percent;
+        }
+        if (sample.rqd_length_cm !== null && sample.rqd_length_cm !== undefined) {
+          mappedSample.rqd_length_cm = typeof sample.rqd_length_cm === 'string' ? parseFloat(sample.rqd_length_cm) : sample.rqd_length_cm;
+        }
+        if (sample.rqd_percent !== null && sample.rqd_percent !== undefined) {
+          mappedSample.rqd_percent = typeof sample.rqd_percent === 'string' ? parseFloat(sample.rqd_percent) : sample.rqd_percent;
+        }
+        
+        return mappedSample;
+      });
+      
       const stratum: any = {
         description: row.stratum_description || '',
-        depth_from: row.stratum_depth_from ? parseFloat(String(row.stratum_depth_from)) : null,
-        depth_to: row.stratum_depth_to ? parseFloat(String(row.stratum_depth_to)) : null,
-        thickness: row.stratum_thickness_m ? parseFloat(String(row.stratum_thickness_m)) : null,
-        colour_of_return_water: row.return_water_colour || null,
-        water_loss: row.water_loss || null,
-        diameter_of_borehole: row.borehole_diameter ? String(row.borehole_diameter) : null,
-        remarks: row.remarks || null,
+        depth_from: depthFrom,
+        depth_to: depthTo,
+        thickness_m: thickness,
+        // Store stratum-level fields
+        n_value: row.n_value_is_2131 ? (typeof row.n_value_is_2131 === 'string' ? parseFloat(row.n_value_is_2131) : row.n_value_is_2131) : null,
         tcr_percent: row.tcr_percent ? parseFloat(String(row.tcr_percent)) : null,
         rqd_percent: row.rqd_percent ? parseFloat(String(row.rqd_percent)) : null,
-        samples: [],
+        return_water_colour: row.return_water_colour || null,
+        water_loss: row.water_loss || null,
+        borehole_diameter: row.borehole_diameter ? String(row.borehole_diameter) : null,
+        remarks: row.remarks || null,
+        // Include samples array - preserve all sample data
+        samples: samples,
       };
-      
-      // Add sample data if present
-      if (row.sample_event_type || row.sample_event_depth_m || row.run_length_m || 
-          row.spt_blows_1 || row.spt_blows_2 || row.spt_blows_3 || row.n_value_is_2131 ||
-          row.total_core_length_cm || row.tcr_percent || row.rqd_length_cm || row.rqd_percent) {
-        const sample: any = {
-          sample_event_type: row.sample_event_type || null,
-          sample_event_depth_m: row.sample_event_depth_m ? parseFloat(String(row.sample_event_depth_m)) : null,
-          run_length_m: row.run_length_m ? parseFloat(String(row.run_length_m)) : null,
-          penetration_15cm: [
-            row.spt_blows_1 ? parseFloat(String(row.spt_blows_1)) : null,
-            row.spt_blows_2 ? parseFloat(String(row.spt_blows_2)) : null,
-            row.spt_blows_3 ? parseFloat(String(row.spt_blows_3)) : null,
-          ],
-          n_value: row.n_value_is_2131 || null,
-          total_core_length_cm: row.total_core_length_cm ? parseFloat(String(row.total_core_length_cm)) : null,
-          tcr_percent: row.tcr_percent ? parseFloat(String(row.tcr_percent)) : null,
-          rqd_length_cm: row.rqd_length_cm ? parseFloat(String(row.rqd_length_cm)) : null,
-          rqd_percent: row.rqd_percent ? parseFloat(String(row.rqd_percent)) : null,
-          remarks: row.remarks || null,
-        };
-        stratum.samples.push(sample);
-      }
       
       return stratum;
     });
@@ -1797,7 +1987,36 @@ async function persistParsedStratumData(
       }
     );
     
-    logger.info(`Persisted parsed stratum data to ${strataKey} with ${strata.length} strata`);
+    // Calculate total samples for logging
+    const totalSamples = strata.reduce((sum, s) => sum + (s.samples?.length || 0), 0);
+    const samplesPerStratum = strata.map(s => ({ 
+      description: s.description, 
+      sampleCount: s.samples?.length || 0,
+      samples: s.samples || []
+    }));
+    
+    logger.info(`Persisted parsed stratum data to ${strataKey}`, {
+      strataCount: strata.length,
+      totalSamples,
+      samplesPerStratum,
+      firstStratumSamples: strata[0]?.samples || []
+    });
+    
+    if (totalSamples === 0) {
+      logger.error(`CRITICAL: No samples persisted to ${strataKey}`, {
+        strataCount: strata.length,
+        allStratumSamples: strata.map(s => ({ 
+          desc: s.description, 
+          samples: s.samples,
+          samplesLength: s.samples?.length 
+        })),
+        inputStratumRowsSampleCount: stratumRows.map(r => ({ 
+          desc: r.stratum_description, 
+          samplesCount: r.samples?.length || 0,
+          hasSamples: 'samples' in r
+        }))
+      });
+    }
   } catch (error) {
     logger.error('Error persisting parsed stratum data:', error);
     // Don't throw - upload should still succeed even if parsed data write fails

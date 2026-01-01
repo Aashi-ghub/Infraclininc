@@ -287,6 +287,35 @@ def _build_structured_strata(rows: List[Dict[str, str]]) -> List[Dict]:
         if sample:
             stratum["samples"].append(sample)
 
+    # Generate sample codes for all samples across all strata
+    sample_counters: Dict[str, int] = {'D': 0, 'U': 0, 'S/D': 0, 'W': 0}
+    
+    for stratum in strata:
+        if stratum.get("samples"):
+            for sample in stratum["samples"]:
+                sample_type = sample.get("sample_event_type", "")
+                if sample_type:
+                    # Extract sample type prefix (D, U, S/D, W, etc.)
+                    type_upper = str(sample_type).upper().strip()
+                    prefix = 'D'  # default
+                    
+                    if 'D' in type_upper and 'S' in type_upper:
+                        prefix = 'S/D'
+                    elif 'U' in type_upper:
+                        prefix = 'U'
+                    elif 'W' in type_upper:
+                        prefix = 'W'
+                    elif 'D' in type_upper:
+                        prefix = 'D'
+                    
+                    # Increment counter and generate code
+                    if prefix not in sample_counters:
+                        sample_counters[prefix] = 0
+                    sample_counters[prefix] += 1
+                    sample['sample_code'] = f"{prefix}-{sample_counters[prefix]}"
+                    
+                    logger.debug(f"Generated sample code: {sample['sample_code']} for type '{sample_type}'")
+
     return strata
 
 
@@ -654,6 +683,36 @@ def _build_template_strata(
                 current_stratum["samples"].append(sample)
 
     logger.info("Built %d strata from template", len(strata))
+    
+    # Generate sample codes for all samples across all strata
+    sample_counters: Dict[str, int] = {'D': 0, 'U': 0, 'S/D': 0, 'W': 0}
+    
+    for stratum in strata:
+        if stratum.get("samples"):
+            for sample in stratum["samples"]:
+                sample_type = sample.get("sample_event_type", "")
+                if sample_type:
+                    # Extract sample type prefix (D, U, S/D, W, etc.)
+                    type_upper = str(sample_type).upper().strip()
+                    prefix = 'D'  # default
+                    
+                    if 'D' in type_upper and 'S' in type_upper:
+                        prefix = 'S/D'
+                    elif 'U' in type_upper:
+                        prefix = 'U'
+                    elif 'W' in type_upper:
+                        prefix = 'W'
+                    elif 'D' in type_upper:
+                        prefix = 'D'
+                    
+                    # Increment counter and generate code
+                    if prefix not in sample_counters:
+                        sample_counters[prefix] = 0
+                    sample_counters[prefix] += 1
+                    sample['sample_code'] = f"{prefix}-{sample_counters[prefix]}"
+                    
+                    logger.debug(f"Generated sample code: {sample['sample_code']} for type '{sample_type}'")
+    
     return strata
 
 

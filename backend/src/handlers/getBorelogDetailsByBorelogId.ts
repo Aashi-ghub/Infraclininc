@@ -31,9 +31,17 @@ interface ParsedStrataData {
     parsed_at: string;
   };
   strata: Array<{
+    description: string;
     depth_from: number;
     depth_to: number;
-    description: string;
+    thickness_m: number;
+    n_value?: number;
+    tcr_percent?: number;
+    rqd_percent?: number;
+    return_water_colour?: string;
+    water_loss?: string;
+    borehole_diameter?: string;
+    remarks?: string;
     samples: Array<Record<string, any>>;
   }>;
 }
@@ -75,6 +83,7 @@ async function findBorelogMetadata(
 
 /**
  * List all parsed versions for a borelog
+ * Uses standardized path: projects/project_{project_id}/borelogs/borelog_{borelog_id}/parsed/
  */
 async function listParsedVersions(
   storageClient: ReturnType<typeof createStorageClient>,
@@ -105,6 +114,8 @@ async function listParsedVersions(
 
 /**
  * Read parsed strata data for a specific version
+ * Uses standardized path: projects/project_{project_id}/borelogs/borelog_{borelog_id}/parsed/v{version}/strata.json
+ * This is the source of truth - DO NOT rebuild from metadata or legacy DB fields.
  */
 async function readParsedStrata(
   storageClient: ReturnType<typeof createStorageClient>,
@@ -112,12 +123,34 @@ async function readParsedStrata(
   borelogId: string,
   versionNo: number
 ): Promise<ParsedStrataData | null> {
+  const key = `projects/project_${projectId}/borelogs/borelog_${borelogId}/parsed/v${versionNo}/strata.json`;
   try {
-    const key = `projects/project_${projectId}/borelogs/borelog_${borelogId}/parsed/v${versionNo}/strata.json`;
     const buf = await storageClient.downloadFile(key);
-    return JSON.parse(buf.toString('utf-8')) as ParsedStrataData;
+    const parsedData = JSON.parse(buf.toString('utf-8')) as ParsedStrataData;
+    
+    // Calculate sample counts for logging
+    const strataCount = parsedData.strata?.length || 0;
+    const totalSamples = parsedData.strata?.reduce((sum, s) => sum + (s.samples?.length || 0), 0) || 0;
+    
+    logger.info('Loaded parsed strata from S3', { 
+      projectId, 
+      borelogId, 
+      versionNo,
+      s3Key: key,
+      strataCount,
+      totalSamples
+    });
+    
+    return parsedData;
   } catch (error) {
-    logger.warn('Could not read parsed strata', { error, projectId, borelogId, versionNo });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn('Could not read parsed strata from S3', { 
+      key, 
+      error: errorMessage,
+      projectId, 
+      borelogId, 
+      versionNo 
+    });
     return null;
   }
 }
@@ -175,125 +208,120 @@ async function readStructureMetadata(
 }
 
 /**
- * Transform parsed strata data to match the expected response format
- * The old DB format had flat rows with stratum and sample data combined
+ * Transform parsed strata data to structured format for API response
+ * Uses parsed strata JSON directly - DO NOT rebuild from metadata or legacy DB fields.
+ * Returns strata array where each stratum includes all its samples in a nested array.
  */
 function transformStrataToVersionDetails(
   parsedData: ParsedStrataData,
   projectId: string,
   substructureId?: string
-): any[] {
-  const details: any[] = [];
+): { version_no: number; created_at: string; created_by_user_id: string | null; metadata: any; strata: any[] } {
   const { borehole, strata } = parsedData;
 
   // Extract metadata from borehole
   const metadata = borehole.metadata || {};
   
-  for (const stratum of strata) {
-    // If stratum has samples, create a detail row for each sample
-    if (stratum.samples && stratum.samples.length > 0) {
-      for (const sample of stratum.samples) {
-        details.push({
-          version_no: borehole.version_no,
-          created_at: borehole.parsed_at,
-          created_by_user_id: borehole.requested_by || null,
-          number: metadata.borehole_no || metadata.number || null,
-          msl: metadata.msl || null,
-          boring_method: metadata.method_of_boring || metadata.boring_method || null,
-          hole_diameter: metadata.diameter_of_hole || metadata.hole_diameter || null,
-          commencement_date: metadata.commencement_date || null,
-          completion_date: metadata.completion_date || null,
-          standing_water_level: metadata.standing_water_level || null,
-          termination_depth: metadata.termination_depth || null,
-          coordinate: metadata.coordinate ? {
-            type: 'Point',
-            coordinates: Array.isArray(metadata.coordinate) 
-              ? metadata.coordinate 
-              : [metadata.coordinate_e || 0, metadata.coordinate_l || 0]
-          } : null,
-          permeability_test_count: metadata.permeability_tests_count || 0,
-          spt_vs_test_count: metadata.spt_tests_count || 0,
-          undisturbed_sample_count: metadata.undisturbed_samples_count || 0,
-          disturbed_sample_count: metadata.disturbed_samples_count || 0,
-          water_sample_count: metadata.water_samples_count || 0,
-          job_code: borehole.job_code || metadata.job_code || null,
-          location: metadata.location || null,
-          chainage_km: metadata.chainage_km || null,
-          stratum_description: stratum.description,
-          stratum_depth_from: stratum.depth_from,
-          stratum_depth_to: stratum.depth_to,
-          stratum_thickness_m: stratum.depth_to - stratum.depth_from,
-          sample_event_type: sample.sample_event_type || sample.type || null,
-          sample_event_depth_m: sample.depth || sample.depth_m || sample.sample_event_depth_m || null,
-          run_length_m: sample.run_length_m || null,
-          spt_blows_per_15cm: sample.spt_blows_per_15cm || null,
-          n_value_is_2131: sample.n_value_is_2131 || sample.n_value || null,
-          total_core_length_cm: sample.total_core_length_cm || null,
-          tcr_percent: sample.tcr_percent || null,
-          rqd_length_cm: sample.rqd_length_cm || null,
-          rqd_percent: sample.rqd_percent || null,
-          return_water_colour: sample.return_water_colour || null,
-          water_loss: sample.water_loss || null,
-          borehole_diameter: sample.borehole_diameter || null,
-          remarks: sample.remarks || null,
-          images: null, // Images stored separately
-          substructure_id: substructureId || borehole.substructure_id || null,
-          project_id: projectId,
-        });
+  // Transform strata to match API response format
+  // Use parsed strata directly - each stratum already contains its samples array
+  const transformedStrata = (strata || []).map((stratum: any) => {
+    // Handle both new format (thickness_m) and legacy format (thickness)
+    const thickness_m = stratum.thickness_m !== null && stratum.thickness_m !== undefined
+      ? stratum.thickness_m
+      : (stratum.thickness !== null && stratum.thickness !== undefined
+          ? stratum.thickness
+          : (stratum.depth_from !== null && stratum.depth_to !== null 
+              ? stratum.depth_to - stratum.depth_from 
+              : null));
+    
+    // Handle both new format (return_water_colour) and legacy format (colour_of_return_water)
+    const return_water_colour = stratum.return_water_colour || stratum.colour_of_return_water || undefined;
+    
+    // Handle both new format (borehole_diameter) and legacy format (diameter_of_borehole)
+    const borehole_diameter = stratum.borehole_diameter || stratum.diameter_of_borehole || undefined;
+    
+    // Transform samples array - ensure all required fields are present
+    // The parsed strata JSON already has samples with sample_code, sample_event_type, etc.
+    const transformedSamples = (stratum.samples || []).map((sample: any) => {
+      // Handle penetration_15cm which can be an array or individual values
+      let spt_blows = null;
+      if (sample.penetration_15cm) {
+        if (Array.isArray(sample.penetration_15cm)) {
+          // If it's an array, use it directly or convert to a single value if needed
+          spt_blows = sample.penetration_15cm;
+        } else {
+          spt_blows = sample.penetration_15cm;
+        }
       }
-    } else {
-      // If no samples, create a single detail row for the stratum
-      details.push({
-        version_no: borehole.version_no,
-        created_at: borehole.parsed_at,
-        created_by_user_id: borehole.requested_by || null,
-        number: metadata.borehole_no || metadata.number || null,
-        msl: metadata.msl || null,
-        boring_method: metadata.method_of_boring || metadata.boring_method || null,
-        hole_diameter: metadata.diameter_of_hole || metadata.hole_diameter || null,
-        commencement_date: metadata.commencement_date || null,
-        completion_date: metadata.completion_date || null,
-        standing_water_level: metadata.standing_water_level || null,
-        termination_depth: metadata.termination_depth || null,
-        coordinate: metadata.coordinate ? {
-          type: 'Point',
-          coordinates: Array.isArray(metadata.coordinate) 
-            ? metadata.coordinate 
-            : [metadata.coordinate_e || 0, metadata.coordinate_l || 0]
-        } : null,
-        permeability_test_count: metadata.permeability_tests_count || 0,
-        spt_vs_test_count: metadata.spt_tests_count || 0,
-        undisturbed_sample_count: metadata.undisturbed_samples_count || 0,
-        disturbed_sample_count: metadata.disturbed_samples_count || 0,
-        water_sample_count: metadata.water_samples_count || 0,
-        job_code: borehole.job_code || metadata.job_code || null,
-        location: metadata.location || null,
-        chainage_km: metadata.chainage_km || null,
-        stratum_description: stratum.description,
-        stratum_depth_from: stratum.depth_from,
-        stratum_depth_to: stratum.depth_to,
-        stratum_thickness_m: stratum.depth_to - stratum.depth_from,
-        sample_event_type: null,
-        sample_event_depth_m: null,
-        run_length_m: null,
-        spt_blows_per_15cm: null,
-        n_value_is_2131: null,
-        total_core_length_cm: null,
-        tcr_percent: null,
-        rqd_length_cm: null,
-        rqd_percent: null,
-        return_water_colour: null,
-        water_loss: null,
-        borehole_diameter: null,
-        remarks: null,
-        images: null,
-        substructure_id: substructureId || borehole.substructure_id || null,
-        project_id: projectId,
-      });
-    }
-  }
+      
+      return {
+        sample_code: sample.sample_code || null,
+        sample_type: sample.sample_event_type || sample.type || null,
+        depth_m: sample.sample_event_depth_m || sample.depth_m || null,
+        run_length_m: sample.run_length_m !== null && sample.run_length_m !== undefined ? sample.run_length_m : null,
+        n_value: sample.n_value !== null && sample.n_value !== undefined ? sample.n_value : null,
+        remarks: sample.remarks || null,
+        // Additional test data fields
+        spt_blows: spt_blows,
+        total_core_length_cm: sample.total_core_length_cm !== null && sample.total_core_length_cm !== undefined ? sample.total_core_length_cm : null,
+        tcr_percent: sample.tcr_percent !== null && sample.tcr_percent !== undefined ? sample.tcr_percent : null,
+        rqd_length_cm: sample.rqd_length_cm !== null && sample.rqd_length_cm !== undefined ? sample.rqd_length_cm : null,
+        rqd_percent: sample.rqd_percent !== null && sample.rqd_percent !== undefined ? sample.rqd_percent : null,
+      };
+    });
+    
+    return {
+      description: stratum.description || '',
+      depth_from: stratum.depth_from,
+      depth_to: stratum.depth_to,
+      thickness_m: thickness_m,
+      n_value: stratum.n_value !== null && stratum.n_value !== undefined ? stratum.n_value : undefined,
+      tcr_percent: stratum.tcr_percent !== null && stratum.tcr_percent !== undefined ? stratum.tcr_percent : undefined,
+      rqd_percent: stratum.rqd_percent !== null && stratum.rqd_percent !== undefined ? stratum.rqd_percent : undefined,
+      return_water_colour: return_water_colour,
+      water_loss: stratum.water_loss || undefined,
+      borehole_diameter: borehole_diameter,
+      remarks: stratum.remarks || undefined,
+      // Include samples array - this is the key fix: samples should come from parsed strata
+      samples: transformedSamples,
+    };
+  });
 
-  return details;
+  return {
+    version_no: borehole.version_no,
+    created_at: borehole.parsed_at,
+    created_by_user_id: borehole.requested_by || null,
+    metadata: {
+      number: metadata.borehole_no || metadata.number || null,
+      boring_method: metadata.method_of_boring || metadata.boring_method || null,
+      hole_diameter: metadata.diameter_of_hole || metadata.hole_diameter || null,
+      commencement_date: metadata.commencement_date || null,
+      completion_date: metadata.completion_date || null,
+      standing_water_level: metadata.standing_water_level || null,
+      termination_depth: metadata.termination_depth || null,
+      permeability_test_count: metadata.permeability_tests_count || 0,
+      spt_vs_test_count: metadata.spt_tests_count || 0,
+      undisturbed_sample_count: metadata.undisturbed_samples_count || 0,
+      disturbed_sample_count: metadata.disturbed_samples_count || 0,
+      water_sample_count: metadata.water_samples_count || 0,
+      job_code: borehole.job_code || metadata.job_code || null,
+      location: metadata.location || null,
+      chainage_km: metadata.chainage_km !== null && metadata.chainage_km !== undefined ? metadata.chainage_km : null,
+      msl: metadata.msl !== null && metadata.msl !== undefined ? metadata.msl : null,
+      coordinate: metadata.coordinate ? {
+        type: 'Point',
+        coordinates: Array.isArray(metadata.coordinate) 
+          ? metadata.coordinate 
+          : [metadata.coordinate_e || 0, metadata.coordinate_l || 0]
+      } : (metadata.coordinate_e || metadata.coordinate_l ? {
+        type: 'Point',
+        coordinates: [metadata.coordinate_e || 0, metadata.coordinate_l || 0]
+      } : null),
+      substructure_id: substructureId || borehole.substructure_id || null,
+      project_id: projectId,
+    },
+    strata: transformedStrata,
+  };
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -402,17 +430,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     );
     const parsedDataArray = await Promise.all(parsedDataPromises);
     
-    // Filter out null results and transform to version details
-    const allVersionDetails: any[] = [];
-    for (let i = 0; i < parsedDataArray.length; i++) {
-      const parsedData = parsedDataArray[i];
-      if (parsedData) {
-        const details = transformStrataToVersionDetails(parsedData, projectId, substructureId);
-        allVersionDetails.push(...details);
-      }
-    }
+    // Transform to version details with structured strata
+    const versionDetails = parsedDataArray
+      .filter((parsedData): parsedData is ParsedStrataData => parsedData !== null)
+      .map(parsedData => transformStrataToVersionDetails(parsedData, projectId, substructureId));
 
-    if (allVersionDetails.length === 0) {
+    if (versionDetails.length === 0) {
       const response = createResponse(404, {
         success: false,
         message: 'Borelog details not found',
@@ -422,64 +445,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    // Group by version for better organization (similar to old DB query result)
-    const versionMap = new Map<number, any[]>();
-    for (const detail of allVersionDetails) {
-      if (!versionMap.has(detail.version_no)) {
-        versionMap.set(detail.version_no, []);
-      }
-      versionMap.get(detail.version_no)!.push(detail);
-    }
-
-    // Build version history (latest first)
-    const versionHistory = Array.from(versionMap.entries())
-      .sort(([a], [b]) => b - a) // Sort by version number descending
-      .map(([versionNo, details]) => {
-        // Use first detail as base (they all have same metadata for a version)
-        const baseDetail = details[0];
+    // Build version history (latest first) - sorted by version number descending
+    const versionHistory = versionDetails
+      .sort((a, b) => b.version_no - a.version_no)
+      .map((versionDetail) => {
         return {
-          version_no: versionNo,
-          created_at: baseDetail.created_at,
+          version_no: versionDetail.version_no,
+          created_at: versionDetail.created_at,
           created_by: {
-            user_id: baseDetail.created_by_user_id,
+            user_id: versionDetail.created_by_user_id,
             name: null, // User info not stored in parsed data
             email: null
           },
           details: {
-            number: baseDetail.number,
-            msl: baseDetail.msl,
-            boring_method: baseDetail.boring_method,
-            hole_diameter: baseDetail.hole_diameter,
-            commencement_date: baseDetail.commencement_date,
-            completion_date: baseDetail.completion_date,
-            standing_water_level: baseDetail.standing_water_level,
-            termination_depth: baseDetail.termination_depth,
-            coordinate: baseDetail.coordinate,
-            permeability_test_count: baseDetail.permeability_test_count,
-            spt_vs_test_count: baseDetail.spt_vs_test_count,
-            undisturbed_sample_count: baseDetail.undisturbed_sample_count,
-            disturbed_sample_count: baseDetail.disturbed_sample_count,
-            water_sample_count: baseDetail.water_sample_count,
-            stratum_description: details.map(d => d.stratum_description).join('; '), // Combine all stratum descriptions
-            stratum_depth_from: Math.min(...details.map(d => d.stratum_depth_from)),
-            stratum_depth_to: Math.max(...details.map(d => d.stratum_depth_to)),
-            stratum_thickness_m: details.reduce((sum, d) => sum + (d.stratum_thickness_m || 0), 0),
-            sample_event_type: details.find(d => d.sample_event_type)?.sample_event_type || null,
-            sample_event_depth_m: details.find(d => d.sample_event_depth_m)?.sample_event_depth_m || null,
-            run_length_m: details.find(d => d.run_length_m)?.run_length_m || null,
-            spt_blows_per_15cm: details.find(d => d.spt_blows_per_15cm)?.spt_blows_per_15cm || null,
-            n_value_is_2131: details.find(d => d.n_value_is_2131)?.n_value_is_2131 || null,
-            total_core_length_cm: details.find(d => d.total_core_length_cm)?.total_core_length_cm || null,
-            tcr_percent: details.find(d => d.tcr_percent)?.tcr_percent || null,
-            rqd_length_cm: details.find(d => d.rqd_length_cm)?.rqd_length_cm || null,
-            rqd_percent: details.find(d => d.rqd_percent)?.rqd_percent || null,
-            return_water_colour: details.find(d => d.return_water_colour)?.return_water_colour || null,
-            water_loss: details.find(d => d.water_loss)?.water_loss || null,
-            borehole_diameter: details.find(d => d.borehole_diameter)?.borehole_diameter || null,
-            remarks: details.find(d => d.remarks)?.remarks || null,
-            images: null, // Images stored separately
-            substructure_id: baseDetail.substructure_id,
-            project_id: baseDetail.project_id
+            ...versionDetail.metadata,
+            // Return structured strata array - one row in Excel = one object in strata[]
+            strata: versionDetail.strata
           }
         };
       });

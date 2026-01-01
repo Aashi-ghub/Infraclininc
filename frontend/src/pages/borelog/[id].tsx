@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader } from '@/components/Loader';
 import { Separator } from '@/components/ui/separator';
-import { MapPin, Calendar, Ruler, Droplets, FileText, Layers, TestTube } from 'lucide-react';
+import { MapPin, Calendar, Ruler, Droplets, FileText, Layers, TestTube, ChevronDown, ChevronRight } from 'lucide-react';
 import { WorkflowActions } from '@/components/WorkflowActions';
 
 export default function BoreholeSummaryPage() {
@@ -20,6 +20,7 @@ export default function BoreholeSummaryPage() {
   const [images, setImages] = useState<any[]>([]);
   const [labTests, setLabTests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedStrata, setExpandedStrata] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -188,8 +189,25 @@ export default function BoreholeSummaryPage() {
             <div>
               <div className="text-sm text-muted-foreground">Coordinates</div>
               <div className="font-medium">
-                {latestVersion.coordinate ? 
-                  `${JSON.parse(latestVersion.coordinate).coordinates[0]}, ${JSON.parse(latestVersion.coordinate).coordinates[1]}` : 
+                {latestVersion?.details?.coordinate ? 
+                  (() => {
+                    const coord = latestVersion.details.coordinate;
+                    if (Array.isArray(coord.coordinates)) {
+                      return `${coord.coordinates[0]}, ${coord.coordinates[1]}`;
+                    }
+                    return '—';
+                  })() :
+                  latestVersion?.coordinate ? 
+                    (() => {
+                      try {
+                        const parsed = typeof latestVersion.coordinate === 'string' 
+                          ? JSON.parse(latestVersion.coordinate) 
+                          : latestVersion.coordinate;
+                        return `${parsed.coordinates[0]}, ${parsed.coordinates[1]}`;
+                      } catch {
+                        return '—';
+                      }
+                    })() :
                   '—'
                 }
               </div>
@@ -285,7 +303,169 @@ export default function BoreholeSummaryPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {latestVersion?.details?.stratum_description || latestVersion?.stratum_description ? (
+          {latestVersion?.details?.strata && Array.isArray(latestVersion.details.strata) && latestVersion.details.strata.length > 0 ? (
+            <div className="overflow-x-auto">
+              <div className="relative">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>
+                      <TableHead className="min-w-[200px]">Description</TableHead>
+                      <TableHead className="sticky left-0 bg-background z-20 min-w-[100px]">Depth From (m)</TableHead>
+                      <TableHead className="sticky left-[100px] bg-background z-20 min-w-[100px]">Depth To (m)</TableHead>
+                      <TableHead className="min-w-[100px]">Thickness (m)</TableHead>
+                      <TableHead className="min-w-[80px]">N Value</TableHead>
+                      <TableHead className="min-w-[80px]">TCR %</TableHead>
+                      <TableHead className="min-w-[80px]">RQD %</TableHead>
+                      <TableHead className="min-w-[200px]">Remarks</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {latestVersion.details.strata.map((stratum: any, index: number) => {
+                      const hasLongDescription = stratum.description && stratum.description.length > 100;
+                      const isExpanded = expandedStrata.has(index);
+                      
+                      const toggleExpanded = () => {
+                        setExpandedStrata(prev => {
+                          const next = new Set(prev);
+                          if (next.has(index)) {
+                            next.delete(index);
+                          } else {
+                            next.add(index);
+                          }
+                          return next;
+                        });
+                      };
+                      
+                      return (
+                        <>
+                          <TableRow key={index}>
+                            <TableCell className="align-top">
+                              <div className="flex items-start gap-2">
+                                {(hasLongDescription || (stratum.samples && stratum.samples.length > 0)) && (
+                                  <button 
+                                    onClick={toggleExpanded}
+                                    className="flex-shrink-0 hover:text-primary transition-colors"
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-4 w-4 mt-0.5" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 mt-0.5" />
+                                    )}
+                                  </button>
+                                )}
+                                <div className={hasLongDescription && !isExpanded ? 'line-clamp-2' : ''}>
+                                  {stratum.description || '—'}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="sticky left-0 bg-background z-10 align-top">
+                              {stratum.depth_from !== null && stratum.depth_from !== undefined 
+                                ? typeof stratum.depth_from === 'number' 
+                                  ? stratum.depth_from.toFixed(2) 
+                                  : stratum.depth_from 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="sticky left-[100px] bg-background z-10 align-top">
+                              {stratum.depth_to !== null && stratum.depth_to !== undefined 
+                                ? typeof stratum.depth_to === 'number' 
+                                  ? stratum.depth_to.toFixed(2) 
+                                  : stratum.depth_to 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {stratum.thickness_m !== null && stratum.thickness_m !== undefined 
+                                ? typeof stratum.thickness_m === 'number' 
+                                  ? stratum.thickness_m.toFixed(2) 
+                                  : stratum.thickness_m 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {stratum.n_value !== null && stratum.n_value !== undefined 
+                                ? typeof stratum.n_value === 'number' 
+                                  ? stratum.n_value.toString() 
+                                  : stratum.n_value 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {stratum.tcr_percent !== null && stratum.tcr_percent !== undefined 
+                                ? typeof stratum.tcr_percent === 'number' 
+                                  ? `${stratum.tcr_percent.toFixed(1)}%` 
+                                  : `${stratum.tcr_percent}%` 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {stratum.rqd_percent !== null && stratum.rqd_percent !== undefined 
+                                ? typeof stratum.rqd_percent === 'number' 
+                                  ? `${stratum.rqd_percent.toFixed(1)}%` 
+                                  : `${stratum.rqd_percent}%` 
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {stratum.remarks ? (
+                                <div className="whitespace-pre-line max-w-[300px]">
+                                  {stratum.remarks}
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {(hasLongDescription || (stratum.samples && stratum.samples.length > 0)) && isExpanded && (
+                            <TableRow>
+                              <TableCell colSpan={8} className="bg-muted/50 p-4">
+                                {hasLongDescription && (
+                                  <div className="mb-4">
+                                    <div className="text-sm font-semibold mb-2">Full Description:</div>
+                                    <div className="text-sm whitespace-pre-line">
+                                      {stratum.description}
+                                    </div>
+                                  </div>
+                                )}
+                                {stratum.samples && stratum.samples.length > 0 && (
+                                  <div>
+                                    <div className="text-sm font-semibold mb-2">Samples ({stratum.samples.length}):</div>
+                                    <div className="overflow-x-auto">
+                                      <Table>
+                                        <TableHeader>
+                                          <TableRow>
+                                            <TableHead className="min-w-[80px]">Sample Code</TableHead>
+                                            <TableHead className="min-w-[80px]">Type</TableHead>
+                                            <TableHead className="min-w-[100px]">Depth (m)</TableHead>
+                                            <TableHead>Remarks</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {stratum.samples.map((sample: any, sampleIndex: number) => (
+                                            <TableRow key={sampleIndex}>
+                                              <TableCell className="font-medium">{sample.sample_code || '—'}</TableCell>
+                                              <TableCell>{sample.sample_type || sample.type || '—'}</TableCell>
+                                              <TableCell>
+                                                {sample.depth_m !== null && sample.depth_m !== undefined
+                                                  ? typeof sample.depth_m === 'number'
+                                                    ? sample.depth_m.toFixed(2)
+                                                    : sample.depth_m
+                                                  : '—'}
+                                              </TableCell>
+                                              <TableCell>{sample.remarks || '—'}</TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ) : latestVersion?.details?.stratum_description || latestVersion?.stratum_description ? (
+            // Fallback for legacy format (backward compatibility)
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div>
@@ -302,37 +482,7 @@ export default function BoreholeSummaryPage() {
                   <div className="text-sm text-muted-foreground">Thickness</div>
                   <div className="font-medium">{latestVersion?.details?.stratum_thickness_m || latestVersion?.stratum_thickness_m || '—'} m</div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">RQD Length</div>
-                  <div className="font-medium">{latestVersion?.details?.rqd_length_cm || latestVersion?.rqd_length_cm || '—'} cm</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">RQD Percentage</div>
-                  <div className="font-medium">{latestVersion?.details?.rqd_percent || latestVersion?.rqd_percent || '—'}%</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">TCR Percentage</div>
-                  <div className="font-medium">{latestVersion?.details?.tcr_percent || latestVersion?.tcr_percent || '—'}%</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Return Water Color</div>
-                  <div className="font-medium">{latestVersion?.details?.return_water_colour || latestVersion?.return_water_colour || '—'}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Water Loss</div>
-                  <div className="font-medium">{latestVersion?.details?.water_loss || latestVersion?.water_loss || '—'}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Borehole Diameter</div>
-                  <div className="font-medium">{latestVersion?.details?.borehole_diameter || latestVersion?.borehole_diameter || '—'}</div>
-                </div>
               </div>
-              {(latestVersion?.details?.remarks || latestVersion?.remarks) && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Remarks</div>
-                  <div className="font-medium whitespace-pre-line">{latestVersion?.details?.remarks || latestVersion?.remarks}</div>
-                </div>
-              )}
             </div>
           ) : (
             <div className="text-center py-8">

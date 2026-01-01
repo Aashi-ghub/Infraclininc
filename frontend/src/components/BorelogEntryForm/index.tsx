@@ -248,7 +248,6 @@ export function BorelogEntryForm({
     }
     
     isApplyingRef.current = true;
-    try {
     const current = form.getValues();
     const next: any = { ...current };
 
@@ -409,6 +408,60 @@ export function BorelogEntryForm({
       next.water_samples_count = (v ?? 0) as any;
     }
 
+    // NEW: Check if details has a strata array (from getBorelogDetailsByBorelogId)
+    if (details.strata && Array.isArray(details.strata) && details.strata.length > 0) {
+      console.log('Loading from details.strata array:', details.strata);
+      
+      const stratumRows = details.strata.map((stratum: any) => {
+        // Transform samples from API format to form format
+        const samples = (stratum.samples || []).map((sample: any) => {
+          // Determine depth mode
+          const hasRange = sample.run_length_m !== null && sample.run_length_m !== undefined;
+          const depthMode = hasRange ? 'range' : 'single';
+          
+          // Parse SPT blows if it's an array
+          let spt1 = null, spt2 = null, spt3 = null;
+          if (Array.isArray(sample.spt_blows)) {
+            [spt1, spt2, spt3] = sample.spt_blows;
+          }
+          
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            sample_type: sample.sample_type || sample.sample_code || '',
+            depth_mode: depthMode,
+            depth_single: depthMode === 'single' ? toNumber(sample.depth_m) : null,
+            depth_from: depthMode === 'range' ? toNumber(sample.depth_m) : null,
+            depth_to: depthMode === 'range' && sample.run_length_m ? (toNumber(sample.depth_m) || 0) + toNumber(sample.run_length_m) : null,
+            run_length: toNumber(sample.run_length_m),
+            spt_15cm_1: toNumber(spt1),
+            spt_15cm_2: toNumber(spt2),
+            spt_15cm_3: toNumber(spt3),
+            n_value: toNumber(sample.n_value),
+            total_core_length_cm: toNumber(sample.total_core_length_cm),
+            tcr_percent: toNumber(sample.tcr_percent),
+            rqd_length: toNumber(sample.rqd_length_cm),
+            rqd_percent: toNumber(sample.rqd_percent),
+          };
+        });
+        
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          description: stratum.description || '',
+          depth_from: toNumber(stratum.depth_from),
+          depth_to: toNumber(stratum.depth_to),
+          thickness: toNumber(stratum.thickness_m),
+          return_water_color: stratum.return_water_colour || '',
+          water_loss: stratum.water_loss || '',
+          borehole_diameter: stratum.borehole_diameter ? String(stratum.borehole_diameter) : '',
+          remarks: stratum.remarks || '',
+          samples: samples,
+        };
+      });
+      
+      next.stratum_rows = stratumRows;
+      console.log('Loaded stratum rows from strata array:', stratumRows);
+    } else {
+
     // First check for scalar stratum data
     const hasScalarStratum = !!(
       details.stratum_description ||
@@ -527,6 +580,7 @@ export function BorelogEntryForm({
         console.warn('Failed to load stratum data from relational tables:', error);
       }
     }
+    }
 
     // Store current selections before reset
     const currentProjectId = form.getValues('project_id');
@@ -547,12 +601,11 @@ export function BorelogEntryForm({
     form.setValue('project_id', currentProjectId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
     form.setValue('structure_id', currentStructureId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
     form.setValue('substructure_id', currentSubstructureId, { shouldDirty: false, shouldTouch: false, shouldValidate: false } as any);
-    } finally {
-      // Allow effects to resume after a tick
-      setTimeout(() => {
-        isApplyingRef.current = false;
-      }, 0);
-    }
+    
+    // Allow effects to resume after a tick
+    setTimeout(() => {
+      isApplyingRef.current = false;
+    }, 0);
   };
 
   // Create new borelog
