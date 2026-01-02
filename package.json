@@ -1,7 +1,7 @@
 {
   "license": "UNLICENSED",
   "scripts": {
-    "start": "cd backend && (test -d node_modules || npm install) && npm run start:prod"
+    "start": "cd backend && yarn install && yarn start:prod"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
