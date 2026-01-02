@@ -85,9 +85,23 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     }
 
     const data = JSON.parse(event.body);
+    
+    // Log raw input for debugging
+    logger.info('[VALIDATION DEBUG] Raw input', {
+      project_id: data.project_id,
+      substructure_id: data.substructure_id,
+      hasProjectId: !!data.project_id,
+      hasSubstructureId: !!data.substructure_id
+    });
+
+    // Schema validation - only checks format (UUID structure), not existence
     const validationResult = CreateBorelogSchema.safeParse(data);
 
     if (!validationResult.success) {
+      logger.warn('[VALIDATION DEBUG] Schema validation failed', {
+        errors: validationResult.error.errors,
+        input: { project_id: data.project_id, substructure_id: data.substructure_id }
+      });
       const response = createResponse(400, {
         success: false,
         message: 'Validation failed',
@@ -98,22 +112,66 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     }
 
     const borelogData = validationResult.data;
-
-    // Verify substructure exists in S3
     const storageClient = createStorageClient();
-    const substructureKey = `projects/project_${borelogData.project_id}/structures/structure_*/substructures/substructure_${borelogData.substructure_id}/substructure.json`;
+
+    // Validate project_id exists in S3 (existence check, not format)
+    const projectKey = `projects/project_${borelogData.project_id}/project.json`;
+    const projectExists = await storageClient.fileExists(projectKey);
     
-    // Find the structure_id by searching for the substructure
-    const allSubstructureKeys = await storageClient.listFiles(`projects/project_${borelogData.project_id}/structures/`, 10000);
-    const substructureMatch = allSubstructureKeys.find(key => 
-      key.includes(`substructure_${borelogData.substructure_id}/substructure.json`)
+    // List all projects for debugging
+    const projectKeys = await storageClient.listFiles('projects/', 10000);
+    const projectJsonFiles = projectKeys.filter(k => k.endsWith('/project.json'));
+    const projectsFound = projectJsonFiles.length;
+    
+    logger.info('[VALIDATION DEBUG] Project validation', {
+      project_id: borelogData.project_id,
+      projectKey,
+      projectExists,
+      projectsFound,
+      sampleProjectKeys: projectJsonFiles.slice(0, 3)
+    });
+    
+    if (!projectExists) {
+      const response = createResponse(400, {
+        success: false,
+        message: 'Validation failed',
+        error: 'project_id: Invalid project ID'
+      });
+      logResponse(response, Date.now() - startTime);
+      return response;
+    }
+
+    // Validate substructure_id exists in config/substructures.json (existence check, not format)
+    const substructuresKey = 'config/substructures.json';
+    let substructures: any[] = [];
+    
+    if (await storageClient.fileExists(substructuresKey)) {
+      try {
+        const buffer = await storageClient.downloadFile(substructuresKey);
+        const parsed = JSON.parse(buffer.toString('utf-8'));
+        substructures = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        logger.warn('Error reading substructures.json', { error });
+        substructures = [];
+      }
+    }
+    
+    const substructureExists = substructures.some(
+      (s: any) => s.substructure_id === borelogData.substructure_id
     );
     
-    if (!substructureMatch) {
-      const response = createResponse(404, {
+    logger.info('[VALIDATION DEBUG] Substructure validation', {
+      substructure_id: borelogData.substructure_id,
+      substructuresFound: substructures.length,
+      substructureExists,
+      sampleSubstructureIds: substructures.slice(0, 3).map((s: any) => s.substructure_id)
+    });
+    
+    if (!substructureExists) {
+      const response = createResponse(400, {
         success: false,
-        message: 'Substructure not found or does not belong to the specified project',
-        error: 'Invalid substructure_id or project_id'
+        message: 'Validation failed',
+        error: 'substructure_id: Invalid substructure ID'
       });
       logResponse(response, Date.now() - startTime);
       return response;

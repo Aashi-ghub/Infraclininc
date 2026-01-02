@@ -224,7 +224,9 @@ export default function LabTestsList() {
                         <TableCell>{test.borelog.project_name}</TableCell>
                         <TableCell>{test.tested_by}</TableCell>
                         <TableCell>
-                          {format(new Date(test.test_date), 'MMM dd, yyyy')}
+                          {test.test_date && !isNaN(new Date(test.test_date).getTime())
+                            ? format(new Date(test.test_date), 'MMM dd, yyyy')
+                            : 'N/A'}
                         </TableCell>
                         <TableCell>
                           <div className="max-w-[200px] truncate" title={test.result}>
