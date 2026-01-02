@@ -2,11 +2,13 @@
   "name": "backendbore",
   "version": "1.0.0",
   "description": "Infrastructure-grade geological logging backend",
+  "license": "UNLICENSED",
   "main": "index.js",
   "scripts": {
     "build": "tsc",
     "dev": "npm run start:dev",
     "start:dev": "set AWS_REGION=us-east-1 && set IS_OFFLINE=false && set PARQUET_LAMBDA_FUNCTION_NAME=parquet-repository-dev-parquet-repository && serverless offline",
+    "start:prod": "AWS_REGION=us-east-1 IS_OFFLINE=true PARQUET_LAMBDA_FUNCTION_NAME=parquet-repository-dev-parquet-repository serverless offline --httpPort ${PORT:-3000} --host 0.0.0.0",
     "deploy": "serverless deploy",
     "test": "jest",
     "test:unit": "jest tests/unit"

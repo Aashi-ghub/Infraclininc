@@ -1,4 +1,8 @@
 {
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "cd backend && (test -d node_modules || npm install) && npm run start:prod"
+  },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
     "@shadcn/ui": "^0.0.4",
