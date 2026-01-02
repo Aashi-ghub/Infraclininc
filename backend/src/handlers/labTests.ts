@@ -3,8 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
 
 export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // Guard: Check if DB is enabled
@@ -109,11 +108,206 @@ export const createLabTest = async (event: APIGatewayProxyEvent): Promise<APIGat
   }
 };
 
-export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('listLabTests');
-  if (dbGuard) return dbGuard;
+/**
+ * List lab tests - derive from approved borelogs with samples (S3-only)
+ */
+async function listLabTestsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>,
+  userId: string,
+  userRole: string
+): Promise<any[]> {
+  try {
+    const allKeys = await storageClient.listFiles('projects/', 50000);
+    
+    // Find all borelog metadata files
+    const metadataKeys = allKeys.filter(
+      (k) => k.endsWith('/metadata.json') && 
+             k.includes('/borelogs/borelog_') && 
+             !k.includes('/versions/') && 
+             !k.includes('/parsed/')
+    );
 
+    const labTests: any[] = [];
+
+    // Process each borelog
+    for (const metadataKey of metadataKeys) {
+      try {
+        // Extract project_id and borelog_id from path
+        const pathMatch = metadataKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/metadata\.json/);
+        if (!pathMatch) continue;
+
+        const [, projectId, borelogId] = pathMatch;
+
+        // Read workflow.json to check if approved
+        const workflowKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/workflow.json`;
+        let workflow: any = null;
+        
+        if (await storageClient.fileExists(workflowKey)) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+          } catch (error) {
+            logger.warn('Error reading workflow.json', { workflowKey, error });
+            continue;
+          }
+        } else {
+          // Skip if no workflow (not approved)
+          continue;
+        }
+
+        // Only process approved borelogs
+        const status = workflow?.status?.toUpperCase();
+        if (status !== 'APPROVED') {
+          continue;
+        }
+
+        // Read project metadata
+        let projectName: string | undefined;
+        let boreholeNumber: string | undefined;
+        try {
+          const projectKey = `projects/project_${projectId}/project.json`;
+          if (await storageClient.fileExists(projectKey)) {
+            const projectBuffer = await storageClient.downloadFile(projectKey);
+            const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+            projectName = projectData.name;
+          }
+
+          const metadataBuffer = await storageClient.downloadFile(metadataKey);
+          const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
+          boreholeNumber = metadata.borehole_number || metadata.number;
+        } catch (error) {
+          logger.warn('Error reading project/borelog metadata', { projectId, borelogId, error });
+        }
+
+        // Find parsed strata files (check all versions)
+        const versionKeys = allKeys.filter(k => 
+          k.includes(`/borelog_${borelogId}/parsed/v`) && 
+          k.endsWith('/strata.json')
+        );
+
+        for (const strataKey of versionKeys) {
+          try {
+            // Extract version number
+            const versionMatch = strataKey.match(/\/parsed\/v(\d+)\/strata\.json/);
+            if (!versionMatch) continue;
+            const versionNo = parseInt(versionMatch[1], 10);
+
+            // Read parsed strata
+            const strataBuffer = await storageClient.downloadFile(strataKey);
+            const parsedData = JSON.parse(strataBuffer.toString('utf-8'));
+
+            // Extract samples from all strata
+            const allSamples: any[] = [];
+            (parsedData.strata || []).forEach((stratum: any) => {
+              (stratum.samples || []).forEach((sample: any) => {
+                allSamples.push({
+                  ...sample,
+                  stratum_description: stratum.description,
+                  version_no: versionNo
+                });
+              });
+            });
+
+            // Check for lab results
+            const labResultsKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/results.json`;
+            let labResults: any = null;
+            if (await storageClient.fileExists(labResultsKey)) {
+              try {
+                const resultsBuffer = await storageClient.downloadFile(labResultsKey);
+                labResults = JSON.parse(resultsBuffer.toString('utf-8'));
+              } catch (error) {
+                logger.warn('Error reading lab results', { labResultsKey, error });
+              }
+            }
+
+            // Create lab test entries for samples that need testing
+            // A sample needs testing if it has sample_code or sample_type indicating lab work
+            allSamples.forEach((sample) => {
+              const sampleId = sample.id || sample.sample_code || `sample-${allSamples.indexOf(sample)}`;
+              const sampleCode = sample.sample_code || sampleId;
+
+              // Check if this sample has lab results
+              let testResult: any = null;
+              let testStatus = 'pending';
+              let testedBy: string | undefined;
+              let testDate: string | undefined;
+              let remarks: string | undefined;
+
+              if (labResults && Array.isArray(labResults)) {
+                const sampleResult = labResults.find((r: any) => 
+                  r.sample_id === sampleId || 
+                  r.sample_code === sampleCode ||
+                  r.sample_id === sample.id
+                );
+                if (sampleResult) {
+                  testResult = sampleResult.result || sampleResult.results;
+                  testStatus = sampleResult.status || 'completed';
+                  testedBy = sampleResult.tested_by || sampleResult.technician;
+                  testDate = sampleResult.test_date || sampleResult.created_at;
+                  remarks = sampleResult.remarks;
+                }
+              }
+
+              // Determine test type from sample
+              const testType = sample.test_type || 
+                             (sample.sample_type === 'UNDISTURBED' ? 'Undisturbed Sample Test' : 
+                              sample.sample_type === 'DISTURBED' ? 'Disturbed Sample Test' : 
+                              'Lab Test');
+
+              labTests.push({
+                id: `${borelogId}-${sampleId}-${versionNo}`,
+                borelog_id: borelogId,
+                test_type: testType,
+                result: testResult,
+                tested_by: testedBy,
+                test_date: testDate,
+                remarks: remarks,
+                status: testStatus,
+                borelog: {
+                  borehole_number: boreholeNumber || 'N/A',
+                  project_name: projectName || projectId,
+                  chainage: 'N/A'
+                }
+              });
+            });
+          } catch (error) {
+            logger.warn('Error processing parsed strata', { strataKey, error });
+            continue;
+          }
+        }
+      } catch (error) {
+        logger.warn('Error processing borelog for lab tests', { metadataKey, error });
+        continue;
+      }
+    }
+
+    // Filter by user role
+    // Note: Project Manager filtering by project assignment would require user_project_assignments
+    // which is not available in S3 mode. For now, Lab Engineers see only their tests.
+    let filteredTests = labTests;
+    if (userRole === 'Lab Engineer') {
+      // Filter by tested_by matching userId (if available)
+      filteredTests = labTests.filter(test => 
+        !test.tested_by || test.tested_by === userId
+      );
+    }
+    // Admin and Project Manager see all tests
+
+    // Sort by test_date descending (most recent first)
+    filteredTests.sort((a, b) => {
+      const dateA = a.test_date ? new Date(a.test_date).getTime() : 0;
+      const dateB = b.test_date ? new Date(b.test_date).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return filteredTests;
+  } catch (error) {
+    logger.error('Error listing lab tests from S3', { error });
+    return [];
+  }
+}
+
+export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Lab Engineer', 'Project Manager'])(event);
@@ -132,62 +326,12 @@ export const listLabTests = async (event: APIGatewayProxyEvent): Promise<APIGate
       });
     }
 
-    // Build query based on user role
-    let query = `
-      SELECT 
-        ltr.*,
-        b.borelog_id,
-        p.name as project_name,
-        bd.number as borehole_number,
-        u.name as technician_name
-      FROM lab_test_results ltr
-      LEFT JOIN lab_test_assignments lta ON ltr.assignment_id = lta.assignment_id
-      LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id OR ltr.borelog_id = b.borelog_id
-      LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN borelog_details bd ON b.borelog_id = bd.borelog_id
-      LEFT JOIN users u ON ltr.technician = u.user_id
-      WHERE 1=1
-    `;
-
-    const queryParams: any[] = [];
-    let paramCount = 0;
-
-    // Filter by user role
-    if (payload.role === 'Lab Engineer') {
-      paramCount++;
-      query += ` AND ltr.technician = $${paramCount}`;
-      queryParams.push(payload.userId);
-    } else if (payload.role === 'Project Manager') {
-      // Project managers can see tests for their projects
-      paramCount++;
-      query += ` AND EXISTS (
-        SELECT 1 FROM user_project_assignments upa 
-        WHERE upa.project_id = b.project_id 
-        AND $${paramCount} = ANY(upa.assignee)
-      )`;
-      queryParams.push(payload.userId);
-    }
-    // Admin can see all tests
-
-    query += ` ORDER BY ltr.created_at DESC`;
-
-    const result = await db.query(query, queryParams);
-
-    const labTests = result.map((row: any) => ({
-      id: row.test_id,
-      borelog_id: row.borelog_id,
-      test_type: row.test_type,
-      result: row.results,
-      tested_by: row.technician_name,
-      test_date: row.test_date,
-      remarks: row.remarks,
-      status: row.status,
-      borelog: {
-        borehole_number: row.borehole_number,
-        project_name: row.project_name,
-        chainage: row.chainage || 'N/A'
-      }
-    }));
+    const storageClient = createStorageClient();
+    const labTests = await listLabTestsFromS3(
+      storageClient,
+      payload.userId,
+      payload.role
+    );
 
     return createResponse(200, {
       success: true,

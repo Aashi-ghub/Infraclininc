@@ -2,6 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
+import { createStorageClient } from '../storage/s3Client';
 import * as db from '../db';
 import { guardDbRoute } from '../db';
 
@@ -13,12 +14,214 @@ interface JwtPayload {
   name?: string;
 }
 
+/**
+ * List unified lab reports from S3 (S3-only)
+ */
+async function listUnifiedLabReportsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>,
+  filters: {
+    status?: string;
+    tested_by?: string;
+    sample_id?: string;
+    borehole_no?: string;
+    project_name?: string;
+  }
+): Promise<any[]> {
+  try {
+    const allKeys = await storageClient.listFiles('projects/', 50000);
+    
+    // Find all borelog metadata files
+    const metadataKeys = allKeys.filter(
+      (k) => k.endsWith('/metadata.json') && 
+             k.includes('/borelogs/borelog_') && 
+             !k.includes('/versions/') && 
+             !k.includes('/parsed/')
+    );
+
+    const allReports: any[] = [];
+
+    // Process each borelog
+    for (const metadataKey of metadataKeys) {
+      try {
+        // Extract project_id and borelog_id from path
+        const pathMatch = metadataKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/metadata\.json/);
+        if (!pathMatch) continue;
+
+        const [, projectId, borelogId] = pathMatch;
+
+        // Read project metadata for project_name
+        let projectName: string | undefined;
+        let boreholeNumber: string | undefined;
+        try {
+          const projectKey = `projects/project_${projectId}/project.json`;
+          if (await storageClient.fileExists(projectKey)) {
+            const projectBuffer = await storageClient.downloadFile(projectKey);
+            const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+            projectName = projectData.name;
+          }
+
+          const metadataBuffer = await storageClient.downloadFile(metadataKey);
+          const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
+          boreholeNumber = metadata.borehole_number || metadata.number;
+        } catch (error) {
+          logger.warn('Error reading project/borelog metadata', { projectId, borelogId, error });
+        }
+
+        // Check for lab reports - try multiple possible locations
+        const reportsKeys = [
+          `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/reports.json`,
+          `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/unified-reports.json`,
+          `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/results.json`
+        ];
+
+        for (const reportsKey of reportsKeys) {
+          if (await storageClient.fileExists(reportsKey)) {
+            try {
+              const reportsBuffer = await storageClient.downloadFile(reportsKey);
+              const reportsData = JSON.parse(reportsBuffer.toString('utf-8'));
+              
+              // Handle both array and object formats
+              let reports: any[] = [];
+              if (Array.isArray(reportsData)) {
+                reports = reportsData;
+              } else if (reportsData.reports && Array.isArray(reportsData.reports)) {
+                reports = reportsData.reports;
+              } else if (reportsData.report_id || reportsData.reportId) {
+                // Single report object
+                reports = [reportsData];
+              }
+
+              // Enrich reports with project/borelog metadata
+              reports.forEach((report: any) => {
+                // Ensure required fields exist
+                const enrichedReport = {
+                  report_id: report.report_id || report.reportId || `${borelogId}-${Date.now()}`,
+                  assignment_id: report.assignment_id || null,
+                  borelog_id: report.borelog_id || borelogId,
+                  sample_id: report.sample_id || null,
+                  borehole_no: report.borehole_no || boreholeNumber || 'N/A',
+                  project_name: report.project_name || projectName || projectId,
+                  client: report.client || null,
+                  test_date: report.test_date || report.created_at || null,
+                  tested_by: report.tested_by || null,
+                  checked_by: report.checked_by || null,
+                  approved_by: report.approved_by || null,
+                  test_types: report.test_types || (Array.isArray(report.test_types) ? report.test_types : []),
+                  soil_test_data: report.soil_test_data || (Array.isArray(report.soil_test_data) ? report.soil_test_data : []),
+                  rock_test_data: report.rock_test_data || (Array.isArray(report.rock_test_data) ? report.rock_test_data : []),
+                  status: report.status || 'draft',
+                  remarks: report.remarks || null,
+                  created_at: report.created_at || report.test_date || new Date().toISOString(),
+                  updated_at: report.updated_at || report.created_at || new Date().toISOString(),
+                  ...report // Include any additional fields
+                };
+                allReports.push(enrichedReport);
+              });
+              
+              // Found reports, no need to check other keys
+              break;
+            } catch (error) {
+              logger.warn('Error reading lab reports', { reportsKey, error });
+              continue;
+            }
+          }
+        }
+
+        // Also check for individual report files in lab/reports/ directory
+        const individualReportKeys = allKeys.filter(k => 
+          k.includes(`/borelog_${borelogId}/lab/reports/`) && 
+          k.endsWith('.json') &&
+          !k.endsWith('/reports.json')
+        );
+
+        for (const reportKey of individualReportKeys) {
+          try {
+            const reportBuffer = await storageClient.downloadFile(reportKey);
+            const report = JSON.parse(reportBuffer.toString('utf-8'));
+            
+            const enrichedReport = {
+              report_id: report.report_id || report.reportId || reportKey.split('/').pop()?.replace('.json', '') || `${borelogId}-${Date.now()}`,
+              assignment_id: report.assignment_id || null,
+              borelog_id: report.borelog_id || borelogId,
+              sample_id: report.sample_id || null,
+              borehole_no: report.borehole_no || boreholeNumber || 'N/A',
+              project_name: report.project_name || projectName || projectId,
+              client: report.client || null,
+              test_date: report.test_date || report.created_at || null,
+              tested_by: report.tested_by || null,
+              checked_by: report.checked_by || null,
+              approved_by: report.approved_by || null,
+              test_types: report.test_types || [],
+              soil_test_data: report.soil_test_data || [],
+              rock_test_data: report.rock_test_data || [],
+              status: report.status || 'draft',
+              remarks: report.remarks || null,
+              created_at: report.created_at || report.test_date || new Date().toISOString(),
+              updated_at: report.updated_at || report.created_at || new Date().toISOString(),
+              ...report
+            };
+            allReports.push(enrichedReport);
+          } catch (error) {
+            logger.warn('Error reading individual lab report', { reportKey, error });
+            continue;
+          }
+        }
+      } catch (error) {
+        logger.warn('Error processing borelog for lab reports', { metadataKey, error });
+        continue;
+      }
+    }
+
+    // Apply filters
+    let filteredReports = allReports;
+
+    if (filters.status) {
+      filteredReports = filteredReports.filter(r => 
+        r.status?.toLowerCase() === filters.status?.toLowerCase()
+      );
+    }
+
+    if (filters.tested_by) {
+      filteredReports = filteredReports.filter(r => 
+        r.tested_by?.toLowerCase().includes(filters.tested_by?.toLowerCase() || '')
+      );
+    }
+
+    if (filters.sample_id) {
+      filteredReports = filteredReports.filter(r => 
+        r.sample_id === filters.sample_id
+      );
+    }
+
+    if (filters.borehole_no) {
+      filteredReports = filteredReports.filter(r => 
+        r.borehole_no?.toLowerCase().includes(filters.borehole_no?.toLowerCase() || '')
+      );
+    }
+
+    if (filters.project_name) {
+      const projectNameLower = filters.project_name.toLowerCase();
+      filteredReports = filteredReports.filter(r => 
+        r.project_name?.toLowerCase().includes(projectNameLower)
+      );
+    }
+
+    // Sort by created_at descending
+    filteredReports.sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return filteredReports;
+  } catch (error) {
+    logger.error('Error listing unified lab reports from S3', { error });
+    return [];
+  }
+}
+
 // Get all unified lab reports (with optional filters)
 export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('getUnifiedLabReports');
-  if (dbGuard) return dbGuard;
-
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer', 'Approval Engineer'])(event);
@@ -27,50 +230,21 @@ export const getUnifiedLabReports = async (event: APIGatewayProxyEvent): Promise
     }
 
     const queryParams = event.queryStringParameters || {};
-    const { status, tested_by, sample_id, borehole_no, project_name } = queryParams;
+    const filters = {
+      status: queryParams.status,
+      tested_by: queryParams.tested_by,
+      sample_id: queryParams.sample_id,
+      borehole_no: queryParams.borehole_no,
+      project_name: queryParams.project_name
+    };
 
-    let query = 'SELECT * FROM unified_lab_reports WHERE 1=1';
-    const values: any[] = [];
-    let paramCount = 1;
-
-    if (status) {
-      query += ` AND status = $${paramCount}`;
-      values.push(status);
-      paramCount++;
-    }
-
-    if (tested_by) {
-      query += ` AND tested_by = $${paramCount}`;
-      values.push(tested_by);
-      paramCount++;
-    }
-
-    if (sample_id) {
-      query += ` AND sample_id = $${paramCount}`;
-      values.push(sample_id);
-      paramCount++;
-    }
-
-    if (borehole_no) {
-      query += ` AND borehole_no = $${paramCount}`;
-      values.push(borehole_no);
-      paramCount++;
-    }
-
-    if (project_name) {
-      query += ` AND project_name ILIKE $${paramCount}`;
-      values.push(`%${project_name}%`);
-      paramCount++;
-    }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await db.query(query, values);
+    const storageClient = createStorageClient();
+    const reports = await listUnifiedLabReportsFromS3(storageClient, filters);
 
     return createResponse(200, {
       success: true,
       message: 'Unified lab reports retrieved successfully',
-      data: result
+      data: reports
     });
   } catch (error) {
     logger.error('Error getting unified lab reports:', error);

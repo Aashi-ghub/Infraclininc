@@ -3,8 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger } from '../utils/logger';
 import { createResponse } from '../types/common';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
 
 // Type definitions for database results
 interface BorelogResult {
@@ -243,12 +242,233 @@ export const createLabRequest = async (event: APIGatewayProxyEvent): Promise<API
   }
 };
 
+/**
+ * List lab requests - derive from approved borelogs (S3-only)
+ */
+async function listLabRequestsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>,
+  userId: string,
+  userRole: string
+): Promise<any[]> {
+  try {
+    const allKeys = await storageClient.listFiles('projects/', 50000);
+    
+    // Find all borelog metadata files
+    const metadataKeys = allKeys.filter(
+      (k) => k.endsWith('/metadata.json') && 
+             k.includes('/borelogs/borelog_') && 
+             !k.includes('/versions/') && 
+             !k.includes('/parsed/')
+    );
+
+    const labRequests: any[] = [];
+
+    // Process each borelog
+    for (const metadataKey of metadataKeys) {
+      try {
+        // Extract project_id and borelog_id from path
+        const pathMatch = metadataKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/metadata\.json/);
+        if (!pathMatch) continue;
+
+        const [, projectId, borelogId] = pathMatch;
+
+        // Read workflow.json to check if approved
+        const workflowKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/workflow.json`;
+        let workflow: any = null;
+        
+        if (await storageClient.fileExists(workflowKey)) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+          } catch (error) {
+            logger.warn('Error reading workflow.json', { workflowKey, error });
+            continue;
+          }
+        } else {
+          // Skip if no workflow (not approved)
+          continue;
+        }
+
+        // Only process approved borelogs
+        const status = workflow?.status?.toUpperCase();
+        if (status !== 'APPROVED') {
+          continue;
+        }
+
+        // Read project and borelog metadata
+        let projectName: string | undefined;
+        let boreholeNumber: string | undefined;
+        try {
+          const projectKey = `projects/project_${projectId}/project.json`;
+          if (await storageClient.fileExists(projectKey)) {
+            const projectBuffer = await storageClient.downloadFile(projectKey);
+            const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+            projectName = projectData.name;
+          }
+
+          const metadataBuffer = await storageClient.downloadFile(metadataKey);
+          const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
+          boreholeNumber = metadata.borehole_number || metadata.number;
+        } catch (error) {
+          logger.warn('Error reading project/borelog metadata', { projectId, borelogId, error });
+        }
+
+        // Check for explicit lab/requests.json
+        const labRequestsKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/requests.json`;
+        let explicitRequests: any[] = [];
+        let hasExplicitRequests = false;
+
+        if (await storageClient.fileExists(labRequestsKey)) {
+          try {
+            const requestsBuffer = await storageClient.downloadFile(labRequestsKey);
+            const requestsData = JSON.parse(requestsBuffer.toString('utf-8'));
+            explicitRequests = Array.isArray(requestsData) ? requestsData : 
+                             (requestsData.requests ? requestsData.requests : []);
+            hasExplicitRequests = explicitRequests.length > 0;
+          } catch (error) {
+            logger.warn('Error reading lab requests.json', { labRequestsKey, error });
+          }
+        }
+
+        if (hasExplicitRequests) {
+          // Use explicit requests
+          explicitRequests.forEach((req: any, index: number) => {
+            const sampleIds = Array.isArray(req.sample_ids) ? req.sample_ids : 
+                            (req.sample_id ? [req.sample_id] : []);
+            
+            if (sampleIds.length === 0) {
+              labRequests.push({
+                id: `${req.assignment_id || borelogId}-${index}`,
+                assignment_id: req.assignment_id || `${borelogId}-${index}`,
+                borelog_id: borelogId,
+                sample_id: '',
+                test_type: req.test_type || 'Lab Test',
+                priority: req.priority || 'normal',
+                due_date: req.due_date || null,
+                notes: req.notes || null,
+                requested_by: req.assigned_by_name || req.requested_by || 'Unknown',
+                requested_date: req.assigned_at || req.requested_date || new Date().toISOString(),
+                status: req.status || 'assigned',
+                assigned_lab_engineer: req.assigned_lab_engineer_name || req.assigned_to || null,
+                borelog: {
+                  borehole_number: boreholeNumber || 'N/A',
+                  project_name: projectName || projectId,
+                  chainage: 'N/A'
+                }
+              });
+            } else {
+              sampleIds.forEach((sampleId: string, sampleIndex: number) => {
+                labRequests.push({
+                  id: `${req.assignment_id || borelogId}-${index}-${sampleIndex}`,
+                  assignment_id: req.assignment_id || `${borelogId}-${index}`,
+                  borelog_id: borelogId,
+                  sample_id: sampleId,
+                  test_type: req.test_type || 'Lab Test',
+                  priority: req.priority || 'normal',
+                  due_date: req.due_date || null,
+                  notes: req.notes || null,
+                  requested_by: req.assigned_by_name || req.requested_by || 'Unknown',
+                  requested_date: req.assigned_at || req.requested_date || new Date().toISOString(),
+                  status: req.status || 'assigned',
+                  assigned_lab_engineer: req.assigned_lab_engineer_name || req.assigned_to || null,
+                  borelog: {
+                    borehole_number: boreholeNumber || 'N/A',
+                    project_name: projectName || projectId,
+                    chainage: 'N/A'
+                  }
+                });
+              });
+            }
+          });
+        } else {
+          // Infer pending requests from parsed strata (samples that need lab testing)
+          const versionKeys = allKeys.filter(k => 
+            k.includes(`/borelog_${borelogId}/parsed/v`) && 
+            k.endsWith('/strata.json')
+          );
+
+          for (const strataKey of versionKeys) {
+            try {
+              const versionMatch = strataKey.match(/\/parsed\/v(\d+)\/strata\.json/);
+              if (!versionMatch) continue;
+              const versionNo = parseInt(versionMatch[1], 10);
+
+              const strataBuffer = await storageClient.downloadFile(strataKey);
+              const parsedData = JSON.parse(strataBuffer.toString('utf-8'));
+
+              // Extract samples
+              const allSamples: any[] = [];
+              (parsedData.strata || []).forEach((stratum: any) => {
+                (stratum.samples || []).forEach((sample: any) => {
+                  allSamples.push(sample);
+                });
+              });
+
+              // Create pending request for each sample
+              allSamples.forEach((sample, index) => {
+                const sampleId = sample.id || sample.sample_code || `sample-${index}`;
+                const assignmentId = `${borelogId}-v${versionNo}-${sampleId}`;
+
+                labRequests.push({
+                  id: `${assignmentId}-0`,
+                  assignment_id: assignmentId,
+                  borelog_id: borelogId,
+                  sample_id: sampleId,
+                  test_type: 'Lab Test',
+                  priority: 'normal',
+                  due_date: null,
+                  notes: null,
+                  requested_by: workflow.submitted_by || 'System',
+                  requested_date: workflow.submitted_at || new Date().toISOString(),
+                  status: 'PENDING',
+                  assigned_lab_engineer: null,
+                  borelog: {
+                    borehole_number: boreholeNumber || 'N/A',
+                    project_name: projectName || projectId,
+                    chainage: 'N/A'
+                  }
+                });
+              });
+            } catch (error) {
+              logger.warn('Error processing parsed strata for lab requests', { strataKey, error });
+              continue;
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn('Error processing borelog for lab requests', { metadataKey, error });
+        continue;
+      }
+    }
+
+    // Filter by user role
+    let filteredRequests = labRequests;
+    if (userRole === 'Lab Engineer') {
+      // Lab engineers see requests assigned to them or pending
+      filteredRequests = labRequests.filter(req => 
+        !req.assigned_lab_engineer || 
+        req.assigned_lab_engineer === userId ||
+        req.status === 'PENDING'
+      );
+    }
+    // Admin and Project Manager see all requests
+
+    // Sort by requested_date descending
+    filteredRequests.sort((a, b) => {
+      const dateA = a.requested_date ? new Date(a.requested_date).getTime() : 0;
+      const dateB = b.requested_date ? new Date(b.requested_date).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return filteredRequests;
+  } catch (error) {
+    logger.error('Error listing lab requests from S3', { error });
+    return [];
+  }
+}
+
 // Get all lab requests
 export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('listLabRequests');
-  if (dbGuard) return dbGuard;
-
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -267,106 +487,12 @@ export const listLabRequests = async (event: APIGatewayProxyEvent): Promise<APIG
       });
     }
 
-    // Build query based on user role - simplified to avoid duplicates
-    let query = `
-      SELECT 
-        lta.assignment_id,
-        lta.borelog_id,
-        lta.sample_ids,
-        lta.assigned_to as assigned_lab_engineer,
-        lta.priority,
-        lta.due_date,
-        lta.assigned_at,
-        lta.assigned_by,
-        lta.notes,
-        p.name as project_name,
-        (SELECT bd2.number FROM borelog_details bd2 WHERE bd2.borelog_id = lta.borelog_id ORDER BY bd2.version_no DESC LIMIT 1) as borehole_number,
-        u.name as assigned_by_name,
-        le.name as assigned_lab_engineer_name
-      FROM lab_test_assignments lta
-      LEFT JOIN boreloge b ON lta.borelog_id = b.borelog_id
-      LEFT JOIN projects p ON b.project_id = p.project_id
-      LEFT JOIN users u ON lta.assigned_by = u.user_id
-      LEFT JOIN users le ON lta.assigned_to = le.user_id
-      WHERE 1=1
-    `;
-
-    const queryParams: any[] = [];
-    let paramCount = 0;
-
-    // Filter by user role
-    if (payload.role === 'Project Manager') {
-      // Project managers can see requests for their projects
-      paramCount++;
-      query += ` AND EXISTS (
-        SELECT 1 FROM user_project_assignments upa 
-        WHERE upa.project_id = b.project_id 
-        AND $${paramCount} = ANY(upa.assignee)
-      )`;
-      queryParams.push(payload.userId);
-    } else if (payload.role === 'Lab Engineer') {
-      // Lab engineers can see all assigned requests
-      query += ` AND lta.assigned_to = $${paramCount + 1}`;
-      queryParams.push(payload.userId);
-    }
-    // Admin can see all requests
-
-    query += ` ORDER BY lta.assigned_at DESC`;
-
-    const result = await db.query(query, queryParams) as LabAssignmentResult[];
-
-    // Create separate lab request entries for each sample ID in the array
-    const labRequests: any[] = [];
-    
-    result.forEach((row: LabAssignmentResult) => {
-      const sampleIds = row.sample_ids || [];
-      
-      if (sampleIds.length === 0) {
-        // If no sample IDs, create one entry with empty sample ID
-        labRequests.push({
-          id: `${row.assignment_id}-0`,
-          assignment_id: row.assignment_id,
-          borelog_id: row.borelog_id,
-          sample_id: '',
-          test_type: 'Lab Test',
-          priority: row.priority,
-          due_date: row.due_date,
-          notes: row.notes,
-          requested_by: row.assigned_by_name,
-          requested_date: row.assigned_at,
-          status: 'assigned',
-          assigned_lab_engineer: row.assigned_lab_engineer_name,
-          borelog: {
-            borehole_number: row.borehole_number,
-            project_name: row.project_name,
-            chainage: 'N/A'
-          }
-        });
-      } else {
-        // Create separate entries for each sample ID
-        sampleIds.forEach((sampleId: string, index: number) => {
-          labRequests.push({
-            id: `${row.assignment_id}-${index}`,
-            assignment_id: row.assignment_id,
-            borelog_id: row.borelog_id,
-            sample_id: sampleId,
-            test_type: 'Lab Test',
-            priority: row.priority,
-            due_date: row.due_date,
-            notes: row.notes,
-            requested_by: row.assigned_by_name,
-            requested_date: row.assigned_at,
-            status: 'assigned',
-            assigned_lab_engineer: row.assigned_lab_engineer_name,
-            borelog: {
-              borehole_number: row.borehole_number,
-              project_name: row.project_name,
-              chainage: 'N/A'
-            }
-          });
-        });
-      }
-    });
+    const storageClient = createStorageClient();
+    const labRequests = await listLabRequestsFromS3(
+      storageClient,
+      payload.userId,
+      payload.role
+    );
 
     return createResponse(200, {
       success: true,
@@ -746,12 +872,192 @@ export const deleteLabRequest = async (event: APIGatewayProxyEvent): Promise<API
   }
 };
 
+/**
+ * Get final borelogs from S3 - approved borelogs with samples requiring lab tests
+ * A final borelog = borelog that satisfies ALL:
+ * - workflow.status === "APPROVED"
+ * - has samples requiring lab tests
+ * - (no lab results yet OR partially completed)
+ */
+async function getFinalBorelogsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>
+): Promise<FinalBorelogResult[]> {
+  try {
+    const allKeys = await storageClient.listFiles('projects/', 50000);
+    
+    // Find all borelog metadata files
+    const metadataKeys = allKeys.filter(
+      (k) => k.endsWith('/metadata.json') && 
+             k.includes('/borelogs/borelog_') && 
+             !k.includes('/versions/') && 
+             !k.includes('/parsed/')
+    );
+
+    const finalBorelogs: FinalBorelogResult[] = [];
+
+    // Process each borelog
+    for (const metadataKey of metadataKeys) {
+      try {
+        // Extract project_id and borelog_id from path
+        const pathMatch = metadataKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/metadata\.json/);
+        if (!pathMatch) continue;
+
+        const [, projectId, borelogId] = pathMatch;
+
+        // Read workflow.json to check if approved
+        const workflowKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/workflow.json`;
+        let workflow: any = null;
+        
+        if (await storageClient.fileExists(workflowKey)) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+          } catch (error) {
+            logger.warn('Error reading workflow.json', { workflowKey, error });
+            continue;
+          }
+        } else {
+          // Skip if no workflow (not approved)
+          continue;
+        }
+
+        // Only process approved borelogs
+        const status = workflow?.status?.toUpperCase();
+        if (status !== 'APPROVED') {
+          continue;
+        }
+
+        // Find latest version from parsed strata
+        const versionKeys = allKeys.filter(k => 
+          k.includes(`/borelog_${borelogId}/parsed/v`) && 
+          k.endsWith('/strata.json')
+        );
+
+        if (versionKeys.length === 0) {
+          // No parsed strata, skip
+          continue;
+        }
+
+        // Get the latest version
+        let latestVersion = 0;
+        let latestVersionKey: string | null = null;
+        for (const strataKey of versionKeys) {
+          const versionMatch = strataKey.match(/\/parsed\/v(\d+)\/strata\.json/);
+          if (!versionMatch) continue;
+          const versionNo = parseInt(versionMatch[1], 10);
+          if (versionNo > latestVersion) {
+            latestVersion = versionNo;
+            latestVersionKey = strataKey;
+          }
+        }
+
+        if (!latestVersionKey) {
+          continue;
+        }
+
+        // Read strata.json to check for samples
+        let hasSamples = false;
+        try {
+          const strataBuffer = await storageClient.downloadFile(latestVersionKey);
+          const parsedData = JSON.parse(strataBuffer.toString('utf-8'));
+
+          // Extract samples
+          const allSamples: any[] = [];
+          (parsedData.strata || []).forEach((stratum: any) => {
+            (stratum.samples || []).forEach((sample: any) => {
+              allSamples.push(sample);
+            });
+          });
+
+          hasSamples = allSamples.length > 0;
+        } catch (error) {
+          logger.warn('Error reading strata.json', { latestVersionKey, error });
+          continue;
+        }
+
+        if (!hasSamples) {
+          // No samples, skip
+          continue;
+        }
+
+        // Check lab/results.json - if it doesn't exist or is incomplete, treat as pending
+        const labResultsKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/lab/results.json`;
+        let labResults: any = null;
+        let hasLabResults = false;
+        
+        if (await storageClient.fileExists(labResultsKey)) {
+          try {
+            const resultsBuffer = await storageClient.downloadFile(labResultsKey);
+            labResults = JSON.parse(resultsBuffer.toString('utf-8'));
+            // Check if results exist and are not empty
+            hasLabResults = labResults && (
+              (Array.isArray(labResults) && labResults.length > 0) ||
+              (typeof labResults === 'object' && Object.keys(labResults).length > 0)
+            );
+          } catch (error) {
+            logger.warn('Error reading lab results.json', { labResultsKey, error });
+            // Treat as no results if we can't read it
+            hasLabResults = false;
+          }
+        }
+
+        // Include if no lab results yet (pending lab work)
+        if (!hasLabResults) {
+          // Read project and borelog metadata
+          let projectName: string | undefined;
+          let projectLocation: string | undefined;
+          let boreholeNumber: string | undefined;
+          let createdAt: string | undefined;
+          
+          try {
+            const projectKey = `projects/project_${projectId}/project.json`;
+            if (await storageClient.fileExists(projectKey)) {
+              const projectBuffer = await storageClient.downloadFile(projectKey);
+              const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+              projectName = projectData.name;
+              projectLocation = projectData.location;
+            }
+
+            const metadataBuffer = await storageClient.downloadFile(metadataKey);
+            const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
+            boreholeNumber = metadata.borehole_number || metadata.number;
+            createdAt = metadata.created_at || workflow.submitted_at || new Date().toISOString();
+          } catch (error) {
+            logger.warn('Error reading project/borelog metadata', { projectId, borelogId, error });
+            // Continue with partial data
+          }
+
+          finalBorelogs.push({
+            borelog_id: borelogId,
+            borehole_number: boreholeNumber || 'N/A',
+            project_name: projectName || projectId,
+            project_location: projectLocation || 'N/A',
+            version_no: latestVersion,
+            created_at: createdAt || new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        logger.warn('Error processing borelog for final borelogs', { metadataKey, error });
+        continue;
+      }
+    }
+
+    // Sort by created_at descending (latest first)
+    finalBorelogs.sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return finalBorelogs;
+  } catch (error) {
+    logger.error('Error getting final borelogs from S3', { error });
+    return [];
+  }
+}
+
 // Get final borelogs for lab requests (accessible by Project Managers and Lab Engineers)
 export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('getFinalBorelogs');
-  if (dbGuard) return dbGuard;
-
   try {
     // Check if user has appropriate role
     const authError = await checkRole(['Admin', 'Project Manager', 'Lab Engineer'])(event);
@@ -770,75 +1076,8 @@ export const getFinalBorelogs = async (event: APIGatewayProxyEvent): Promise<API
       });
     }
 
-    // Get final borelogs (only the latest version of each borelog)
-    let query = `
-      SELECT 
-        bd.borelog_id,
-        bd.number as borehole_number,
-        bd.created_at,
-        p.name as project_name,
-        p.location as project_location,
-        bd.version_no
-      FROM borelog_details bd
-      INNER JOIN (
-        SELECT borelog_id, MAX(version_no) as max_version
-        FROM borelog_details
-        GROUP BY borelog_id
-      ) latest ON bd.borelog_id = latest.borelog_id AND bd.version_no = latest.max_version
-      LEFT JOIN boreloge b ON bd.borelog_id = b.borelog_id
-      LEFT JOIN projects p ON b.project_id = p.project_id
-      WHERE bd.borelog_id IS NOT NULL
-    `;
-
-    const queryParams: any[] = [];
-    let paramCount = 0;
-
-    // Filter by user role
-    if (payload.role === 'Project Manager') {
-      // Project managers can see final borelogs for their projects
-      paramCount++;
-      query += ` AND EXISTS (
-        SELECT 1 FROM user_project_assignments upa 
-        WHERE upa.project_id = b.project_id 
-        AND $${paramCount} = ANY(upa.assignee)
-      )`;
-      queryParams.push(payload.userId);
-    }
-    // Admin and Lab Engineer can see all final borelogs
-
-    query += ` ORDER BY bd.borelog_id, bd.version_no DESC`;
-
-    logger.info('Executing getFinalBorelogs query:', { query, queryParams });
-
-    let result;
-    try {
-      result = await db.query(query, queryParams) as FinalBorelogResult[];
-    } catch (dbError) {
-      logger.error('Database query error in getFinalBorelogs:', dbError);
-      return createResponse(500, {
-        success: false,
-        message: 'Database query error',
-        error: 'Failed to execute database query'
-      });
-    }
-
-    if (!result) {
-      logger.error('Database query returned undefined result');
-      return createResponse(500, {
-        success: false,
-        message: 'Database error',
-        error: 'Failed to retrieve data from database'
-      });
-    }
-
-    const finalBorelogs = result.map((row: FinalBorelogResult) => ({
-      borelog_id: row.borelog_id,
-      borehole_number: row.borehole_number,
-      project_name: row.project_name,
-      project_location: row.project_location,
-      version_no: row.version_no,
-      created_at: row.created_at
-    }));
+    const storageClient = createStorageClient();
+    const finalBorelogs = await getFinalBorelogsFromS3(storageClient);
 
     return createResponse(200, {
       success: true,

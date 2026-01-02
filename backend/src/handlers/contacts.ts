@@ -1,4 +1,5 @@
 import { APIGatewayProxyEvent } from 'aws-lambda';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   createContact, 
   getAllContacts, 
@@ -7,12 +8,14 @@ import {
   updateContact,
   deleteContact,
   CreateContactInput,
-  createOrganisationIfNotExists
+  createOrganisationIfNotExists,
+  Contact
 } from '../models/contacts';
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { validateInput } from '../utils/validateInput';
 import { z } from 'zod';
+import { createStorageClient } from '../storage/s3Client';
 
 // Schema for contact creation
 const contactSchema = z.object({
@@ -51,26 +54,50 @@ export const createContactHandler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    // Ensure organisation exists
-    try {
-      await createOrganisationIfNotExists(body.organisation_id, body.organisation_name || 'Default Organisation');
-    } catch (error) {
-      logger.warn('Failed to create organisation, proceeding anyway', { error });
+    // Create contact in S3
+    const storageClient = createStorageClient();
+    const contactsKey = 'config/contacts.json';
+    
+    // Read existing contacts
+    let contacts: Contact[] = [];
+    if (await storageClient.fileExists(contactsKey)) {
+      try {
+        const buffer = await storageClient.downloadFile(contactsKey);
+        const parsed = JSON.parse(buffer.toString('utf-8'));
+        contacts = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        logger.warn('Error reading contacts.json, starting with empty array', { error });
+        contacts = [];
+      }
     }
 
-    // Create contact
-    const contactInput: CreateContactInput = {
+    // Create new contact
+    const contactId = uuidv4();
+    const newContact: Contact = {
+      contact_id: contactId,
+      organisation_id: body.organisation_id,
       name: body.name,
       role: body.role,
-      organisation_id: body.organisation_id
+      date_created: new Date().toISOString()
     };
 
-    const contact = await createContact(contactInput);
+    // Add to array
+    contacts.push(newContact);
+
+    // Write back to S3
+    const contactsJson = JSON.stringify(contacts, null, 2);
+    await storageClient.uploadFile(
+      contactsKey,
+      Buffer.from(contactsJson, 'utf-8'),
+      'application/json'
+    );
+
+    logger.info('Contact created successfully', { contactId, name: body.name });
 
     const response = createResponse(201, {
       success: true,
       message: 'Contact created successfully',
-      data: contact
+      data: newContact
     });
 
     logResponse(response, Date.now() - startTime);
@@ -96,7 +123,34 @@ export const listContactsHandler = async (event: APIGatewayProxyEvent) => {
   logRequest(event, { awsRequestId: 'local' });
 
   try {
-    const contacts = await getAllContacts();
+    const storageClient = createStorageClient();
+    const contactsKey = 'config/contacts.json';
+    
+    let contacts: any[] = [];
+    
+    // Read contacts from S3
+    if (await storageClient.fileExists(contactsKey)) {
+      try {
+        const buffer = await storageClient.downloadFile(contactsKey);
+        const parsed = JSON.parse(buffer.toString('utf-8'));
+        // Ensure it's an array
+        contacts = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        logger.warn('Error reading contacts.json, returning empty array', { error });
+        contacts = [];
+      }
+    } else {
+      // File doesn't exist, return empty array (don't throw)
+      logger.debug('contacts.json not found, returning empty array');
+      contacts = [];
+    }
+
+    // Sort by date_created descending (latest first)
+    contacts.sort((a, b) => {
+      const dateA = a.date_created ? new Date(a.date_created).getTime() : 0;
+      const dateB = b.date_created ? new Date(b.date_created).getTime() : 0;
+      return dateB - dateA;
+    });
 
     const response = createResponse(200, {
       success: true,
