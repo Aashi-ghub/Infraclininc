@@ -2,17 +2,15 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
 
+/**
+ * List pending CSV uploads from S3
+ */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('listPendingCSVUploads');
-  if (dbGuard) return dbGuard;
-
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
-
+  
   try {
     // Only Approval Engineer, Admin, or Project Manager can view pending CSV uploads
     const authError = await checkRole(['Admin', 'Approval Engineer', 'Project Manager'])(event);
@@ -39,168 +37,210 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const limit = parseInt(event.queryStringParameters?.limit || '50');
     const offset = parseInt(event.queryStringParameters?.offset || '0');
 
-    // Build the query
-    let query = `
-      SELECT 
-        pcu.upload_id,
-        pcu.project_id,
-        pcu.structure_id,
-        pcu.substructure_id,
-        pcu.uploaded_by,
-        pcu.uploaded_at,
-        pcu.file_name,
-        pcu.file_type,
-        pcu.total_records,
-        pcu.status,
-        pcu.submitted_for_approval_at,
-        pcu.approved_by,
-        pcu.approved_at,
-        pcu.rejected_by,
-        pcu.rejected_at,
-        pcu.returned_by,
-        pcu.returned_at,
-        pcu.approval_comments,
-        pcu.rejection_reason,
-        pcu.revision_notes,
-        pcu.processed_at,
-        pcu.created_borelog_id,
-        pcu.error_message,
-        u.name as uploaded_by_name,
-        p.name as project_name,
-        s.type as structure_type,
-        ss.type as substructure_type
-      FROM pending_csv_uploads pcu
-      LEFT JOIN users u ON pcu.uploaded_by = u.user_id
-      LEFT JOIN projects p ON pcu.project_id = p.project_id
-      LEFT JOIN structure s ON pcu.structure_id = s.structure_id
-      LEFT JOIN sub_structures ss ON pcu.substructure_id = ss.substructure_id
-      WHERE 1=1
-    `;
+    const storageClient = createStorageClient();
+    const pendingUploads: any[] = [];
 
-    const queryParams: any[] = [];
-    let paramCount = 0;
+    // List all projects or specific project
+    const projectPrefix = projectId 
+      ? `projects/project_${projectId}/`
+      : 'projects/';
+    
+    const allKeys = await storageClient.listFiles(projectPrefix, 50000);
+    
+    // Find all manifest.json files in uploads/csv/ directories
+    const manifestKeys = allKeys.filter(k => 
+      k.includes('/uploads/csv/manifest.json') && 
+      k.includes('/versions/v')
+    );
 
-    if (projectId) {
-      paramCount++;
-      query += ` AND pcu.project_id = $${paramCount}`;
-      queryParams.push(projectId);
-    }
+    logger.info(`Found ${manifestKeys.length} CSV upload manifests in S3`);
 
-    if (status && status !== 'all') {
-      paramCount++;
-      query += ` AND pcu.status = $${paramCount}`;
-      queryParams.push(status);
-    }
+    // Process each manifest to determine if it's pending
+    for (const manifestKey of manifestKeys) {
+      try {
+        // Extract project_id, borelog_id, and version_no from path
+        // Format: projects/project_{projectId}/borelogs/borelog_{borelogId}/versions/v{versionNo}/uploads/csv/manifest.json
+        const pathMatch = manifestKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/versions\/v(\d+)\/uploads\/csv\/manifest\.json/);
+        if (!pathMatch) continue;
 
-    // Add ordering and pagination
-    query += ` ORDER BY pcu.uploaded_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
-    queryParams.push(limit, offset);
+        const [, extractedProjectId, extractedBorelogId, versionNoStr] = pathMatch;
+        const versionNo = parseInt(versionNoStr, 10);
 
-    // Get the pending uploads
-    const pool = await db.getPool();
-    const client = await pool.connect();
+        // Skip if project filter doesn't match
+        if (projectId && extractedProjectId !== projectId) continue;
 
-    try {
-      const result = await client.query(query, queryParams);
+        // Read manifest
+        const manifestBuffer = await storageClient.downloadFile(manifestKey);
+        const manifest = JSON.parse(manifestBuffer.toString('utf-8'));
 
-      // Get total count for pagination
-      let countQuery = `
-        SELECT COUNT(*) as total
-        FROM pending_csv_uploads pcu
-        WHERE 1=1
-      `;
-      const countParams: any[] = [];
-      let countParamCount = 0;
+        // Check if parsed output exists
+        const parsedStrataKey = `projects/project_${extractedProjectId}/borelogs/borelog_${extractedBorelogId}/parsed/v${versionNo}/strata.json`;
+        const parsedExists = await storageClient.fileExists(parsedStrataKey);
 
-      if (projectId) {
-        countParamCount++;
-        countQuery += ` AND pcu.project_id = $${countParamCount}`;
-        countParams.push(projectId);
-      }
-
-      if (status && status !== 'all') {
-        countParamCount++;
-        countQuery += ` AND pcu.status = $${countParamCount}`;
-        countParams.push(status);
-      }
-
-      const countResult = await client.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0].total);
-
-      // Transform the data to include parsed CSV information
-      const transformedUploads = result.rows.map(upload => {
-        let borelogHeaderData = {};
-        let stratumRowsData = [];
-
-        try {
-          if (upload.borelog_header_data) {
-            borelogHeaderData = upload.borelog_header_data;
+        // Check workflow status
+        const workflowKey = `projects/project_${extractedProjectId}/borelogs/borelog_${extractedBorelogId}/workflow.json`;
+        const workflowExists = await storageClient.fileExists(workflowKey);
+        
+        let workflowStatus = null;
+        if (workflowExists) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            const workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+            workflowStatus = workflow.status;
+          } catch (error) {
+            logger.warn('Error reading workflow.json', { workflowKey, error });
           }
-          if (upload.stratum_rows_data) {
-            stratumRowsData = upload.stratum_rows_data;
+        }
+
+        // Determine if upload is pending
+        // Pending if: parsed output doesn't exist OR workflow status is not SUBMITTED/APPROVED
+        const isPending = !parsedExists || 
+          (workflowStatus !== 'SUBMITTED' && workflowStatus !== 'APPROVED');
+
+        // Apply status filter
+        if (status === 'pending' && !isPending) continue;
+        if (status === 'approved' && workflowStatus !== 'APPROVED') continue;
+        if (status === 'submitted' && workflowStatus !== 'SUBMITTED') continue;
+        if (status !== 'all' && status !== 'pending' && status !== 'approved' && status !== 'submitted') {
+          // Unknown status filter, skip
+          continue;
+        }
+
+        // Read project metadata if available
+        let projectName = null;
+        try {
+          const projectKey = `projects/project_${extractedProjectId}/project.json`;
+          if (await storageClient.fileExists(projectKey)) {
+            const projectBuffer = await storageClient.downloadFile(projectKey);
+            const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+            projectName = projectData.name || null;
           }
         } catch (error) {
-          logger.warn('Failed to parse CSV data for upload:', upload.upload_id, error);
+          logger.warn('Error reading project metadata', { projectId: extractedProjectId, error });
         }
 
-        return {
-          upload_id: upload.upload_id,
-          project_id: upload.project_id,
-          structure_id: upload.structure_id,
-          substructure_id: upload.substructure_id,
-          uploaded_by: upload.uploaded_by,
-          uploaded_by_name: upload.uploaded_by_name,
-          uploaded_at: upload.uploaded_at,
-          file_name: upload.file_name,
-          file_type: upload.file_type,
-          total_records: upload.total_records,
-          status: upload.status,
-          submitted_for_approval_at: upload.submitted_for_approval_at,
-          approved_by: upload.approved_by,
-          approved_at: upload.approved_at,
-          rejected_by: upload.rejected_by,
-          rejected_at: upload.rejected_at,
-          returned_by: upload.returned_by,
-          returned_at: upload.returned_at,
-          approval_comments: upload.approval_comments,
-          rejection_reason: upload.rejection_reason,
-          revision_notes: upload.revision_notes,
-          processed_at: upload.processed_at,
-          created_borelog_id: upload.created_borelog_id,
-          error_message: upload.error_message,
-          project_name: upload.project_name,
-          structure_type: upload.structure_type,
-          substructure_type: upload.substructure_type,
-          // Include parsed CSV data for preview
-          borelog_header: borelogHeaderData,
-          stratum_preview: stratumRowsData.slice(0, 3), // Show first 3 stratum rows as preview
-          total_stratum_layers: stratumRowsData.length
-        };
-      });
+        // Read borelog metadata if available
+        let structureId = null;
+        let substructureId = null;
+        let structureType = null;
+        let substructureType = null;
+        try {
+          const borelogMetadataKey = `projects/project_${extractedProjectId}/borelogs/borelog_${extractedBorelogId}/metadata.json`;
+          if (await storageClient.fileExists(borelogMetadataKey)) {
+            const borelogBuffer = await storageClient.downloadFile(borelogMetadataKey);
+            const borelogData = JSON.parse(borelogBuffer.toString('utf-8'));
+            structureId = borelogData.structure_id || null;
+            substructureId = borelogData.substructure_id || null;
+          }
+        } catch (error) {
+          logger.warn('Error reading borelog metadata', { borelogId: extractedBorelogId, error });
+        }
 
-      const response = createResponse(200, {
-        success: true,
-        message: `Retrieved ${transformedUploads.length} CSV uploads`,
-        data: {
-          uploads: transformedUploads,
-          pagination: {
-            total,
-            limit,
-            offset,
-            has_more: offset + limit < total
+        // Try to read parsed strata for preview (first 3 layers)
+        let stratumPreview: any[] = [];
+        let totalStratumLayers = 0;
+        let borelogHeader: any = {};
+        let processedAt: string | null = null;
+        
+        if (parsedExists) {
+          try {
+            const parsedBuffer = await storageClient.downloadFile(parsedStrataKey);
+            const parsedData = JSON.parse(parsedBuffer.toString('utf-8'));
+            stratumPreview = (parsedData.strata || []).slice(0, 3);
+            totalStratumLayers = parsedData.strata?.length || 0;
+            borelogHeader = parsedData.borehole?.metadata || {};
+            processedAt = parsedData.borehole?.parsed_at || null;
+          } catch (error) {
+            logger.warn('Error reading parsed strata for preview', { parsedStrataKey, error });
           }
         }
-      });
 
-      logResponse(response, Date.now() - startTime);
-      return response;
+        // Get submitted_at from workflow if available
+        let submittedForApprovalAt: string | null = null;
+        if (workflowStatus === 'SUBMITTED' && workflowExists) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            const workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+            submittedForApprovalAt = workflow.submitted_at || null;
+          } catch (error) {
+            logger.warn('Error reading workflow for submitted_at', { workflowKey, error });
+          }
+        }
 
-    } finally {
-      client.release();
+        // Generate upload_id from path (deterministic: borelog_id-v{version_no})
+        const uploadId = `${extractedBorelogId}-v${versionNo}`;
+
+        // Map to expected response format
+        const upload = {
+          upload_id: uploadId,
+          project_id: extractedProjectId,
+          structure_id: structureId,
+          substructure_id: substructureId,
+          uploaded_by: manifest.uploaded_by || null,
+          uploaded_by_name: null, // User names not stored in S3
+          uploaded_at: manifest.uploaded_at || new Date().toISOString(),
+          file_name: manifest.original_filename || 'unknown.csv',
+          file_type: manifest.file_type || 'csv',
+          total_records: totalStratumLayers,
+          status: isPending ? 'pending' : (workflowStatus?.toLowerCase() || 'processed'),
+          submitted_for_approval_at: submittedForApprovalAt,
+          approved_by: workflowStatus === 'APPROVED' ? null : null, // Not stored in workflow.json yet
+          approved_at: null,
+          rejected_by: null,
+          rejected_at: null,
+          returned_by: null,
+          returned_at: null,
+          approval_comments: null,
+          rejection_reason: null,
+          revision_notes: null,
+          processed_at: processedAt,
+          created_borelog_id: extractedBorelogId,
+          error_message: null,
+          project_name: projectName,
+          structure_type: structureType,
+          substructure_type: substructureType,
+          borelog_header: borelogHeader,
+          stratum_preview: stratumPreview,
+          total_stratum_layers: totalStratumLayers
+        };
+
+        pendingUploads.push(upload);
+      } catch (error) {
+        logger.warn('Error processing manifest', { manifestKey, error });
+        continue;
+      }
     }
 
+    // Sort by uploaded_at descending
+    pendingUploads.sort((a, b) => {
+      const dateA = new Date(a.uploaded_at).getTime();
+      const dateB = new Date(b.uploaded_at).getTime();
+      return dateB - dateA;
+    });
+
+    // Apply pagination
+    const total = pendingUploads.length;
+    const paginatedUploads = pendingUploads.slice(offset, offset + limit);
+
+    const response = createResponse(200, {
+      success: true,
+      message: `Retrieved ${paginatedUploads.length} CSV uploads`,
+      data: {
+        uploads: paginatedUploads,
+        pagination: {
+          total,
+          limit,
+          offset,
+          has_more: offset + limit < total
+        }
+      }
+    });
+
+    logResponse(response, Date.now() - startTime);
+    return response;
+
   } catch (error) {
-    logger.error('Error listing pending CSV uploads:', error);
+    logger.error('Error listing pending CSV uploads from S3:', error);
     
     const response = createResponse(500, {
       success: false,

@@ -63,11 +63,13 @@
  *   - stratum_layers: Stores geological layers for each borelog version
  *   - stratum_sample_points: Stores test samples within each layer
  * 
- * S3 Storage Path (current):
- *   projects/project_{projectId}/borelogs/borelog_{borelogId}/versions/v{version}/stratum/stratum.json
- * 
- * Legacy fallback path (pre-parquet refactor):
- *   projects/project_{projectId}/borelogs/borelog_{borelogId}/v{version}/stratum.json
+ * S3 Storage Paths (checked in order):
+ *   1. Parsed strata (from CSV uploads):
+ *      projects/project_{projectId}/borelogs/borelog_{borelogId}/parsed/v{version}/strata.json
+ *   2. Legacy parquet-backed path:
+ *      projects/project_{projectId}/borelogs/borelog_{borelogId}/versions/v{version}/stratum/stratum.json
+ *   3. Legacy fallback path (pre-parquet refactor):
+ *      projects/project_{projectId}/borelogs/borelog_{borelogId}/v{version}/stratum.json
  * 
  * =============================================================================
  */
@@ -216,14 +218,169 @@ async function readBorelogMetadata(
 }
 
 /**
+ * Interface for parsed strata data (from CSV uploads)
+ */
+interface ParsedStrataData {
+  borehole: {
+    project_id: string;
+    structure_id?: string;
+    substructure_id?: string;
+    borelog_id: string;
+    version_no: number;
+    upload_id: string;
+    file_type: string;
+    requested_by?: string;
+    job_code?: string;
+    metadata: Record<string, any>;
+    parsed_at: string;
+  };
+  strata: Array<{
+    description: string;
+    depth_from: number | null;
+    depth_to: number | null;
+    thickness_m: number | null;
+    n_value?: number | null;
+    tcr_percent?: number | null;
+    rqd_percent?: number | null;
+    return_water_colour?: string | null;
+    water_loss?: string | null;
+    borehole_diameter?: string | null;
+    remarks?: string | null;
+    samples: Array<Record<string, any>>;
+  }>;
+}
+
+/**
+ * Read parsed strata.json (from CSV uploads) and transform to StratumDataFile format
+ */
+async function readParsedStrata(
+  storageClient: StorageClient,
+  projectId: string,
+  borelogId: string,
+  versionNo: number
+): Promise<StratumDataFile | null> {
+  try {
+    const parsedKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/parsed/v${versionNo}/strata.json`;
+    
+    const exists = await storageClient.fileExists(parsedKey);
+    if (!exists) {
+      logger.debug('Parsed strata file not found', { parsedKey });
+      return null;
+    }
+
+    logger.debug('Attempting to read parsed strata data', { parsedKey });
+
+    const buffer = await storageClient.downloadFile(parsedKey);
+    const parsedData = JSON.parse(buffer.toString('utf-8')) as ParsedStrataData;
+    
+    // Transform parsed format to StratumDataFile format
+    const layers: StratumLayerS3[] = (parsedData.strata || []).map((stratum, index) => {
+      // Transform samples from parsed format to StratumSampleS3 format
+      const samples: StratumSampleS3[] = (stratum.samples || []).map((sample: any, sampleIndex) => {
+        // Determine depth_mode based on available fields
+        let depth_mode: string | null = null;
+        const depthFromM = sample.depth_from_m ?? sample.depth_from ?? null;
+        const depthToM = sample.depth_to_m ?? sample.depth_to ?? null;
+        const depthM = sample.depth_m ?? sample.sample_event_depth_m ?? null;
+        
+        if (depthFromM !== null && depthFromM !== undefined) {
+          depth_mode = depthToM !== null && depthToM !== undefined ? 'range' : 'single';
+        } else if (depthM !== null && depthM !== undefined) {
+          depth_mode = 'single';
+        }
+
+        // Derive sample_type from sample_code if not explicitly provided
+        let sampleType = sample.sample_type || sample.sample_event_type || sample.type || null;
+        if (!sampleType && sample.sample_code) {
+          const codeUpper = String(sample.sample_code).trim().toUpperCase();
+          if (codeUpper.startsWith('S/D')) {
+            sampleType = 'SPT';
+          } else if (codeUpper.startsWith('U')) {
+            sampleType = 'UNDISTURBED';
+          } else if (codeUpper.startsWith('D')) {
+            sampleType = 'DISTURBED';
+          }
+        }
+
+        return {
+          id: sample.id || `sample-${index}-${sampleIndex}`,
+          sample_order: sample.sample_order ?? sampleIndex + 1,
+          sample_type: sampleType,
+          depth_mode,
+          depth_single_m: depthM ?? depthFromM ?? null,
+          depth_from_m: depthFromM ?? null,
+          depth_to_m: depthToM ?? null,
+          run_length_m: sample.run_length_m ?? null,
+          spt_15cm_1: sample.spt_15cm_1 ?? sample.spt_blows_1 ?? null,
+          spt_15cm_2: sample.spt_15cm_2 ?? sample.spt_blows_2 ?? null,
+          spt_15cm_3: sample.spt_15cm_3 ?? sample.spt_blows_3 ?? null,
+          n_value: sample.n_value ?? null,
+          total_core_length_cm: sample.total_core_length_cm ?? null,
+          tcr_percent: sample.tcr_percent ?? null,
+          rqd_length_cm: sample.rqd_length_cm ?? null,
+          rqd_percent: sample.rqd_percent ?? null,
+          created_at: sample.created_at ?? null,
+          created_by_user_id: sample.created_by_user_id ?? null
+        };
+      });
+
+      return {
+        id: `layer-${index}`,
+        layer_order: index + 1,
+        description: stratum.description || null,
+        depth_from_m: stratum.depth_from ?? null,
+        depth_to_m: stratum.depth_to ?? null,
+        thickness_m: stratum.thickness_m ?? null,
+        return_water_colour: stratum.return_water_colour || null,
+        water_loss: stratum.water_loss || null,
+        borehole_diameter: stratum.borehole_diameter ? parseFloat(String(stratum.borehole_diameter)) : null,
+        remarks: stratum.remarks || null,
+        created_at: null,
+        created_by_user_id: null,
+        samples
+      };
+    });
+
+    const stratumData: StratumDataFile = {
+      borelog_id: parsedData.borehole.borelog_id,
+      version_no: parsedData.borehole.version_no,
+      project_id: parsedData.borehole.project_id,
+      layers
+    };
+    
+    logger.debug('Read parsed strata data', { 
+      parsedKey,
+      versionNo, 
+      layerCount: stratumData.layers?.length || 0 
+    });
+    
+    return stratumData;
+  } catch (error) {
+    logger.error('Error reading parsed strata data', { error, projectId, borelogId, versionNo });
+    return null;
+  }
+}
+
+/**
  * Read stratum.json for a specific borelog version
+ * Checks parsed strata first (from CSV uploads), then falls back to legacy paths
  */
 async function readStratumData(
   storageClient: StorageClient,
   basePath: string,
+  projectId: string,
+  borelogId: string,
   versionNo: number
 ): Promise<StratumDataFile | null> {
   try {
+    // FIRST: Try parsed strata.json (from CSV uploads)
+    const parsedStrata = await readParsedStrata(storageClient, projectId, borelogId, versionNo);
+    if (parsedStrata) {
+      logger.info('Found parsed strata data', { projectId, borelogId, versionNo });
+      return parsedStrata;
+    }
+
+    // FALLBACK: Try legacy paths
     // New parquet-backed path (Node stores JSON alongside parquet for UI reads)
     const stratumKey = `${basePath}/versions/v${versionNo}/stratum/stratum.json`;
     // Legacy path kept for backward compatibility
@@ -239,18 +396,18 @@ async function readStratumData(
       logger.debug('Attempting to read stratum data', { stratumKey: key });
 
       const buffer = await storageClient.downloadFile(key);
-    const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
-    
-    logger.debug('Read stratum data', { 
+      const stratumData = JSON.parse(buffer.toString('utf-8')) as StratumDataFile;
+      
+      logger.debug('Read stratum data', { 
         stratumKey: key,
-      versionNo, 
-      layerCount: stratumData.layers?.length || 0 
-    });
-    
-    return stratumData;
+        versionNo, 
+        layerCount: stratumData.layers?.length || 0 
+      });
+      
+      return stratumData;
     }
 
-    logger.warn('Stratum data file not found', { keysTried: keysToTry });
+    logger.warn('Stratum data file not found', { keysTried: ['parsed/v' + versionNo + '/strata.json', ...keysToTry] });
     return null;
   } catch (error) {
     logger.error('Error reading stratum data', { error, basePath, versionNo });
@@ -358,7 +515,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // Step 3: Read stratum data for the specified version
-    const stratumData = await readStratumData(storageClient, basePath, version_no);
+    // First tries parsed/v{version}/strata.json (from CSV uploads), then falls back to legacy paths
+    const stratumData = await readStratumData(storageClient, basePath, projectId, borelog_id, version_no);
 
     if (!stratumData) {
       // Return empty layers array if stratum data not found

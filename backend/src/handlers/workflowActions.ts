@@ -3,8 +3,7 @@ import { checkRole, validateToken } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
-import * as db from '../db';
-import { guardDbRoute } from '../db';
+import { createStorageClient } from '../storage/s3Client';
 
 // Schema for submitting borelog for review
 const SubmitForReviewSchema = z.object({
@@ -39,15 +38,46 @@ const SubmitLabTestResultsSchema = z.object({
   remarks: z.string().optional()
 });
 
-// Submit borelog for review (Site Engineer)
-export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // Guard: Check if DB is enabled
-  const dbGuard = guardDbRoute('submitForReview');
-  if (dbGuard) return dbGuard;
+/**
+ * Find borelog metadata in S3 to get project_id
+ */
+async function findBorelogMetadataInS3(
+  storageClient: ReturnType<typeof createStorageClient>,
+  borelogId: string
+): Promise<{ projectId: string; metadata: any; basePath: string } | null> {
+  try {
+    const keys = await storageClient.listFiles('projects/', 20000);
+    const metadataKeys = keys.filter(
+      (k) => k.endsWith('/metadata.json') && k.includes('/borelogs/borelog_') && !k.includes('/versions/') && !k.includes('/parsed/')
+    );
 
+    for (const key of metadataKeys) {
+      try {
+        const buf = await storageClient.downloadFile(key);
+        const meta = JSON.parse(buf.toString('utf-8'));
+        if (meta?.borelog_id === borelogId && meta?.project_id) {
+          const basePath = key.replace(/\/metadata\.json$/, '');
+          return { projectId: meta.project_id, metadata: meta, basePath };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    logger.warn('Could not find borelog metadata in S3', { borelogId });
+    return null;
+  } catch (error) {
+    logger.error('Error finding borelog metadata in S3', { error, borelogId });
+    return null;
+  }
+}
+
+/**
+ * Submit borelog for review using S3 storage
+ */
+export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
-
   try {
     // Check if user has Site Engineer role
     const authError = await checkRole(['Site Engineer', 'Admin', 'Project Manager'])(event);
@@ -95,16 +125,12 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
 
     const { comments, version_number } = validationResult.data;
 
-    // Check if borelog exists and user has access
-    const borelogQuery = `
-      SELECT b.*, p.project_id 
-      FROM boreloge b 
-      JOIN projects p ON b.project_id = p.project_id 
-      WHERE b.borelog_id = $1
-    `;
-    const borelogResult = await db.query(borelogQuery, [borelogId]);
-    
-    if (borelogResult.length === 0) {
+    // Initialize S3 storage client
+    const storageClient = createStorageClient();
+
+    // Find borelog metadata in S3
+    const borelogMeta = await findBorelogMetadataInS3(storageClient, borelogId);
+    if (!borelogMeta) {
       const response = createResponse(404, {
         success: false,
         message: 'Borelog not found',
@@ -114,74 +140,60 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
       return response;
     }
 
-    const borelog = borelogResult[0] as any;
+    const { projectId } = borelogMeta;
 
-    // Check if user has access to this borelog
-    let hasAccess = false;
-    
-    if (payload.role === 'Admin') {
-      hasAccess = true;
-    } else if (payload.role === 'Site Engineer') {
-      // For Site Engineers, check borelog assignments
-      const borelogAccessQuery = `
-        SELECT 1 FROM borelog_assignments 
-        WHERE borelog_id = $1 AND assigned_site_engineer = $2 AND status = 'active'
-      `;
-      const borelogAccessResult = await db.query(borelogAccessQuery, [borelogId, payload.userId]);
-      hasAccess = borelogAccessResult.length > 0;
-    } else {
-      // For other roles, check project assignments
-      const projectAccessQuery = `
-        SELECT 1 FROM user_project_assignments 
-        WHERE project_id = $1 AND $2 = ANY(assignee)
-      `;
-      const projectAccessResult = await db.query(projectAccessQuery, [(borelog as any).project_id, payload.userId]);
-      hasAccess = projectAccessResult.length > 0;
-    }
-    
-    if (!hasAccess) {
-      const response = createResponse(403, {
-        success: false,
-        message: 'Access denied: User not assigned to this borelog/project',
-        error: 'Insufficient permissions'
-      });
-      logResponse(response, Date.now() - startTime);
-      return response;
+    // Check if workflow.json already exists (for idempotency)
+    const workflowKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/workflow.json`;
+    const workflowExists = await storageClient.fileExists(workflowKey);
+
+    if (workflowExists) {
+      try {
+        const existingWorkflowBuffer = await storageClient.downloadFile(workflowKey);
+        const existingWorkflow = JSON.parse(existingWorkflowBuffer.toString('utf-8'));
+        
+        // Prevent re-submission if already APPROVED
+        if (existingWorkflow.status === 'APPROVED') {
+          const response = createResponse(400, {
+            success: false,
+            message: 'Cannot resubmit approved borelog',
+            error: 'This borelog has already been approved and cannot be resubmitted'
+          });
+          logResponse(response, Date.now() - startTime);
+          return response;
+        }
+      } catch (error) {
+        logger.warn('Error reading existing workflow.json, proceeding with submission', { error, workflowKey });
+      }
     }
 
-    // Update borelog version status to submitted
-    const updateQuery = `
-      UPDATE borelog_versions 
-      SET status = 'submitted', 
-          submitted_by = $1, 
-          submitted_at = NOW(),
-          submission_comments = $4
-      WHERE borelog_id = $2 AND version_no = $3
-    `;
-    await db.query(updateQuery, [payload.userId, borelogId, version_number, comments || null]);
+    // Create workflow state payload
+    const workflowState = {
+      status: 'SUBMITTED',
+      submitted_at: new Date().toISOString(),
+      submitted_by: payload.userId,
+      version_no: version_number,
+      comments: comments || null
+    };
 
-    // Add submission comment to review comments table if provided
-    if (comments && comments.trim()) {
-      const commentQuery = `
-        INSERT INTO borelog_review_comments (
-          borelog_id, version_no, comment_type, comment_text, commented_by
-        ) VALUES ($1, $2, $3, $4, $5)
-      `;
-      await db.query(commentQuery, [
-        borelogId, 
-        version_number, 
-        'approval_comment', 
-        comments, 
-        payload.userId
-      ]);
-    }
+    // Write workflow.json to S3
+    const workflowBuffer = Buffer.from(JSON.stringify(workflowState, null, 2), 'utf-8');
+    await storageClient.uploadFile(
+      workflowKey,
+      workflowBuffer,
+      'application/json',
+      {
+        project_id: projectId,
+        borelog_id: borelogId
+      }
+    );
 
     // Log the submission
-    logger.info(`Borelog ${borelogId} submitted for review by user ${payload.userId}`, {
+    logger.info(`Borelog ${borelogId} submitted for review by user ${payload.userId} (S3 mode)`, {
       borelogId,
       submittedBy: payload.userId,
       versionNumber: version_number,
-      comments
+      comments,
+      workflowKey
     });
 
     const response = createResponse(200, {
@@ -192,7 +204,7 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
         version_number,
         status: 'submitted',
         submitted_by: payload.userId,
-        submitted_at: new Date().toISOString()
+        submitted_at: workflowState.submitted_at
       }
     });
 
@@ -200,7 +212,7 @@ export const submitForReview = async (event: APIGatewayProxyEvent): Promise<APIG
     return response;
 
   } catch (error) {
-    logger.error('Error submitting borelog for review:', error);
+    logger.error('Error submitting borelog for review (S3 mode):', error);
     
     const response = createResponse(500, {
       success: false,
