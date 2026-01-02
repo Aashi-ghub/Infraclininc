@@ -5,60 +5,313 @@ import { createResponse } from '../types/common';
 import { createStorageClient } from '../storage/s3Client';
 
 /**
- * MIGRATED: This handler now reads from S3 instead of database
- * S3 Structure:
- * - Pending reviews: workflow/pending-reviews.json
- * - Workflow stats: workflow/statistics.json
- * - Submitted borelogs: workflow/submitted-borelogs.json
+ * MIGRATED: This handler now reads workflow state dynamically from S3
+ * Workflow status is stored at: projects/{projectId}/borelogs/{borelogId}/workflow.json
  */
 
+interface WorkflowState {
+  status: string;
+  submitted_at?: string;
+  submitted_by?: string;
+  version_no?: number;
+  comments?: string | null;
+}
+
+interface BorelogWithWorkflow {
+  borelog_id: string;
+  project_id: string;
+  project_name?: string;
+  structure_id?: string;
+  substructure_id?: string;
+  workflow: WorkflowState | null;
+  metadata: any;
+}
+
 /**
- * List pending reviews from S3
+ * List all borelogs with their workflow status from S3
  */
-async function listPendingReviewsFromS3(payload: any): Promise<any[]> {
-  const storageClient = createStorageClient();
+async function listAllBorelogsWithWorkflow(
+  storageClient: ReturnType<typeof createStorageClient>
+): Promise<BorelogWithWorkflow[]> {
   try {
-    const key = 'workflow/pending-reviews.json';
-    const buf = await storageClient.downloadFile(key);
-    const reviews = JSON.parse(buf.toString('utf-8')) as any[];
-    return reviews;
+    const allKeys = await storageClient.listFiles('projects/', 50000);
+    
+    // Find all borelog metadata files
+    const metadataKeys = allKeys.filter(
+      (k) => k.endsWith('/metadata.json') && 
+             k.includes('/borelogs/borelog_') && 
+             !k.includes('/versions/') && 
+             !k.includes('/parsed/')
+    );
+
+    logger.info(`Found ${metadataKeys.length} borelog metadata files in S3`);
+
+    const borelogs: BorelogWithWorkflow[] = [];
+
+    // Process each borelog
+    for (const metadataKey of metadataKeys) {
+      try {
+        // Extract project_id and borelog_id from path
+        // Format: projects/project_{projectId}/borelogs/borelog_{borelogId}/metadata.json
+        const pathMatch = metadataKey.match(/projects\/project_([^/]+)\/borelogs\/borelog_([^/]+)\/metadata\.json/);
+        if (!pathMatch) continue;
+
+        const [, projectId, borelogId] = pathMatch;
+
+        // Read borelog metadata
+        const metadataBuffer = await storageClient.downloadFile(metadataKey);
+        const metadata = JSON.parse(metadataBuffer.toString('utf-8'));
+
+        // Read workflow.json if it exists
+        const workflowKey = `projects/project_${projectId}/borelogs/borelog_${borelogId}/workflow.json`;
+        let workflow: WorkflowState | null = null;
+        
+        if (await storageClient.fileExists(workflowKey)) {
+          try {
+            const workflowBuffer = await storageClient.downloadFile(workflowKey);
+            workflow = JSON.parse(workflowBuffer.toString('utf-8'));
+          } catch (error) {
+            logger.warn('Error reading workflow.json', { workflowKey, error });
+          }
+        }
+
+        // Read project name if available
+        let projectName: string | undefined;
+        try {
+          const projectKey = `projects/project_${projectId}/project.json`;
+          if (await storageClient.fileExists(projectKey)) {
+            const projectBuffer = await storageClient.downloadFile(projectKey);
+            const projectData = JSON.parse(projectBuffer.toString('utf-8'));
+            projectName = projectData.name;
+          }
+        } catch (error) {
+          logger.warn('Error reading project metadata', { projectId, error });
+        }
+
+        borelogs.push({
+          borelog_id: borelogId,
+          project_id: projectId,
+          project_name: projectName,
+          structure_id: metadata.structure_id,
+          substructure_id: metadata.substructure_id,
+          workflow,
+          metadata
+        });
+      } catch (error) {
+        logger.warn('Error processing borelog metadata', { metadataKey, error });
+        continue;
+      }
+    }
+
+    return borelogs;
   } catch (error) {
-    logger.warn('Could not read pending reviews from S3, returning empty array', { error });
+    logger.error('Error listing borelogs with workflow from S3', { error });
     return [];
   }
 }
 
 /**
- * Get workflow statistics from S3
+ * Get pending reviews - borelogs with status SUBMITTED (not APPROVED/REJECTED)
  */
-async function getWorkflowStatsFromS3(payload: any): Promise<any[]> {
-  const storageClient = createStorageClient();
-  try {
-    const key = 'workflow/statistics.json';
-    const buf = await storageClient.downloadFile(key);
-    const stats = JSON.parse(buf.toString('utf-8')) as any[];
-    return stats;
-  } catch (error) {
-    logger.warn('Could not read workflow statistics from S3, returning empty array', { error });
-    return [];
-  }
+async function getPendingReviewsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>
+): Promise<any[]> {
+  const borelogs = await listAllBorelogsWithWorkflow(storageClient);
+  
+  return borelogs
+    .filter(b => {
+      const status = b.workflow?.status?.toUpperCase();
+      return status === 'SUBMITTED';
+    })
+    .map(b => ({
+      borelog_id: b.borelog_id,
+      project_id: b.project_id,
+      project_name: b.project_name,
+      structure_id: b.structure_id,
+      substructure_id: b.substructure_id,
+      submitted_at: b.workflow?.submitted_at || null,
+      submitted_by: b.workflow?.submitted_by || null,
+      version_no: b.workflow?.version_no || null,
+      comments: b.workflow?.comments || null,
+      status: 'submitted'
+    }))
+    .sort((a, b) => {
+      const dateA = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
+      const dateB = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
+      return dateB - dateA; // Latest first
+    });
 }
 
 /**
- * List submitted borelogs from S3
+ * Get lab assignments - borelogs with status APPROVED and lab assignment not completed
  */
-async function listSubmittedBorelogsFromS3(payload: any): Promise<any[]> {
-  const storageClient = createStorageClient();
-  try {
-    const key = 'workflow/submitted-borelogs.json';
-    const buf = await storageClient.downloadFile(key);
-    const borelogs = JSON.parse(buf.toString('utf-8')) as any[];
-    // Filter by user if needed
-    return borelogs.filter((b: any) => b.submitted_by === payload.userId || payload.role === 'Admin');
-  } catch (error) {
-    logger.warn('Could not read submitted borelogs from S3, returning empty array', { error });
-    return [];
+async function getLabAssignmentsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>
+): Promise<any[]> {
+  const borelogs = await listAllBorelogsWithWorkflow(storageClient);
+  
+  return borelogs
+    .filter(b => {
+      const status = b.workflow?.status?.toUpperCase();
+      return status === 'APPROVED';
+    })
+    .map(b => ({
+      borelog_id: b.borelog_id,
+      project_id: b.project_id,
+      project_name: b.project_name,
+      structure_id: b.structure_id,
+      substructure_id: b.substructure_id,
+      approved_at: null, // Not stored in workflow.json yet
+      approved_by: null, // Not stored in workflow.json yet
+      version_no: b.workflow?.version_no || null,
+      status: 'approved',
+      // Lab assignment completion check would go here if lab data exists
+      lab_assignment_completed: false // Default to false for now
+    }))
+    .sort((a, b) => {
+      // Sort by project name or borelog_id
+      const nameA = a.project_name || a.borelog_id;
+      const nameB = b.project_name || b.borelog_id;
+      return nameA.localeCompare(nameB);
+    });
+}
+
+/**
+ * Get submitted borelogs - borelogs with status SUBMITTED
+ */
+async function getSubmittedBorelogsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>,
+  userId?: string
+): Promise<any[]> {
+  const borelogs = await listAllBorelogsWithWorkflow(storageClient);
+  
+  return borelogs
+    .filter(b => {
+      const status = b.workflow?.status?.toUpperCase();
+      const isSubmitted = status === 'SUBMITTED';
+      // Filter by user if provided (for Site Engineers)
+      if (userId && b.workflow?.submitted_by !== userId) {
+        return false;
+      }
+      return isSubmitted;
+    })
+    .map(b => ({
+      borelog_id: b.borelog_id,
+      project_id: b.project_id,
+      project_name: b.project_name,
+      structure_id: b.structure_id,
+      substructure_id: b.substructure_id,
+      submitted_at: b.workflow?.submitted_at || null,
+      submitted_by: b.workflow?.submitted_by || null,
+      version_no: b.workflow?.version_no || null,
+      comments: b.workflow?.comments || null,
+      status: 'submitted'
+    }))
+    .sort((a, b) => {
+      const dateA = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
+      const dateB = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
+      return dateB - dateA; // Latest first
+    });
+}
+
+/**
+ * Get workflow statistics - compute counts dynamically from S3
+ */
+async function getWorkflowStatisticsFromS3(
+  storageClient: ReturnType<typeof createStorageClient>
+): Promise<any> {
+  const borelogs = await listAllBorelogsWithWorkflow(storageClient);
+  
+  // Aggregate by project
+  const projectStats = new Map<string, {
+    project_id: string;
+    project_name: string;
+    total_borelogs: number;
+    draft_count: number;
+    submitted_count: number;
+    approved_count: number;
+    rejected_count: number;
+    returned_count: number;
+  }>();
+
+  // Overall totals
+  let totalBorelogs = 0;
+  let draftCount = 0;
+  let submittedCount = 0;
+  let approvedCount = 0;
+  let rejectedCount = 0;
+  let returnedCount = 0;
+
+  for (const borelog of borelogs) {
+    totalBorelogs++;
+    const status = borelog.workflow?.status?.toUpperCase() || 'DRAFT';
+    
+    // Get or create project stats
+    if (!projectStats.has(borelog.project_id)) {
+      projectStats.set(borelog.project_id, {
+        project_id: borelog.project_id,
+        project_name: borelog.project_name || borelog.project_id,
+        total_borelogs: 0,
+        draft_count: 0,
+        submitted_count: 0,
+        approved_count: 0,
+        rejected_count: 0,
+        returned_count: 0
+      });
+    }
+    const projectStat = projectStats.get(borelog.project_id)!;
+    projectStat.total_borelogs++;
+    
+    // Update counts
+    switch (status) {
+      case 'SUBMITTED':
+        submittedCount++;
+        projectStat.submitted_count++;
+        break;
+      case 'APPROVED':
+        approvedCount++;
+        projectStat.approved_count++;
+        break;
+      case 'REJECTED':
+        rejectedCount++;
+        projectStat.rejected_count++;
+        break;
+      case 'RETURNED_FOR_REVISION':
+      case 'RETURNED':
+        returnedCount++;
+        projectStat.returned_count++;
+        break;
+      case 'DRAFT':
+      default:
+        draftCount++;
+        projectStat.draft_count++;
+        break;
+    }
   }
+
+  // Convert project stats to array and format as strings (matching frontend expectation)
+  const projects = Array.from(projectStats.values()).map(p => ({
+    project_id: p.project_id,
+    project_name: p.project_name,
+    total_borelogs: String(p.total_borelogs),
+    draft_count: String(p.draft_count),
+    submitted_count: String(p.submitted_count),
+    approved_count: String(p.approved_count),
+    rejected_count: String(p.rejected_count),
+    returned_count: String(p.returned_count)
+  }));
+
+  return {
+    totals: {
+      total_borelogs: totalBorelogs,
+      draft_count: draftCount,
+      submitted_count: submittedCount,
+      approved_count: approvedCount,
+      rejected_count: rejectedCount,
+      returned_count: returnedCount
+    },
+    projects
+  };
 }
 
 // Get pending reviews (for Approval Engineers and Admins)
@@ -86,7 +339,8 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-    const pendingReviews = await listPendingReviewsFromS3(payload);
+    const storageClient = createStorageClient();
+    const pendingReviews = await getPendingReviewsFromS3(storageClient);
 
     const response = createResponse(200, {
       success: true,
@@ -111,26 +365,8 @@ export const getPendingReviews = async (event: APIGatewayProxyEvent): Promise<AP
   }
 };
 
-/**
- * Get lab assignments from S3
- */
-async function getLabAssignmentsFromS3(payload: any): Promise<any[]> {
-  const storageClient = createStorageClient();
-  try {
-    const key = 'workflow/lab-assignments.json';
-    const buf = await storageClient.downloadFile(key);
-    const assignments = JSON.parse(buf.toString('utf-8')) as any[];
-    // Filter by assigned user
-    return assignments.filter((a: any) => a.assigned_to === payload.userId || payload.role === 'Admin');
-  } catch (error) {
-    logger.warn('Could not read lab assignments from S3, returning empty array', { error });
-    return [];
-  }
-}
-
 // Get lab assignments (for Lab Engineers)
 export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  // MIGRATED: Removed DB guard - now S3-only
   const startTime = Date.now();
   logRequest(event, { awsRequestId: 'local' });
 
@@ -154,12 +390,18 @@ export const getLabAssignments = async (event: APIGatewayProxyEvent): Promise<AP
       return response;
     }
 
-    const labAssignments = await getLabAssignmentsFromS3(payload);
+    const storageClient = createStorageClient();
+    const labAssignments = await getLabAssignmentsFromS3(storageClient);
+
+    // Filter by assigned user if not Admin
+    const filteredAssignments = payload.role === 'Admin' 
+      ? labAssignments
+      : labAssignments.filter((a: any) => a.assigned_to === payload.userId);
 
     const response = createResponse(200, {
       success: true,
       message: 'Lab assignments retrieved successfully',
-      data: labAssignments
+      data: filteredAssignments
     });
 
     logResponse(response, Date.now() - startTime);
@@ -204,32 +446,13 @@ export const getWorkflowStatistics = async (event: APIGatewayProxyEvent): Promis
       return response;
     }
 
-    const statistics = await getWorkflowStatsFromS3(payload);
-
-    // Calculate overall totals
-    const totals = statistics.reduce((acc: any, project: any) => ({
-      total_borelogs: acc.total_borelogs + (project.total_borelogs || 0),
-      draft_count: acc.draft_count + (project.draft_count || 0),
-      submitted_count: acc.submitted_count + (project.submitted_count || 0),
-      approved_count: acc.approved_count + (project.approved_count || 0),
-      rejected_count: acc.rejected_count + (project.rejected_count || 0),
-      returned_count: acc.returned_count + (project.returned_count || 0)
-    }), {
-      total_borelogs: 0,
-      draft_count: 0,
-      submitted_count: 0,
-      approved_count: 0,
-      rejected_count: 0,
-      returned_count: 0
-    });
+    const storageClient = createStorageClient();
+    const statistics = await getWorkflowStatisticsFromS3(storageClient);
 
     const response = createResponse(200, {
       success: true,
       message: 'Workflow statistics retrieved successfully',
-      data: {
-        projects: statistics,
-        totals
-      }
+      data: statistics
     });
 
     logResponse(response, Date.now() - startTime);
@@ -274,7 +497,8 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
       return response;
     }
 
-    const submittedBorelogs = await listSubmittedBorelogsFromS3(payload);
+    const storageClient = createStorageClient();
+    const submittedBorelogs = await getSubmittedBorelogsFromS3(storageClient, payload.userId);
 
     const response = createResponse(200, {
       success: true,
@@ -298,4 +522,3 @@ export const getSubmittedBorelogs = async (event: APIGatewayProxyEvent): Promise
     return response;
   }
 };
-
