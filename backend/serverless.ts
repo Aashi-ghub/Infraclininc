@@ -1543,7 +1543,7 @@ const serverlessConfiguration: AWS = {
           }
         }
       }
-    }
+    } as any
   },
   custom: {
     esbuild: {
