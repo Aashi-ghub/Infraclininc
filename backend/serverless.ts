@@ -1507,7 +1507,22 @@ const serverlessConfiguration: AWS = {
     },
   },
   package: {
-    individually: true
+    individually: true,
+    patterns: [
+      '!node_modules/**',
+      '!**/*.test.ts',
+      '!**/*.test.js',
+      '!**/*.spec.ts',
+      '!**/*.spec.js',
+      '!**/tests/**',
+      '!**/test/**',
+      '!.git/**',
+      '!.vscode/**',
+      '!.idea/**',
+      '!*.md',
+      '!tsconfig.json',
+      '!jest.config.js'
+    ]
   },
   resources: {
     Resources: {
@@ -1537,8 +1552,12 @@ const serverlessConfiguration: AWS = {
       target: 'node18',
       define: { 'require.resolve': undefined },
       platform: 'node',
-      concurrency: 10,
-      external: ['pg-native', 'jsonwebtoken']
+      concurrency: 3,
+      external: ['pg-native', 'jsonwebtoken'],
+      keepNames: true,
+      packagerOptions: {
+        scripts: []
+      }
     }
   }
 };
