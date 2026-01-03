@@ -1509,6 +1509,7 @@ const serverlessConfiguration: AWS = {
   package: {
     individually: true,
     patterns: [
+      '!node_modules/@aws-sdk/**',
       '!node_modules/**',
       '!**/*.test.ts',
       '!**/*.test.js',
@@ -1548,12 +1549,16 @@ const serverlessConfiguration: AWS = {
     esbuild: {
       bundle: true,
       minify: false,
-      sourcemap: true,
+      sourcemap: false,
       target: 'node18',
       define: { 'require.resolve': undefined },
       platform: 'node',
       concurrency: 3,
-      external: ['pg-native', 'jsonwebtoken'],
+      external: [
+        'pg-native',
+        'jsonwebtoken',
+        '@aws-sdk/*'
+      ],
       keepNames: true,
       packagerOptions: {
         scripts: []
