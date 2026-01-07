@@ -1,0 +1,55 @@
+[
+  {
+    "id": "u_admin",
+    "email": "admin@backendbore.com",
+    "password": "admin123",
+    "role": "Admin",
+    "name": "Admin User"
+  },
+  {
+    "id": "u_pm",
+    "email": "pm@backendbore.com",
+    "password": "pm123",
+    "role": "Project Manager",
+    "name": "Project Manager"
+  },
+  {
+    "id": "u_site",
+    "email": "site@backendbore.com",
+    "password": "site123",
+    "role": "Site Engineer",
+    "name": "Site Engineer"
+  },
+  {
+    "id": "u_approval",
+    "email": "approval@backendbore.com",
+    "password": "approval123",
+    "role": "Approval Engineer",
+    "name": "Approval Engineer"
+  },
+  {
+    "id": "u_lab",
+    "email": "lab@backendbore.com",
+    "password": "lab123",
+    "role": "Lab Engineer",
+    "name": "Lab Engineer"
+  },
+  {
+    "id": "u_customer",
+    "email": "customer@backendbore.com",
+    "password": "customer123",
+    "role": "Customer",
+    "name": "Customer User"
+  }
+]
+
+
+
+
+
+
+
+
+
+
+

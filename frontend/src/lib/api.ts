@@ -32,17 +32,22 @@ import {
   LabTestAssignment,
   WorkflowStatistics
 } from './types';
+import { resolveApiUrl } from './apiRouter';
 
-// Get API base URL from environment variables
+// Get API base URLs from environment variables (for backward compatibility and logging)
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/dev";
+const OPS_API_BASE = import.meta.env.VITE_OPS_API_BASE_URL || "http://localhost:3005/dev";
 
 // Log API configuration on startup
-console.log('[API Client] Initialized with:', {
-  baseURL: API_BASE,
-  envVar: import.meta.env.VITE_API_BASE_URL || 'not set (using default)'
+console.log('[API Client] Initialized with automatic routing:', {
+  defaultBaseURL: API_BASE,
+  opsBaseURL: OPS_API_BASE,
+  envVar: import.meta.env.VITE_API_BASE_URL || 'not set (using default)',
+  opsEnvVar: import.meta.env.VITE_OPS_API_BASE_URL || 'not set (using default)'
 });
 
 // Create axios instance with default config
+// Note: baseURL will be dynamically set by the interceptor based on the request path
 export const apiClient = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
@@ -51,7 +56,7 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor for auth tokens (if needed)
+// Request interceptor for auth tokens and dynamic API routing
 apiClient.interceptors.request.use(
   (config) => {
     // Add auth token if available
@@ -76,12 +81,26 @@ apiClient.interceptors.request.use(
       // Axios will automatically detect FormData and set the correct multipart header
     }
     
+    // Dynamic API routing: resolve the full URL based on the request path
+    // This overrides any baseURL set in the axios instance or passed in config
+    if (config.url) {
+      // Extract path and query string separately
+      const [path, queryString] = config.url.split('?');
+      const fullUrl = resolveApiUrl(path);
+      // Append query string if it exists
+      const finalUrl = queryString ? `${fullUrl}?${queryString}` : fullUrl;
+      // When axios receives a full URL (with protocol), it ignores baseURL
+      // So we set baseURL to empty and use the full URL as the url
+      config.baseURL = '';
+      config.url = finalUrl;
+    }
+    
     // Log request details for debugging
     console.log('[API Request]', {
       method: config.method?.toUpperCase(),
       url: config.url,
-      baseURL: config.baseURL,
-      fullURL: `${config.baseURL}${config.url}`,
+      baseURL: config.baseURL || '(routed dynamically)',
+      fullURL: config.url, // url is now the full URL after routing
       hasAuth: !!token,
       contentType: config.headers['Content-Type'],
       isFormData: config.data instanceof FormData
@@ -487,7 +506,7 @@ export const borelogImagesApi = {
     apiClient.get<ApiResponse<any>>(`/borelog-images/${borelogId}`),
 
   delete: (imageId: string) =>
-    apiClient.delete<ApiResponse<any>>(`/borelog-images/${imageId}`),
+    apiClient.delete<ApiResponse<any>>(`/borelog-image/${imageId}`),
 };
 
 // Borelog Submission API
@@ -630,7 +649,7 @@ export const unifiedLabReportsApi = {
 
   // Submit report for approval
   submit: (reportId: string) =>
-    apiClient.post<ApiResponse<any>>(`/unified-lab-reports/${reportId}/submit`),
+    apiClient.post<ApiResponse<any>>(`/unified-lab-reports/${reportId}/submit`, undefined),
 
   // Approve report
   approve: (reportId: string, data?: { customer_notes?: string }) =>

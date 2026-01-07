@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { TestTube, Plus, Search, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { apiClient, labTestApi, projectApi } from '@/lib/api';
 import { ProtectedRoute } from '@/lib/authComponents';
 
 interface LabTest {
@@ -46,8 +46,8 @@ export default function LabTestsList() {
   const fetchData = async () => {
     try {
       const [testsResponse, projectsResponse] = await Promise.all([
-        apiClient.get('/lab-tests'),
-        apiClient.get('/projects'),
+        labTestApi.list(),
+        projectApi.list(),
       ]);
       
       // Extract data arrays from responses

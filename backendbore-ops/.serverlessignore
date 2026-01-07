@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/**
+!node_modules/.bin/**
+
+# Test files
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+tests/**
+test/**
+
+# Build artifacts
+.build/**
+dist/**
+*.log
+
+# IDE
+.vscode/**
+.idea/**
+*.swp
+*.swo
+
+# Git
+.git/**
+.gitignore
+
+# Documentation
+*.md
+docs/**
+
+# Config files (not needed in package)
+tsconfig.json
+jest.config.js
+.eslintrc*
+.prettierrc*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# TypeScript source maps (if not needed)
+**/*.map
+
+# Python cache
+**/__pycache__/**
+**/*.pyc
+
+# Other
+.DS_Store
+Thumbs.db
+

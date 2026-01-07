@@ -12,8 +12,7 @@ import { ArrowLeft, Search, Plus, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ProtectedRoute } from '@/lib/authComponents';
 import { labTestSchema, LabTestFormData } from '@/lib/zodSchemas';
-import { apiClient } from '@/lib/api';
-import { geologicalLogApi, userApi, workflowApi } from '@/lib/api';
+import { apiClient, labTestApi, geologicalLogApi, userApi, workflowApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -149,7 +148,7 @@ export default function CreateLabTest() {
   const onSubmit = async (data: LabTestFormData) => {
     setIsLoading(true);
     try {
-      await apiClient.post('/lab-tests', data);
+      await labTestApi.create(data);
       toast({
         title: 'Success',
         description: 'Lab test created successfully',
