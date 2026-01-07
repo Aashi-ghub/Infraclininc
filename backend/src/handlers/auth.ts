@@ -1,3 +1,14 @@
+// Error handlers to catch module loading errors
+process.on('uncaughtException', (error) => {
+  console.error('[MODULE ERROR] Uncaught exception:', error);
+  console.error('[MODULE ERROR] Stack:', error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[MODULE ERROR] Unhandled rejection:', reason);
+  console.error('[MODULE ERROR] Promise:', promise);
+});
+
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { UserRole } from '../utils/validateInput';
 import { logger, logRequest, logResponse } from '../utils/logger';
@@ -28,11 +39,12 @@ const RegisterSchema = z.object({
 // Login handler
 export const login = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // CRITICAL: Console log to ensure we see requests even if logger fails
-  console.log('[AUTH HANDLER] Login handler called', {
+  console.log('[AUTH HANDLER] Login handler called - START', {
     path: event.path,
     method: event.httpMethod,
     hasBody: !!event.body,
-    headers: event.headers ? Object.keys(event.headers) : []
+    headers: event.headers ? Object.keys(event.headers) : [],
+    eventKeys: Object.keys(event)
   });
   
   const startTime = Date.now();

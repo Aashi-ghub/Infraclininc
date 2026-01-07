@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend API Routing Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border-left: 4px solid #2196F3;
+        }
+        .test-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.pass { background: #4CAF50; color: white; }
+        .status.fail { background: #f44336; color: white; }
+        .status.pending { background: #ff9800; color: white; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .url-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Frontend API Routing Test</h1>
+        <p>This page tests the API routing from the frontend to verify requests go to the correct backends.</p>
+        
+        <div class="test-section">
+            <h2>Environment Detection</h2>
+            <div id="env-info"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Backend (Main) Endpoints Test</h2>
+            <p>These should route to: <code>451vcfv074.execute-api.us-east-1.amazonaws.com</code></p>
+            <div id="backend-main-tests"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Backend-Ops Endpoints Test</h2>
+            <p>These should route to: <code>uby3f1n6zi.execute-api.us-east-1.amazonaws.com</code></p>
+            <div id="backend-ops-tests"></div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="clearResults()" style="background: #757575; margin-left: 10px;">Clear Results</button>
+        </div>
+
+        <div id="results" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        const BACKEND_MAIN = 'https://451vcfv074.execute-api.us-east-1.amazonaws.com/dev';
+        const BACKEND_OPS = 'https://uby3f1n6zi.execute-api.us-east-1.amazonaws.com/dev';
+
+        // Check environment
+        function checkEnvironment() {
+            const hostname = window.location.hostname;
+            const protocol = window.location.protocol;
+            const isProduction = !hostname.includes('localhost') && 
+                                !hostname.includes('127.0.0.1') && 
+                                protocol === 'https:';
+            
+            document.getElementById('env-info').innerHTML = `
+                <div class="test-item">
+                    <div>
+                        <strong>Hostname:</strong> ${hostname}<br>
+                        <strong>Protocol:</strong> ${protocol}<br>
+                        <strong>Production Mode:</strong> ${isProduction ? '✅ Yes' : '❌ No'}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Test endpoints
+        const backendMainTests = [
+            { name: 'Auth - Me', path: '/auth/me', method: 'GET' },
+            { name: 'Users - List', path: '/users', method: 'GET' },
+            { name: 'Projects - List', path: '/projects', method: 'GET' },
+            { name: 'Borelog Form Data', path: '/borelog-form-data', method: 'GET' },
+        ];
+
+        const backendOpsTests = [
+            { name: 'Lab Reports - List', path: '/lab-reports', method: 'GET' },
+            { name: 'Lab Tests - List', path: '/lab-tests', method: 'GET' },
+            { name: 'Workflow - Pending Reviews', path: '/workflow/pending-reviews', method: 'GET' },
+            { name: 'Unified Lab Reports - List', path: '/unified-lab-reports', method: 'GET' },
+        ];
+
+        function renderTestButtons(containerId, tests) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = tests.map(test => `
+                <div class="test-item">
+                    <div>
+                        <strong>${test.name}</strong>
+                        <div class="url-info">${test.method} ${test.path}</div>
+                    </div>
+                    <div>
+                        <span class="status pending" id="status-${test.path}">Pending</span>
+                        <button onclick="testEndpoint('${test.path}', '${test.method}', '${containerId}')" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">Test</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function testEndpoint(path, method, containerId) {
+            const statusEl = document.getElementById(`status-${path}`);
+            statusEl.textContent = 'Testing...';
+            statusEl.className = 'status pending';
+
+            try {
+                // Import the resolveApiUrl function logic
+                const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+                const backendOpsRoutes = [
+                    '/lab-reports', '/lab', '/workflow', '/unified-lab-reports',
+                    '/pending-csv-uploads', '/lab-requests', '/lab-tests',
+                    '/anomalies', '/contacts'
+                ];
+                const shouldRouteToOps = backendOpsRoutes.some(route => normalizedPath.startsWith(route));
+                const baseUrl = shouldRouteToOps ? BACKEND_OPS : BACKEND_MAIN;
+                const fullUrl = `${baseUrl}${normalizedPath}`;
+
+                const response = await fetch(fullUrl, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    mode: 'cors'
+                });
+
+                const result = {
+                    path,
+                    method,
+                    expectedBackend: shouldRouteToOps ? 'Backend-Ops' : 'Backend (Main)',
+                    actualUrl: fullUrl,
+                    status: response.status,
+                    statusText: response.statusText,
+                    timestamp: new Date().toISOString()
+                };
+
+                // Update status
+                if (response.status >= 200 && response.status < 500) {
+                    statusEl.textContent = `✅ ${response.status}`;
+                    statusEl.className = 'status pass';
+                } else {
+                    statusEl.textContent = `❌ ${response.status}`;
+                    statusEl.className = 'status fail';
+                }
+
+                // Log result
+                logResult(result);
+            } catch (error) {
+                statusEl.textContent = '❌ Error';
+                statusEl.className = 'status fail';
+                logResult({
+                    path,
+                    method,
+                    error: error.message,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        function logResult(result) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'result';
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        async function runAllTests() {
+            document.getElementById('results').innerHTML = '';
+            checkEnvironment();
+            
+            // Test all backend main endpoints
+            for (const test of backendMainTests) {
+                await testEndpoint(test.path, test.method, 'backend-main-tests');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // Test all backend ops endpoints
+            for (const test of backendOpsTests) {
+                await testEndpoint(test.path, test.method, 'backend-ops-tests');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            // Reset all status indicators
+            document.querySelectorAll('.status').forEach(el => {
+                el.textContent = 'Pending';
+                el.className = 'status pending';
+            });
+        }
+
+        // Initialize
+        checkEnvironment();
+        renderTestButtons('backend-main-tests', backendMainTests);
+        renderTestButtons('backend-ops-tests', backendOpsTests);
+    </script>
+</body>
+</html>

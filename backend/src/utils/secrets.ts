@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { SecretsManager } from 'aws-sdk';
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -29,8 +29,11 @@ function getLocalSecretsPath(): string {
  * Loads secrets from AWS Secrets Manager
  */
 async function loadFromAWS(secretName: string): Promise<Secrets> {
-  const secretsManager = new SecretsManager();
-  const result = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+  const secretsManager = new SecretsManagerClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+  });
+  const command = new GetSecretValueCommand({ SecretId: secretName });
+  const result = await secretsManager.send(command);
   
   if (!result.SecretString) {
     throw new Error('No secret string found in AWS Secrets Manager');

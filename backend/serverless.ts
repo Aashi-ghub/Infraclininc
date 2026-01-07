@@ -799,7 +799,6 @@ const serverlessConfiguration: AWS = {
       concurrency: 3,
       external: [
         'pg-native',
-        'jsonwebtoken',
         '@aws-sdk/*'
       ],
       keepNames: true,

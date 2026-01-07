@@ -817,7 +817,8 @@ const serverlessConfiguration: AWS = {
       external: [
         'pg-native',
         'jsonwebtoken',
-        '@aws-sdk/*'
+        '@aws-sdk/*',
+        'aws-sdk'
       ],
       keepNames: true,
       packagerOptions: {
