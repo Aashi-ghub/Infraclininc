@@ -52,12 +52,17 @@ const serverlessConfiguration: AWS = {
           {
             Effect: 'Allow',
             Action: [
+              's3:ListBucket',
               's3:GetObject',
-              's3:PutObject'
+              's3:PutObject',
+              's3:DeleteObject',
+              's3:HeadObject'
             ],
             Resource: [
-              'arn:aws:s3:::${env:S3_BUCKET_NAME}',
-              'arn:aws:s3:::${env:S3_BUCKET_NAME}/*'
+              'arn:aws:s3:::bpc-cloud',
+              'arn:aws:s3:::bpc-cloud/*',
+              'arn:aws:s3:::parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl',
+              'arn:aws:s3:::parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl/*'
             ]
           },
           // SQS permissions removed - queues are managed separately

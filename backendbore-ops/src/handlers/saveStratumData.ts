@@ -2,7 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
 import { createStorageClient } from '../storage/s3Client';
-import { Lambda } from 'aws-sdk';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { validateToken } from '../utils/validateInput';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -215,7 +215,7 @@ async function findBorelogBasePath(storageClient: ReturnType<typeof createStorag
   return null;
 }
 
-const lambda = new Lambda({ region: process.env.AWS_REGION || 'us-east-1' });
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
 // Resolve parquet Lambda name from env; sanitize to avoid whitespace/quotes
 const PARQUET_LAMBDA_FUNCTION_NAME = (() => {
   const raw = process.env.PARQUET_LAMBDA_FUNCTION_NAME;
@@ -228,22 +228,22 @@ async function invokeStratumLambda(payload: any): Promise<void> {
     throw new Error('PARQUET_LAMBDA_FUNCTION_NAME is not set');
   }
 
-  const params = {
+  const command = new InvokeCommand({
     FunctionName: PARQUET_LAMBDA_FUNCTION_NAME,
-    InvocationType: 'RequestResponse' as const,
-    Payload: JSON.stringify({
+    InvocationType: 'RequestResponse',
+    Payload: Buffer.from(JSON.stringify({
       action: 'save_stratum',
       ...payload
-    })
-  };
+    }))
+  });
 
   // Diagnostic: confirm which function name is being invoked at runtime
   console.log('Invoking parquet Lambda', { FunctionName: PARQUET_LAMBDA_FUNCTION_NAME });
 
-  const result = await lambda.invoke(params).promise();
+  const result = await lambdaClient.send(command);
 
   if (result.FunctionError) {
-    const payloadText = result.Payload ? result.Payload.toString() : '';
+    const payloadText = result.Payload ? Buffer.from(result.Payload).toString() : '';
     throw new Error(`Lambda function error: ${result.FunctionError} ${payloadText}`);
   }
 
