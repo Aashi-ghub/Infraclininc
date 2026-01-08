@@ -38,6 +38,13 @@ const serverlessConfiguration: AWS = {
       STORAGE_MODE: 's3',
       // Note: AWS_REGION is automatically provided by Lambda and cannot be set manually
     },
+    apiGateway: {
+      binaryMediaTypes: [
+        '*/*',
+        'application/octet-stream',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ]
+    },
     iam: {
       role: {
         statements: [
