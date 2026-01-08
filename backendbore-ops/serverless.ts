@@ -196,6 +196,18 @@ const serverlessConfiguration: AWS = {
         }
       ]
     },
+    createUser: {
+      handler: 'src/handlers/users.createUser',
+      events: [
+        {
+          http: {
+            method: 'post',
+            path: '/users',
+            cors: true
+          }
+        }
+      ]
+    },
     getUserById: {
       handler: 'src/handlers/users.getUserById',
       events: [

@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 // In Lambda, environment variables are already set by the serverless framework
 const isOffline = process.env.IS_OFFLINE === 'true' || !process.env.AWS_EXECUTION_ENV;
 if (isOffline) {
-  dotenv.config();
+dotenv.config();
 }
 
 const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();

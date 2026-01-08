@@ -52,6 +52,8 @@ export function resolveApiUrl(path: string): string {
     '/lab-tests',
     '/anomalies',
     '/contacts',
+    '/users',
+    '/assignments',
   ];
   
   // Check if path matches any backend-ops route prefix
