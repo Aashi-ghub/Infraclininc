@@ -31,6 +31,12 @@ const serverlessConfiguration: AWS = {
       JWT_SECRET: process.env.JWT_SECRET || '',
       PARQUET_LAMBDA_FUNCTION_NAME: process.env.PARQUET_LAMBDA_FUNCTION_NAME || 'parquet-repository-dev-parquet-repository',
       BORELOG_PARSER_QUEUE_URL: process.env.BORELOG_PARSER_QUEUE_URL || 'https://sqs.us-east-1.amazonaws.com/211946440260/borelog-parser-queue-dev',
+      // Storage configuration (REQUIRED for S3 mode)
+      // These defaults ensure the variables are always set in Lambda
+      S3_BUCKET_NAME: 'bpc-cloud',
+      PARQUET_BUCKET_NAME: 'parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl',
+      STORAGE_MODE: 's3',
+      // Note: AWS_REGION is automatically provided by Lambda and cannot be set manually
     },
     iam: {
       role: {
@@ -47,12 +53,17 @@ const serverlessConfiguration: AWS = {
           {
             Effect: 'Allow',
             Action: [
+              's3:ListBucket',
               's3:GetObject',
-              's3:PutObject'
+              's3:PutObject',
+              's3:DeleteObject',
+              's3:HeadObject'
             ],
             Resource: [
-              'arn:aws:s3:::${env:S3_BUCKET_NAME}',
-              'arn:aws:s3:::${env:S3_BUCKET_NAME}/*'
+              'arn:aws:s3:::bpc-cloud',
+              'arn:aws:s3:::bpc-cloud/*',
+              'arn:aws:s3:::parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl',
+              'arn:aws:s3:::parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl/*'
             ]
           },
           {

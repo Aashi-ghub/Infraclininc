@@ -1,5 +1,11 @@
 import dotenv from 'dotenv';
-dotenv.config();
+
+// Only load .env file when running locally, not in Lambda
+// In Lambda, environment variables are already set by the serverless framework
+const isOffline = process.env.IS_OFFLINE === 'true' || !process.env.AWS_EXECUTION_ENV;
+if (isOffline) {
+  dotenv.config();
+}
 
 const storageMode = (process.env.STORAGE_MODE || '').toLowerCase();
 

@@ -31,6 +31,11 @@ const serverlessConfiguration: AWS = {
       JWT_SECRET: process.env.JWT_SECRET || '',
       PARQUET_LAMBDA_FUNCTION_NAME: process.env.PARQUET_LAMBDA_FUNCTION_NAME || 'parquet-repository-dev-parquet-repository',
       BORELOG_PARSER_QUEUE_URL: process.env.BORELOG_PARSER_QUEUE_URL || 'https://sqs.us-east-1.amazonaws.com/211946440260/borelog-parser-queue-dev',
+      // Storage configuration (REQUIRED for S3 mode)
+      S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || 'bpc-cloud',
+      PARQUET_BUCKET_NAME: process.env.PARQUET_BUCKET_NAME || process.env.S3_BUCKET_NAME || 'parquet-repository-dev-serverlessdeploymentbucket-cfxpeawuynnl',
+      STORAGE_MODE: process.env.STORAGE_MODE || 's3',
+      // Note: AWS_REGION is automatically provided by Lambda and cannot be set manually
     },
     iam: {
       role: {

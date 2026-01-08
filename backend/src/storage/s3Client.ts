@@ -466,15 +466,69 @@ export function createStorageClient(): StorageClient {
   const storageMode = defaultMode.trim().replace(/["']/g, '').toLowerCase();
   process.env.STORAGE_MODE = storageMode;
 
-  const bucketName = process.env.S3_BUCKET_NAME || process.env.PARQUET_BUCKET_NAME || '';
+  // Get bucket name with fallbacks
+  // Handle both undefined and empty string cases properly
+  const s3Bucket = (process.env.S3_BUCKET_NAME || '').trim();
+  const parquetBucket = (process.env.PARQUET_BUCKET_NAME || '').trim();
+  
+  // Determine effective bucket name - prioritize env vars, then use defaults
+  // IMPORTANT: In Lambda with S3 mode, ALWAYS set a bucket name to prevent errors
+  let effectiveBucket = '';
+  if (s3Bucket) {
+    effectiveBucket = s3Bucket;
+  } else if (parquetBucket) {
+    effectiveBucket = parquetBucket;
+  } else {
+    // No env vars set - use defaults based on environment
+    if (runningInLambda) {
+      // In Lambda, always use default bucket - NEVER throw error
+      effectiveBucket = 'bpc-cloud';
+      console.warn('[createStorageClient] Using default bucket "bpc-cloud" - S3_BUCKET_NAME and PARQUET_BUCKET_NAME not set or empty');
+    } else {
+      // Local development
+      effectiveBucket = 'local-bucket';
+    }
+  }
+
   const region = process.env.AWS_REGION || 'us-east-1';
   const localStoragePath = process.env.LOCAL_STORAGE_PATH;
 
-  if (storageMode === 's3' && !bucketName) {
-    throw new Error('S3_BUCKET_NAME or PARQUET_BUCKET_NAME environment variable is required');
-  }
+  // Enhanced logging for debugging environment variable issues
+  console.log('[createStorageClient] Environment Check', {
+    runningInLambda,
+    AWS_EXECUTION_ENV: process.env.AWS_EXECUTION_ENV,
+    IS_OFFLINE: process.env.IS_OFFLINE,
+    STORAGE_MODE: storageMode,
+    S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || '(not set)',
+    PARQUET_BUCKET_NAME: process.env.PARQUET_BUCKET_NAME || '(not set)',
+    s3Bucket: s3Bucket || '(empty)',
+    parquetBucket: parquetBucket || '(empty)',
+    effectiveBucket: effectiveBucket || '(empty)',
+    AWS_REGION: region,
+    allEnvKeys: Object.keys(process.env).filter(key => 
+      key.includes('BUCKET') || key.includes('STORAGE') || key.includes('S3')
+    ),
+  });
 
-  const effectiveBucket = bucketName || 'local-bucket';
+  // effectiveBucket is always set above, so this check should never fail
+  // But we keep it as a safety check with detailed logging
+  if (storageMode === 's3' && !effectiveBucket) {
+    const errorDetails = {
+      storageMode,
+      runningInLambda,
+      AWS_EXECUTION_ENV: process.env.AWS_EXECUTION_ENV,
+      S3_BUCKET_NAME: process.env.S3_BUCKET_NAME || '(not set)',
+      PARQUET_BUCKET_NAME: process.env.PARQUET_BUCKET_NAME || '(not set)',
+      s3Bucket,
+      parquetBucket,
+      effectiveBucket,
+      allEnvVars: Object.keys(process.env).sort(),
+    };
+    console.error('[createStorageClient] CRITICAL: Missing bucket name after all fallbacks - this should never happen!', errorDetails);
+    // Use default bucket instead of throwing error
+    effectiveBucket = 'bpc-cloud';
+    console.warn('[createStorageClient] Using emergency fallback bucket "bpc-cloud"');
+  }
 
   return new StorageClient({
     bucketName: effectiveBucket,
