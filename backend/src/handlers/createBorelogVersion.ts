@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { convertScalarToRelational } from '../utils/stratumConverter';
 import { saveStratumData } from '../utils/stratumSaver';
 import { createStorageClient } from '../storage/s3Client';
+import { parseBody } from '../utils/parseBody';
 
 // Schema for creating new borelog versions
 const CreateBorelogVersionSchema = z.object({
@@ -96,7 +97,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const data = JSON.parse(event.body);
+    const data = parseBody(event);
+    if (!data) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validationResult = CreateBorelogVersionSchema.safeParse(data);
 
     if (!validationResult.success) {

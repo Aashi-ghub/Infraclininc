@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { getStorageService, validateFile, generateS3Key } from '../services/storageService';
 import * as db from '../db';
 import { guardDbRoute } from '../db';
+import { parseBody } from '../utils/parseBody';
 
 // Schema for image upload request - supports both file upload and URL
 const UploadImageSchema = z.object({
@@ -41,7 +42,10 @@ export const uploadImage = async (event: APIGatewayProxyEvent): Promise<APIGatew
       });
     }
 
-    const body = JSON.parse(event.body);
+    const body = parseBody(event);
+    if (!body) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     
     // Validate request body
     const validationResult = UploadImageSchema.safeParse(body);

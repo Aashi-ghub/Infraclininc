@@ -4,6 +4,7 @@ import { insertBorelogDetails } from '../models/borelogDetails';
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { checkBorelogAssignment } from '../utils/projectAccess';
+import { parseBody } from '../utils/parseBody';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
@@ -39,7 +40,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const data = JSON.parse(event.body);
+    const data = parseBody(event);
+    if (!data) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validationResult = BorelogDetailsSchema.safeParse(data);
 
     if (!validationResult.success) {

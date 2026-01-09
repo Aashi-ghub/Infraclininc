@@ -4,6 +4,7 @@ import { getGeologicalLogById } from '../models/geologicalLog';
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { validate as validateUUID } from 'uuid';
+import { parseBody } from '../utils/parseBody';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const startTime = Date.now();
@@ -55,7 +56,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const updateData = JSON.parse(event.body);
+    const updateData = parseBody(event);
+    if (!updateData) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     logger.info(`Updating substructure assignment for borelog ${borelog_id} with data:`, { updateData });
 
     // Extract substructure_id from the request body

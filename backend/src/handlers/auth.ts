@@ -62,7 +62,28 @@ export const login = async (event: APIGatewayProxyEvent): Promise<APIGatewayProx
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    // ---- SAFE BODY PARSING (supports base64 + JSON + object) ----
+    let parsedBody;
+    try {
+      let raw = event.body;
+
+      // Decode base64 if API Gateway encoded it
+      if (event.isBase64Encoded) {
+        raw = Buffer.from(event.body, "base64").toString("utf-8");
+      }
+
+      parsedBody = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    } catch (err) {
+      console.error("Failed to parse body:", event.body);
+      return createResponse(400, {
+        success: false,
+        message: "Invalid JSON",
+        error: "Request body must be valid JSON"
+      });
+    }
+
+    const requestBody = parsedBody;
     const validation = LoginSchema.safeParse(requestBody);
     
     if (!validation.success) {
@@ -146,7 +167,28 @@ export const register = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    // ---- SAFE BODY PARSING (supports base64 + JSON + object) ----
+    let parsedBody;
+    try {
+      let raw = event.body;
+
+      // Decode base64 if API Gateway encoded it
+      if (event.isBase64Encoded) {
+        raw = Buffer.from(event.body, "base64").toString("utf-8");
+      }
+
+      parsedBody = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    } catch (err) {
+      console.error("Failed to parse body:", event.body);
+      return createResponse(400, {
+        success: false,
+        message: "Invalid JSON",
+        error: "Request body must be valid JSON"
+      });
+    }
+
+    const requestBody = parsedBody;
     const validation = RegisterSchema.safeParse(requestBody);
     
     if (!validation.success) {

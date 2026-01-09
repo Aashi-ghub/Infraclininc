@@ -5,6 +5,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { z } from 'zod';
 import { createStorageClient } from '../storage/s3Client';
 import { v4 as uuidv4 } from 'uuid';
+import { parseBody } from '../utils/parseBody';
 
 // Borelog Creation Schema
 const CreateBorelogSchema = z.object({
@@ -84,7 +85,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const data = JSON.parse(event.body);
+    const data = parseBody(event);
+    if (!data) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     
     // Log raw input for debugging
     logger.info('[VALIDATION DEBUG] Raw input', {

@@ -5,6 +5,7 @@ import { createResponse } from '../types/common';
 import * as userStore from '../auth/userStore';
 import * as authService from '../auth/authService';
 import { z } from 'zod';
+import { parseBody } from '../utils/parseBody';
 
 /**
  * MIGRATED: This handler now reads from S3 instead of database
@@ -170,7 +171,10 @@ export const createUser = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validation = CreateUserSchema.safeParse(requestBody);
     
     if (!validation.success) {

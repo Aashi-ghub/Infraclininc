@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
 import { createStorageClient } from '../storage/s3Client';
+import { parseBody } from '../utils/parseBody';
 
 // Support both legacy and V2 payloads
 // Legacy: { is_approved: boolean; remarks?: string; version_no?: number }
@@ -155,7 +156,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const parsedV1 = ApproveBorelogSchemaV1.safeParse(requestBody);
     const parsedV2 = ApproveBorelogSchemaV2.safeParse(requestBody);
 

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createStorageClient } from '../storage/s3Client';
 import * as userStore from '../auth/userStore';
 import { v4 as uuidv4 } from 'uuid';
+import { parseBody } from '../utils/parseBody';
 
 /**
  * MIGRATED: This handler now reads from S3 instead of database
@@ -174,7 +175,10 @@ export const createAssignment = async (event: APIGatewayProxyEvent): Promise<API
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validation = CreateBorelogAssignmentSchema.safeParse(requestBody);
     
     if (!validation.success) {
@@ -315,7 +319,10 @@ export const updateAssignment = async (event: APIGatewayProxyEvent): Promise<API
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validation = UpdateBorelogAssignmentSchema.safeParse(requestBody);
     
     if (!validation.success) {

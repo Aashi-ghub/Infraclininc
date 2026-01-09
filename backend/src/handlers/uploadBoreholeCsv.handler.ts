@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createResponse } from '../types/common';
 import { parseBoreholeCsv } from '../utils/boreholeCsvParser';
 import * as db from '../db';
+import { parseBody } from '../utils/parseBody';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
@@ -44,7 +45,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const { csvContent, projectId, structureId, substructureId } = requestBody;
 
     logger.info('Request body parsed:', {

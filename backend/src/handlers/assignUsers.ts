@@ -4,6 +4,7 @@ import { logger, logRequest, logResponse } from '../utils/logger';
 import { createUserAssignment } from '../models/userAssignments';
 import { createResponse } from '../types/common';
 import { z } from 'zod';
+import { parseBody } from '../utils/parseBody';
 
 const AssignUsersSchema = z.object({
   project_id: z.string().uuid('Invalid project ID'),
@@ -47,7 +48,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validation = AssignUsersSchema.safeParse(requestBody);
     
     if (!validation.success) {

@@ -5,6 +5,7 @@ import { createResponse } from '../types/common';
 import { z } from 'zod';
 import { createStorageClient } from '../storage/s3Client';
 import { v4 as uuidv4 } from 'uuid';
+import { parseBody } from '../utils/parseBody';
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
@@ -49,7 +50,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validation = CreateProjectSchema.safeParse(requestBody);
     
     if (!validation.success) {

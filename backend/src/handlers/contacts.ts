@@ -14,6 +14,7 @@ import {
 import { createResponse } from '../types/common';
 import { logger, logRequest, logResponse } from '../utils/logger';
 import { validateInput } from '../utils/validateInput';
+import { parseBody } from '../utils/parseBody';
 import { z } from 'zod';
 import { createStorageClient } from '../storage/s3Client';
 
@@ -40,7 +41,10 @@ export const createContactHandler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const body = JSON.parse(event.body);
+    const body = parseBody(event);
+    if (!body) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     
     // Validate input against schema
     const validationResult = validateInput(body, contactSchema);
@@ -306,7 +310,10 @@ export const updateContactHandler = async (event: APIGatewayProxyEvent) => {
       return response;
     }
 
-    const body = JSON.parse(event.body);
+    const body = parseBody(event);
+    if (!body) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     
     // Validate input (partial schema)
     const updateSchema = contactSchema.partial();

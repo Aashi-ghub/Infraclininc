@@ -5,6 +5,7 @@ import { createResponse } from '../types/common';
 import { z } from 'zod';
 import * as db from '../db';
 import { guardDbRoute } from '../db';
+import { parseBody } from '../utils/parseBody';
 
 // Schema for approving pending CSV uploads
 const ApprovePendingCSVUploadSchema = z.object({
@@ -63,7 +64,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return response;
     }
 
-    const requestBody = JSON.parse(event.body);
+    const requestBody = parseBody(event);
+    if (!requestBody) {
+      return createResponse(400, { success: false, message: "Invalid JSON body" });
+    }
     const validatedData = ApprovePendingCSVUploadSchema.parse(requestBody);
     const { action, comments, revision_notes } = validatedData;
 

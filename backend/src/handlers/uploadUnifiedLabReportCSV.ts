@@ -7,6 +7,7 @@ import { z } from 'zod';
 import * as db from '../db';
 import { guardDbRoute } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { parseBody } from '../utils/parseBody';
 
 // Header hints to auto-detect soil/rock presence and extract values
 const SOIL_HEADERS = ['soil classification','moisture content','liquid limit','plastic limit','plasticity index','fines','sieve'];
@@ -108,7 +109,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 			return response;
 		}
 
-		const requestBody = JSON.parse(event.body);
+		const requestBody = parseBody(event);
+		if (!requestBody) {
+			return createResponse(400, { success: false, message: "Invalid JSON body" });
+		}
 		const { csvData, sheets, default_assignment_id, default_borelog_id } = requestBody;
 
 		// Enforce request-level defaults so each row inherits them
